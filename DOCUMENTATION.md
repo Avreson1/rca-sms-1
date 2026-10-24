@@ -157,7 +157,7 @@ The VCS portal is built as a cloud-native Next.js application. Below are the 3 p
    ```env
    DATABASE_URL="postgresql://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres?pgbouncer=true"
    DIRECT_URL="postgresql://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres"
-   NEXTAUTH_SECRET="rca_vcs_super_secret_jwt_key_2026_jos_plateau"
+   NEXTAUTH_SECRET="<generate with: openssl rand -base64 32>"
    NEXTAUTH_URL="https://portal.royalcrownacademy.edu.ng"
    RESEND_API_KEY="re_xxxxxxxxxxxxxxxxxxxxxxxxx"
    TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
