@@ -284,6 +284,7 @@ export interface ActivityTemplateRecord {
 
 export interface AuthUserSession {
   id: string;
+  authUserId?: string;
   username: string;
   fullName: string;
   role: "SUPER_ADMIN" | "EXAM_OFFICER" | "TEACHER" | "ACCOUNTANT" | "STUDENT_PARENT";
@@ -2251,6 +2252,29 @@ export function useRealtimeActivityTemplates() {
 // -------------------------------------------------------------
 // Hook: Real-Time Authentication & Session Store (Tiered 5-Role Support)
 // -------------------------------------------------------------
+const LAST_AUTH_USER_KEY = "rca_last_auth_user_v7";
+const PERSONAL_CACHE_KEYS = [
+  STORAGE_KEYS.STUDENTS,
+  STORAGE_KEYS.SUBJECT_SCORES,
+  STORAGE_KEYS.PSYCHOMOTOR,
+  STORAGE_KEYS.TRAITS,
+  STORAGE_KEYS.INVOICES,
+  STORAGE_KEYS.INMAIL,
+];
+
+function clearPersonalCaches() {
+  PERSONAL_CACHE_KEYS.forEach((key) => localStorage.removeItem(key));
+}
+
+// Cached records from one account must never be shown to the next account on a shared browser.
+function rememberSignedInUser(user: AuthUserSession) {
+  if (typeof window === "undefined") return;
+  const id = user.authUserId ?? user.id;
+  const previous = localStorage.getItem(LAST_AUTH_USER_KEY);
+  if ((previous && previous !== id) || user.role === "STUDENT_PARENT") clearPersonalCaches();
+  localStorage.setItem(LAST_AUTH_USER_KEY, id);
+}
+
 export function useRealtimeAuth() {
   // The session is verified server-side (Supabase Auth cookie + staff/student lookup).
   // Nothing here is trusted for authorization; it only drives the UI.
@@ -2295,6 +2319,7 @@ export function useRealtimeAuth() {
     if (!res.ok || !data?.user) {
       return { user: null, error: (data?.error as string) || "Sign-in failed. Please try again." };
     }
+    rememberSignedInUser(data.user as AuthUserSession);
     setCurrentUser(data.user as AuthUserSession);
     broadcast("AUTH_SESSION_UPDATED");
     return { user: data.user as AuthUserSession, error: null };
@@ -2302,8 +2327,10 @@ export function useRealtimeAuth() {
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    const wasPortalUser = currentUser?.role === "STUDENT_PARENT";
     setCurrentUser(null);
     if (typeof window !== "undefined") {
+      if (wasPortalUser) clearPersonalCaches();
       localStorage.removeItem(STORAGE_KEYS.AUTH_SESSION);
       localStorage.removeItem(STORAGE_KEYS.ACTIVE_RBAC_ROLE);
     }

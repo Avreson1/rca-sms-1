@@ -35,11 +35,19 @@ export async function proxy(request: NextRequest) {
     },
   });
 
+  // Redirects must carry any cookies Supabase changed (token refresh, signOut), or an
+  // unlinked account would bounce between /login and / forever.
+  const redirectTo = (target: string | URL) => {
+    const res = NextResponse.redirect(new URL(target, request.url));
+    response.cookies.getAll().forEach((cookie) => res.cookies.set(cookie));
+    return res;
+  };
+
   const { data } = await supabase.auth.getUser();
   const user = data?.user;
 
   if (isPublic(pathname)) {
-    if (user && pathname === "/login") return NextResponse.redirect(new URL("/", request.url));
+    if (user && pathname === "/login") return redirectTo("/");
     return response;
   }
 
@@ -47,7 +55,7 @@ export async function proxy(request: NextRequest) {
     if (isApi) return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
+    return redirectTo(loginUrl);
   }
 
   // API routes do their own role checks; pages are gated by the role stored in the database.
@@ -57,9 +65,9 @@ export async function proxy(request: NextRequest) {
   if (!role || !isRouteAllowed(role as UserRole, pathname)) {
     if (!role) {
       await supabase.auth.signOut();
-      return NextResponse.redirect(new URL("/login?error=no_profile", request.url));
+      return redirectTo("/login?error=no_profile");
     }
-    return NextResponse.redirect(new URL("/?denied=" + encodeURIComponent(pathname), request.url));
+    return redirectTo("/?denied=" + encodeURIComponent(pathname));
   }
 
   return response;

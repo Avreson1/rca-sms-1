@@ -69,6 +69,22 @@ GRANT EXECUTE ON FUNCTION public.has_app_role(text[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.is_staff_member() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.owns_student(UUID) TO authenticated;
 
+-- Teachers may only enter scores for their own form class or the subjects assigned to them.
+CREATE OR REPLACE FUNCTION public.can_enter_score(target_student UUID, target_subject text)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+    SELECT public.has_app_role('SUPER_ADMIN', 'EXAM_OFFICER')
+        OR EXISTS (
+            SELECT 1 FROM public.staff s
+            JOIN public.students st ON st.id = target_student
+            WHERE s.auth_user_id = auth.uid() AND s.status = 'Active' AND s.role = 'TEACHER'
+              AND (st.class_name = s.assigned_class OR s.assigned_subjects ? target_subject)
+        );
+$$;
+REVOKE ALL ON FUNCTION public.can_enter_score(UUID, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_enter_score(UUID, text) TO authenticated;
+
 -- 4. Drop every existing policy on the application tables -----------------------
 DO $$
 DECLARE pol record;
@@ -120,10 +136,10 @@ CREATE POLICY students_delete ON public.students FOR DELETE TO authenticated
 CREATE POLICY ca_scores_select ON public.ca_scores FOR SELECT TO authenticated
     USING (public.is_staff_member() OR public.owns_student(student_id));
 CREATE POLICY ca_scores_insert ON public.ca_scores FOR INSERT TO authenticated
-    WITH CHECK (public.has_app_role('SUPER_ADMIN', 'EXAM_OFFICER', 'TEACHER'));
+    WITH CHECK (public.can_enter_score(student_id, subject));
 CREATE POLICY ca_scores_update ON public.ca_scores FOR UPDATE TO authenticated
-    USING (public.has_app_role('SUPER_ADMIN', 'EXAM_OFFICER', 'TEACHER'))
-    WITH CHECK (public.has_app_role('SUPER_ADMIN', 'EXAM_OFFICER', 'TEACHER'));
+    USING (public.can_enter_score(student_id, subject))
+    WITH CHECK (public.can_enter_score(student_id, subject));
 CREATE POLICY ca_scores_delete ON public.ca_scores FOR DELETE TO authenticated
     USING (public.has_app_role('SUPER_ADMIN', 'EXAM_OFFICER'));
 
@@ -143,8 +159,9 @@ CREATE POLICY cbt_questions_write ON public.cbt_questions FOR ALL TO authenticat
 -- cbt_exam_sessions: students submit their own attempt; staff review.
 CREATE POLICY cbt_sessions_select ON public.cbt_exam_sessions FOR SELECT TO authenticated
     USING (public.is_staff_member() OR public.owns_student(student_id));
+-- Student attempts are inserted by the server (/api/cbt/attempts) with needs_review = true.
 CREATE POLICY cbt_sessions_insert ON public.cbt_exam_sessions FOR INSERT TO authenticated
-    WITH CHECK (public.owns_student(student_id) OR public.has_app_role('SUPER_ADMIN', 'EXAM_OFFICER', 'TEACHER'));
+    WITH CHECK (public.has_app_role('SUPER_ADMIN', 'EXAM_OFFICER', 'TEACHER'));
 CREATE POLICY cbt_sessions_update ON public.cbt_exam_sessions FOR UPDATE TO authenticated
     USING (public.has_app_role('SUPER_ADMIN', 'EXAM_OFFICER', 'TEACHER'))
     WITH CHECK (public.has_app_role('SUPER_ADMIN', 'EXAM_OFFICER', 'TEACHER'));
@@ -178,6 +195,26 @@ CREATE POLICY audit_logs_select ON public.audit_logs FOR SELECT TO authenticated
     USING (public.has_app_role('SUPER_ADMIN'));
 CREATE POLICY audit_logs_insert ON public.audit_logs FOR INSERT TO authenticated
     WITH CHECK (public.is_staff_member());
+
+-- Audit entries always record the real signed-in staff member, whatever the client sends.
+CREATE OR REPLACE FUNCTION public.stamp_audit_actor()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+    IF auth.uid() IS NOT NULL THEN
+        SELECT s.full_name, s.role::text INTO NEW.actor_name, NEW.actor_role
+          FROM public.staff s WHERE s.auth_user_id = auth.uid() LIMIT 1;
+        IF NEW.actor_name IS NULL THEN
+            RAISE EXCEPTION 'Audit log actor is not linked to a staff record';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS audit_logs_stamp_actor ON public.audit_logs;
+CREATE TRIGGER audit_logs_stamp_actor BEFORE INSERT ON public.audit_logs
+    FOR EACH ROW EXECUTE FUNCTION public.stamp_audit_actor();
 
 -- inmail: sender_id / recipient_id hold the Supabase Auth user id.
 CREATE POLICY inmail_select ON public.inmail_messages FOR SELECT TO authenticated

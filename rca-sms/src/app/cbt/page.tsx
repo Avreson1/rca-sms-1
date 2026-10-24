@@ -1,5 +1,6 @@
 "use client";
 
+import { CBTReviewPanel } from "@/components/cbt/review-panel";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
@@ -124,7 +125,7 @@ export default function ProctoredCBTPage() {
   const { questions: storeQuestions } = useRealtimeCBTQuestions();
   const { cbtConfig, toggleCBTAccess } = useRealtimeCBTConfig();
   const { currentUser } = useRealtimeAuth();
-  const currentRole = currentUser?.role || "SUPER_ADMIN";
+  const currentRole = currentUser?.role ?? null;
   const isCandidate = currentRole === "STUDENT_PARENT";
 
   const examQuestions = storeQuestions.length > 0 ? storeQuestions : DEFAULT_CBT_QUESTIONS;
@@ -150,6 +151,7 @@ export default function ProctoredCBTPage() {
   // Malpractice & Anti-Cheating Failsafe State
   const [strikes, setStrikes] = useState<number>(0);
   const [malpracticeLogs, setMalpracticeLogs] = useState<MalpracticeEvent[]>([]);
+  const [submissionSaved, setSubmissionSaved] = useState<boolean | null>(null);
   const [activeWarningModal, setActiveWarningModal] = useState<string | null>(null);
   const [noiseLevel, setNoiseLevel] = useState<number>(24);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -186,6 +188,24 @@ export default function ProctoredCBTPage() {
       flagged ? "ICT 1st Term CBT Exam (flagged for review)" : "ICT 1st Term CBT Exam",
       false
     );
+
+    if (isCandidate) {
+      // Persist the attempt server-side so teachers on other devices can review it.
+      fetch("/api/cbt/attempts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject: "ICT 1st Term CBT Exam",
+          score: rawScore,
+          maxMarks: totalMaxMarks,
+          strikes,
+          flagged,
+          logs: malpracticeLogs,
+        }),
+      })
+        .then((res) => setSubmissionSaved(res.ok))
+        .catch(() => setSubmissionSaved(false));
+    }
 
     setSyncFeedback({
       scaledScore: result.scaledScore,
@@ -540,6 +560,7 @@ export default function ProctoredCBTPage() {
         {/* Tab 1: Manage Exams & Candidate Selection */}
         {activeTab === "manage" && (
           <div className="space-y-6">
+            {currentRole && currentRole !== "STUDENT_PARENT" && currentRole !== "ACCOUNTANT" && <CBTReviewPanel />}
             
             {/* Candidate Selector Bar */}
             <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -795,7 +816,10 @@ export default function ProctoredCBTPage() {
                 <div className="bg-red-900/60 border border-red-500 rounded-xl p-4 text-xs font-medium text-red-100 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Database className="w-4 h-4 text-red-400" />
-                    <span>CA Gradebook Updated: <strong className="text-white font-bold">Exam Mark = 0 / 60</strong> for {currentStudent.fullName}</span>
+                    <span>
+                      Attempt for {currentStudent.fullName} is <strong className="text-white font-bold">awaiting teacher review</strong>
+                      {submissionSaved === false && " (could not reach the server; please inform your teacher)"}
+                    </span>
                   </div>
                   <Link
                     href="/operations/update-ca"
