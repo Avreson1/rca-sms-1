@@ -4,7 +4,8 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { SCHOOL_INFO, CURRENT_USER, DRAFT_LOGIN_ACCOUNTS } from "@/lib/constants";
+import { SCHOOL_INFO, CURRENT_USER } from "@/lib/constants";
+import { isActionAuthorized } from "@/lib/rbac";
 import {
   purgeAllDemoData,
   restoreDefaultSeedData,
@@ -102,12 +103,31 @@ export default function SettingsPage() {
     setTimeout(() => setToastMessage(null), 5000);
   };
 
+  const purgeEnabled =
+    process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ALLOW_DEMO_PURGE === "true";
+
   const handlePurge = () => {
-    if (confirm("Are you sure you want to PURGE ALL sample demo data? This will clear all mock students, staff, and scores to zero state so you can start 100% fresh with genuine school records.")) {
-      purgeAllDemoData();
-      setToastMessage("All demo records purged! Database is now empty and ready for authentic school enrollment.");
+    if (!isActionAuthorized(currentUser?.role, "SYSTEM_PURGE")) {
+      setToastMessage("Only the Super Administrator can purge data.");
       setTimeout(() => setToastMessage(null), 5000);
+      return;
     }
+    if (!purgeEnabled) {
+      setToastMessage("Demo data purge is disabled in production. Set NEXT_PUBLIC_ALLOW_DEMO_PURGE=true only for a one-off reset.");
+      setTimeout(() => setToastMessage(null), 6000);
+      return;
+    }
+    const typed = prompt(
+      "This clears all locally cached students, staff, scores, invoices and settings on this browser. It does not delete Supabase records.\n\nType PURGE to confirm."
+    );
+    if (typed !== "PURGE") {
+      setToastMessage("Purge cancelled. Nothing was deleted.");
+      setTimeout(() => setToastMessage(null), 4000);
+      return;
+    }
+    purgeAllDemoData();
+    setToastMessage("Local demo records purged on this browser.");
+    setTimeout(() => setToastMessage(null), 5000);
   };
 
   const handleRestore = () => {

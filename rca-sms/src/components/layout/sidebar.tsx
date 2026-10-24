@@ -124,7 +124,7 @@ export function Sidebar() {
     setMounted(true);
   }, []);
 
-  const currentRole = (mounted ? currentUser?.role : null) || "SUPER_ADMIN";
+  const currentRole = mounted ? currentUser?.role ?? null : null;
   const activeCBT = mounted ? cbtConfig : { isOpen: true };
 
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({

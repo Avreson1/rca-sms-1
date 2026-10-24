@@ -88,7 +88,7 @@ export default function ReportsHubPage() {
     ];
 
     const rows = (invoices.length > 0 ? invoices : students.map((s, i) => ({
-      invoiceNo: `RCA/INV/2025/${(i + 1).toString().padStart(3, "0")}`,
+      invoiceNo: `RCA/INV/${new Date().getFullYear()}/${(i + 1).toString().padStart(3, "0")}`,
       admissionNo: s.admissionNo,
       studentName: s.fullName,
       className: s.className,

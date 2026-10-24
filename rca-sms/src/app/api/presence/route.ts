@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireRole } from "@/lib/auth";
 
 interface UserPresenceItem {
   id: string;
@@ -8,13 +9,14 @@ interface UserPresenceItem {
   staffId?: string;
   lastSeen: number;
   status: "Active now" | "Idle (2m)" | "Active (5m)";
-  isSelf?: boolean;
 }
 
 // In-memory active presence cache (dynamic heartbeats from active sessions)
-let activeUsers: Record<string, UserPresenceItem> = {};
+const activeUsers: Record<string, UserPresenceItem> = {};
 
 export async function GET() {
+  const auth = await requireRole("ANY");
+  if ("error" in auth) return auth.error;
   const now = Date.now();
   // Filter users active in the last 10 minutes
   const activeEntries = Object.entries(activeUsers).filter(
@@ -41,25 +43,22 @@ export async function GET() {
   });
 }
 
-export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    const username = body.username || "dominic370";
-    const now = Date.now();
+export async function POST() {
+  // Identity comes from the verified session, never from the request body.
+  const auth = await requireRole("ANY");
+  if ("error" in auth) return auth.error;
+  const { profile } = auth;
+  const now = Date.now();
 
-    activeUsers[username] = {
-      id: `p-${username}`,
-      username: username,
-      name: body.name || "Dominic Mark (You)",
-      role: body.role || "Administrator / ICT",
-      staffId: body.staffId || "RCA/PERS/025",
-      lastSeen: now,
-      status: "Active now",
-      isSelf: true,
-    };
+  activeUsers[profile.authUserId] = {
+    id: `p-${profile.authUserId}`,
+    username: profile.username,
+    name: profile.fullName,
+    role: profile.role.replace("_", " "),
+    staffId: profile.staffId,
+    lastSeen: now,
+    status: "Active now",
+  };
 
-    return NextResponse.json({ success: true, timestamp: now });
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to record heartbeat" }, { status: 400 });
-  }
+  return NextResponse.json({ success: true, timestamp: now });
 }

@@ -71,7 +71,7 @@ export default function InvoicingAccountsPage() {
         const invSeq = (invoices.length + newInvoices.length + 1).toString().padStart(4, "0");
         newInvoices.push({
           id: `inv-${Date.now()}-${idx}`,
-          invoiceNo: `RCA/INV/2025/${invSeq}`,
+          invoiceNo: `RCA/INV/${new Date().getFullYear()}/${invSeq}`,
           admissionNo: std.admissionNo,
           studentName: std.fullName,
           className: std.className,

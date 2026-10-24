@@ -170,19 +170,21 @@ export default function ProctoredCBTPage() {
   };
 
   // Submit and Sync Score to CA
-  const handleFinalSubmit = (expelled: boolean = false) => {
-    const rawScore = expelled ? 0 : calculateFinalScore();
+  // `flagged` = repeated focus/fullscreen violations. Browser events can be triggered
+  // innocently (notifications, accidental clicks), so the attempt is kept with its real
+  // score and flagged for teacher review instead of being zeroed automatically.
+  const handleFinalSubmit = (flagged: boolean = false) => {
+    const rawScore = calculateFinalScore();
     setIsSubmitted(true);
-    setIsExpelled(expelled);
+    setIsExpelled(flagged);
 
-    // Sync to CA Gradebook in real-time
     const result = syncCBTScoreToCA(
       currentStudent.admissionNo,
       rawScore,
       totalMaxMarks,
       "exam",
-      "ICT 1st Term CBT Exam",
-      expelled
+      flagged ? "ICT 1st Term CBT Exam (flagged for review)" : "ICT 1st Term CBT Exam",
+      false
     );
 
     setSyncFeedback({
@@ -215,12 +217,12 @@ export default function ProctoredCBTPage() {
     setStrikes((prevStrikes) => {
       const nextStrike = prevStrikes + 1;
       if (nextStrike >= 3) {
-        // Strike 3 = IMMEDIATE EXPULSION & 0 SCORE SYNC
+        // Strike 3 = auto-submit and flag the attempt for teacher review
         setActiveWarningModal(null);
         handleFinalSubmit(true);
       } else {
         setActiveWarningModal(
-          `STRIKE ${nextStrike}/3: ${description}. Notice: Reaching 3 strikes results in immediate expulsion, 0 gradebook score, and exam disqualification.`
+          `STRIKE ${nextStrike}/3: ${description}. Notice: on the 3rd warning your test is submitted automatically and flagged for teacher review.`
         );
       }
       return nextStrike;
@@ -300,7 +302,7 @@ export default function ProctoredCBTPage() {
     };
   }, [isTestStarted, isSubmitted, isExpelled]);
 
-  // Audio level simulator
+  // Placeholder ambient-noise meter (simulated; no microphone is used)
   useEffect(() => {
     if (!isTestStarted || isSubmitted || isExpelled) return;
     const noiseInterval = setInterval(() => {
@@ -495,7 +497,7 @@ export default function ProctoredCBTPage() {
             </div>
             <div className="flex items-center gap-2.5">
               <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-                Computer-Based Testing (CBT) & AI Proctor
+                Computer-Based Testing (CBT) & Browser Activity Monitor
               </h1>
               <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
                 <Database className="w-3.5 h-3.5 text-emerald-600" />
@@ -647,7 +649,7 @@ export default function ProctoredCBTPage() {
                 </div>
                 <h4 className="font-bold text-xs text-slate-800">Create New Proctored Assessment</h4>
                 <p className="text-[11px] text-slate-500 max-w-[200px]">
-                  Add question pools, randomize options, and configure camera requirements.
+                  Add question pools and randomize options.
                 </p>
               </div>
             </div>
@@ -782,10 +784,10 @@ export default function ProctoredCBTPage() {
                     Security Incident: 3 Strikes Exceeded
                   </span>
                   <h2 className="text-3xl font-black text-white mt-3 tracking-tight uppercase">
-                    Examination Session Terminated & Candidate Expelled
+                    Test Auto-Submitted & Flagged for Review
                   </h2>
                   <p className="text-xs text-red-200 max-w-lg mx-auto mt-2">
-                    Disqualified from this assessment due to repeated anti-cheat violations. A score of <strong className="text-white">0 / {totalMaxMarks}</strong> has been logged and automatically synchronized to the CA Gradebook.
+                    Your test was submitted automatically after repeated focus / fullscreen warnings. Your answers were saved and the attempt has been <strong className="text-white">flagged for teacher review</strong> before the score is confirmed.
                   </p>
                 </div>
 
@@ -1049,7 +1051,7 @@ export default function ProctoredCBTPage() {
                         <Eye className="w-8 h-8 animate-pulse" />
                       </div>
                       <p className="text-[11px] font-bold text-emerald-400">Face Verified & Centered</p>
-                      <p className="text-[9px] text-slate-400 mt-0.5">Gaze Tracking: Screen Locked</p>
+                      <p className="text-[9px] text-slate-400 mt-0.5">Simulated preview (no camera used)</p>
 
                       {/* Viewfinder Bounding Boxes */}
                       <div className="absolute top-2 left-2 w-3 h-3 border-t-2 border-l-2 border-emerald-500"></div>
@@ -1065,7 +1067,7 @@ export default function ProctoredCBTPage() {
                           <Volume2 className="w-3.5 h-3.5" />
                           Ambient Noise Level
                         </span>
-                        <span className="font-mono font-bold text-emerald-400">{noiseLevel} dB (Silent)</span>
+                        <span className="font-mono font-bold text-emerald-400">{noiseLevel} dB (simulated)</span>
                       </div>
                       <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
                         <div
@@ -1099,7 +1101,7 @@ export default function ProctoredCBTPage() {
                     <p className="text-[10px] mt-2 opacity-80">
                       {strikes === 0
                         ? "Clean record. Full compliance with examination rules."
-                        : `Warning: ${strikes} infraction(s) logged. Strike 3 triggers instant expulsion.`}
+                        : `Warning: ${strikes} infraction(s) logged. The 3rd warning submits the test and flags it for review.`}
                     </p>
                   </div>
 
@@ -1108,7 +1110,7 @@ export default function ProctoredCBTPage() {
                     <h5 className="text-xs font-bold text-slate-800">Live Invigilation Audit Trail</h5>
                     <div className="space-y-1.5 max-h-36 overflow-y-auto text-[10px] font-mono text-slate-600 divide-y divide-slate-100">
                       <div className="text-emerald-600 pt-1">✓ Session initialized & locked</div>
-                      <div className="text-slate-500 pt-1">✓ Candidate facial baseline confirmed</div>
+                      <div className="text-slate-500 pt-1">• Camera / face checks are not implemented</div>
                       {malpracticeLogs.map((log) => (
                         <div key={log.id} className="text-red-600 pt-1">
                           [{log.timestamp}] {log.description}

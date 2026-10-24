@@ -1,48 +1,35 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServerClient, isSupabaseServerConfigured } from "@/lib/supabase/server";
-import { INITIAL_INVOICES } from "@/lib/realtime-store";
+import { requireRole } from "@/lib/auth";
+
+const INVOICE_FIELDS = ["invoice_no", "student_id", "student_name", "admission_no", "class_name", "session", "term", "amount_billed", "amount_paid", "payment_status", "last_payment_date"] as const;
 
 export async function GET() {
-  if (isSupabaseServerConfigured) {
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from("invoices")
-        .select("*")
-        .order("created_at", { ascending: false });
+  const auth = await requireRole(["SUPER_ADMIN", "ACCOUNTANT", "STUDENT_PARENT"]);
+  if ("error" in auth) return auth.error;
 
-      if (!error && data) {
-        return NextResponse.json({ success: true, count: data.length, data });
-      }
-    }
-  }
+  // RLS limits STUDENT_PARENT accounts to their own invoices.
+  const { data, error } = await auth.supabase
+    .from("invoices")
+    .select("*")
+    .order("created_at", { ascending: false });
 
-  return NextResponse.json({
-    success: true,
-    data: INITIAL_INVOICES,
-  });
+  if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  return NextResponse.json({ success: true, count: data.length, data });
 }
 
 export async function POST(request: Request) {
+  const auth = await requireRole(["SUPER_ADMIN", "ACCOUNTANT"]);
+  if ("error" in auth) return auth.error;
+
+  let body: Record<string, unknown>;
   try {
-    const body = await request.json();
-
-    if (isSupabaseServerConfigured) {
-      const supabase = getSupabaseServerClient();
-      if (supabase) {
-        const { data, error } = await supabase.from("invoices").insert(body).select().single();
-        if (!error && data) {
-          return NextResponse.json({ success: true, message: "Invoice created in Supabase", data });
-        }
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: "Payment transaction recorded successfully.",
-      data: body,
-    });
-  } catch (error) {
-    return NextResponse.json({ success: false, error: "Invalid payment payload" }, { status: 400 });
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ success: false, error: "Invalid invoice payload" }, { status: 400 });
   }
+  const record = Object.fromEntries(INVOICE_FIELDS.filter((k) => k in body).map((k) => [k, body[k]]));
+
+  const { data, error } = await auth.supabase.from("invoices").insert(record).select().single();
+  if (error) return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+  return NextResponse.json({ success: true, message: "Invoice created", data }, { status: 201 });
 }

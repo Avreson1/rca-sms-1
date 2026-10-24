@@ -16,15 +16,16 @@ interface DashboardShellProps {
 
 export function DashboardShell({ children }: DashboardShellProps) {
   const pathname = usePathname();
-  const { currentUser } = useRealtimeAuth();
+  const { currentUser, isLoading } = useRealtimeAuth();
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
     setMounted(true);
   }, []);
 
-  const currentRole = (mounted ? currentUser?.role : null) || "SUPER_ADMIN";
-  const isAllowed = isRouteAllowed(currentRole, pathname);
+  const currentRole = mounted ? currentUser?.role ?? null : null;
+  // Server-side proxy.ts is the real gate; this only avoids rendering a page the role cannot use.
+  const isAllowed = !mounted || isLoading || isRouteAllowed(currentRole, pathname);
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -47,7 +48,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
                   </span>
                   <h2 className="text-2xl font-black text-slate-900 tracking-tight">Access Restricted</h2>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    Your current authenticated role (<strong>{currentRole.replace("_", " ")}</strong>) does not hold administrative authorization to access the route <code className="bg-slate-100 px-1.5 py-0.5 rounded text-rose-600 font-mono text-[11px]">{pathname}</code>.
+                    Your current authenticated role (<strong>{currentRole ? currentRole.replace("_", " ") : "signed out"}</strong>) does not hold administrative authorization to access the route <code className="bg-slate-100 px-1.5 py-0.5 rounded text-rose-600 font-mono text-[11px]">{pathname}</code>.
                   </p>
                 </div>
 

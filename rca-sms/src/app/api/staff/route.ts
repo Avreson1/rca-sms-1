@@ -1,48 +1,34 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServerClient, isSupabaseServerConfigured } from "@/lib/supabase/server";
-import { INITIAL_STAFF } from "@/lib/realtime-store";
+import { requireRole } from "@/lib/auth";
+
+const STAFF_FIELDS = ["staff_id", "full_name", "username", "email", "phone", "role", "assigned_subjects", "assigned_class", "is_form_master", "status"] as const;
 
 export async function GET() {
-  if (isSupabaseServerConfigured) {
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from("staff")
-        .select("*")
-        .order("staff_id", { ascending: true });
+  const auth = await requireRole(["SUPER_ADMIN", "EXAM_OFFICER", "TEACHER", "ACCOUNTANT"]);
+  if ("error" in auth) return auth.error;
 
-      if (!error && data) {
-        return NextResponse.json({ success: true, count: data.length, data });
-      }
-    }
-  }
+  const { data, error } = await auth.supabase
+    .from("staff")
+    .select("id, staff_id, full_name, username, email, phone, role, assigned_subjects, assigned_class, is_form_master, status")
+    .order("staff_id", { ascending: true });
 
-  return NextResponse.json({
-    success: true,
-    data: INITIAL_STAFF,
-  });
+  if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  return NextResponse.json({ success: true, count: data.length, data });
 }
 
 export async function POST(request: Request) {
+  const auth = await requireRole(["SUPER_ADMIN"]);
+  if ("error" in auth) return auth.error;
+
+  let body: Record<string, unknown>;
   try {
-    const body = await request.json();
-
-    if (isSupabaseServerConfigured) {
-      const supabase = getSupabaseServerClient();
-      if (supabase) {
-        const { data, error } = await supabase.from("staff").insert(body).select().single();
-        if (!error && data) {
-          return NextResponse.json({ success: true, message: "Staff onboarded to Supabase", data });
-        }
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: "Staff member onboarded successfully.",
-      data: body,
-    });
-  } catch (error) {
+    body = await request.json();
+  } catch {
     return NextResponse.json({ success: false, error: "Invalid staff payload" }, { status: 400 });
   }
+  const record = Object.fromEntries(STAFF_FIELDS.filter((k) => k in body).map((k) => [k, body[k]]));
+
+  const { data, error } = await auth.supabase.from("staff").insert(record).select().single();
+  if (error) return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+  return NextResponse.json({ success: true, message: "Staff member registered", data }, { status: 201 });
 }

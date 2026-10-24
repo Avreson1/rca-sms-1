@@ -13,12 +13,12 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react";
-import { SCHOOL_INFO, DRAFT_LOGIN_ACCOUNTS } from "@/lib/constants";
+import { SCHOOL_INFO } from "@/lib/constants";
 import { useRealtimeAuth } from "@/lib/realtime-store";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { loginWithRole } = useRealtimeAuth();
+  const { login } = useRealtimeAuth();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -26,50 +26,27 @@ export default function LoginPage() {
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handleManualLogin = (e: React.FormEvent) => {
+  const handleManualLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
-    setLoading(true);
 
-    if (!username.trim() || !password.trim()) {
-      setErrorMessage("Please enter both username / staff ID and security access passcode.");
+    if (!username.trim() || !password) {
+      setErrorMessage("Please enter both your username / email and password.");
+      return;
+    }
+
+    setLoading(true);
+    const { user, error } = await login(username.trim(), password);
+    if (!user) {
+      setErrorMessage(error);
       setLoading(false);
       return;
     }
 
-    // Match registered account credentials
-    const matched = DRAFT_LOGIN_ACCOUNTS.find(
-      (acc) =>
-        acc.username.toLowerCase() === username.trim().toLowerCase() &&
-        acc.password === password.trim()
-    );
-
-    if (!matched) {
-      // Check if username matches a registered account with incorrect password
-      const usernameExists = DRAFT_LOGIN_ACCOUNTS.some(
-        (acc) => acc.username.toLowerCase() === username.trim().toLowerCase()
-      );
-
-      if (usernameExists) {
-        setErrorMessage("Invalid security passcode. Please check your credentials.");
-        setLoading(false);
-        return;
-      }
-
-      if (password.trim().length < 4) {
-        setErrorMessage("Invalid credentials. Please verify your Staff ID / Username and passcode.");
-        setLoading(false);
-        return;
-      }
-    }
-
-    const targetRole = matched?.role || "SUPER_ADMIN";
-    const user = loginWithRole(targetRole);
-
     setSuccessToast(`Authenticated successfully as ${user.fullName}`);
-    setTimeout(() => {
-      router.push("/");
-    }, 700);
+    const next = new URLSearchParams(window.location.search).get("next");
+    router.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
+    router.refresh();
   };
 
   return (

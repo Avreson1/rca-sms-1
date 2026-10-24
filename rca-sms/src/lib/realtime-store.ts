@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { SCHOOL_INFO, CURRENT_USER, ROLES, RBAC_STEPS } from "./constants";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "./supabase/client";
 import {
@@ -294,17 +294,6 @@ export interface AuthUserSession {
   loginTime: string;
 }
 
-export const DEFAULT_AUTH_SESSION: AuthUserSession = {
-  id: "u-025",
-  username: "dominic370",
-  fullName: "Dr. Dominic Mark",
-  role: "SUPER_ADMIN",
-  staffId: "RCA/PERS/025",
-  email: "dominic370@royalcrownacademy.edu.ng",
-  assignedSubject: "Information & Communication Technology",
-  assignedClass: "SS 2",
-  loginTime: "2026-01-01T00:00:00.000Z",
-};
 
 export interface TimetableEntryRecord {
   id: string;
@@ -634,6 +623,10 @@ function broadcast(eventType: string, payload?: any) {
   }
 }
 
+export function currentAdmissionYear(date: Date = new Date()): number {
+  return date.getFullYear();
+}
+
 // -------------------------------------------------------------
 // Grade Calculation Engine
 // -------------------------------------------------------------
@@ -659,9 +652,12 @@ export function calculateGradeForClass(
   }
 
   const tier = scales[tierKey] || scales["SECONDARY"] || scales["PRIMARY"];
-  const matchedBracket = tier?.brackets?.find(
-    (b) => totalScore >= b.minScore && totalScore <= b.maxScore
-  );
+  // Match on lower bounds only (highest first) so fractional totals such as 69.5
+  // never fall into the gap between integer bands like 60-69 and 70-100.
+  const score = Number.isFinite(totalScore) ? Math.min(Math.max(totalScore, 0), 100) : 0;
+  const matchedBracket = [...(tier?.brackets ?? [])]
+    .sort((a, b) => b.minScore - a.minScore)
+    .find((b) => score >= b.minScore);
 
   if (matchedBracket) {
     return {
@@ -896,7 +892,7 @@ export function useRealtimeStudents() {
     const nextSeq = (students.length + 1).toString().padStart(3, "0");
     const student: StudentRecord = {
       id: `s-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      admissionNo: newStudent.admissionNo || `RCA/STD/2025/${nextSeq}`,
+      admissionNo: newStudent.admissionNo || `RCA/STD/${currentAdmissionYear()}/${nextSeq}`,
       fullName: newStudent.fullName,
       gender: newStudent.gender,
       className: newStudent.className,
@@ -935,7 +931,7 @@ export function useRealtimeStudents() {
       const seqStr = currentSeq.toString().padStart(3, "0");
       return {
         id: `s-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        admissionNo: ns.admissionNo || `RCA/STD/2025/${seqStr}`,
+        admissionNo: ns.admissionNo || `RCA/STD/${currentAdmissionYear()}/${seqStr}`,
         fullName: ns.fullName,
         gender: ns.gender || "Female",
         className: ns.className || "Primary 1",
@@ -2256,132 +2252,70 @@ export function useRealtimeActivityTemplates() {
 // Hook: Real-Time Authentication & Session Store (Tiered 5-Role Support)
 // -------------------------------------------------------------
 export function useRealtimeAuth() {
-  const [currentUser, setCurrentUser] = useState<AuthUserSession | null>(DEFAULT_AUTH_SESSION);
+  // The session is verified server-side (Supabase Auth cookie + staff/student lookup).
+  // Nothing here is trusted for authorization; it only drives the UI.
+  const [currentUser, setCurrentUser] = useState<AuthUserSession | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/me", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      setCurrentUser(res.ok && data?.user ? (data.user as AuthUserSession) : null);
+    } catch {
+      setCurrentUser(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem(STORAGE_KEYS.AUTH_SESSION);
-      if (stored) {
-        try {
-          setCurrentUser(JSON.parse(stored));
-        } catch (e) {
-          setCurrentUser(DEFAULT_AUTH_SESSION);
-        }
-      } else {
-        localStorage.setItem(STORAGE_KEYS.AUTH_SESSION, JSON.stringify(DEFAULT_AUTH_SESSION));
-      }
-    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refresh();
 
     let channel: BroadcastChannel | null = null;
     if (typeof window !== "undefined" && "BroadcastChannel" in window) {
       channel = new BroadcastChannel(CHANNEL_NAME);
       channel.onmessage = (event) => {
-        if (event.data?.type === "AUTH_SESSION_UPDATED") {
-          const stored = localStorage.getItem(STORAGE_KEYS.AUTH_SESSION);
-          if (stored) {
-            try {
-              setCurrentUser(JSON.parse(stored));
-            } catch (e) {
-              setCurrentUser(null);
-            }
-          } else {
-            setCurrentUser(null);
-          }
-        }
+        if (event.data?.type === "AUTH_SESSION_UPDATED") refresh();
       };
     }
     return () => {
       channel?.close();
     };
-  }, []);
+  }, [refresh]);
 
-  const loginWithRole = (role: "SUPER_ADMIN" | "EXAM_OFFICER" | "TEACHER" | "ACCOUNTANT" | "STUDENT_PARENT") => {
-    const roleProfiles: Record<string, AuthUserSession> = {
-      SUPER_ADMIN: {
-        id: "u-025",
-        username: "dominic370",
-        fullName: "Dr. Dominic Mark",
-        role: "SUPER_ADMIN",
-        staffId: "RCA/PERS/025",
-        email: "dominic370@royalcrownacademy.edu.ng",
-        assignedSubject: "Information & Communication Technology",
-        assignedClass: "SS 2",
-        loginTime: new Date().toISOString(),
-      },
-      EXAM_OFFICER: {
-        id: "u-012",
-        username: "exam_officer",
-        fullName: "Prof. Jeremiah Alabi",
-        role: "EXAM_OFFICER",
-        staffId: "RCA/PERS/012",
-        email: "dean.exams@royalcrownacademy.edu.ng",
-        assignedSubject: "General Mathematics",
-        assignedClass: "SS 3",
-        loginTime: new Date().toISOString(),
-      },
-      TEACHER: {
-        id: "u-048",
-        username: "teacher_grace",
-        fullName: "Mrs. Grace Adams",
-        role: "TEACHER",
-        staffId: "RCA/PERS/048",
-        email: "grace.adams@royalcrownacademy.edu.ng",
-        assignedSubject: "English Language & Literacy",
-        assignedClass: "Primary 4",
-        loginTime: new Date().toISOString(),
-      },
-      ACCOUNTANT: {
-        id: "u-008",
-        username: "bursar_accounts",
-        fullName: "Mr. Samuel Danladi",
-        role: "ACCOUNTANT",
-        staffId: "RCA/PERS/008",
-        email: "bursar@royalcrownacademy.edu.ng",
-        assignedSubject: "Accounts & Commercial Studies",
-        assignedClass: "SS 2",
-        loginTime: new Date().toISOString(),
-      },
-      STUDENT_PARENT: {
-        id: "u-104",
-        username: "parent_rca",
-        fullName: "Chief & Mrs. A. Oladipo (Guardian)",
-        role: "STUDENT_PARENT",
-        staffId: "RCA/PAR/104",
-        email: "parent.oladipo@gmail.com",
-        loginTime: new Date().toISOString(),
-      },
-    };
-
-    const targetUser = roleProfiles[role] || roleProfiles.SUPER_ADMIN;
-    setCurrentUser(targetUser);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.AUTH_SESSION, JSON.stringify(targetUser));
-      localStorage.setItem(STORAGE_KEYS.ACTIVE_RBAC_ROLE, targetUser.role);
-      broadcast("AUTH_SESSION_UPDATED");
-      broadcast("RBAC_ROLE_CHANGED", { role: targetUser.role });
+  const login = async (identifier: string, password: string) => {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier, password }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.user) {
+      return { user: null, error: (data?.error as string) || "Sign-in failed. Please try again." };
     }
-    return targetUser;
+    setCurrentUser(data.user as AuthUserSession);
+    broadcast("AUTH_SESSION_UPDATED");
+    return { user: data.user as AuthUserSession, error: null };
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     setCurrentUser(null);
     if (typeof window !== "undefined") {
       localStorage.removeItem(STORAGE_KEYS.AUTH_SESSION);
-      broadcast("AUTH_SESSION_UPDATED");
+      localStorage.removeItem(STORAGE_KEYS.ACTIVE_RBAC_ROLE);
     }
-  };
-
-  const purgeAllSessions = () => {
-    if (typeof window === "undefined") return;
-    localStorage.removeItem(STORAGE_KEYS.AUTH_SESSION);
     broadcast("AUTH_SESSION_UPDATED");
   };
 
   return {
     currentUser,
-    loginWithRole,
+    isLoading,
+    login,
     logout,
-    purgeAllSessions,
+    purgeAllSessions: logout,
     isAuthenticated: !!currentUser,
   };
 }

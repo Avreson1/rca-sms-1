@@ -36,7 +36,7 @@ export function Navbar() {
 
   const handleLogout = () => {
     setShowLogoutModal(false);
-    logout();
+    void logout();
     setLoggedOutToast(true);
     setTimeout(() => {
       router.push("/login");
@@ -44,10 +44,10 @@ export function Navbar() {
   };
 
   const activeUser = (mounted ? currentUser : null) || {
-    username: "dominic370",
-    fullName: "Dr. Dominic Mark",
-    role: "SUPER_ADMIN" as const,
-    staffId: "RCA/PERS/025",
+    username: "",
+    fullName: "Signing in…",
+    role: "STUDENT_PARENT" as const,
+    staffId: "",
   };
 
   const getInitials = (name: string) => {
