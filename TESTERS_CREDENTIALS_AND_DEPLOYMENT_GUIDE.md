@@ -11,9 +11,9 @@ Your project URL has been configured into `.env` and `.env.local`:
 | Variable | Configured Value |
 |---|---|
 | **Project Reference** | `ycovxvfzmzfpehbozrut` |
-| **Supabase URL** | `https://ycovxvfzmzfpehbozrut.supabase.co` |
-| **Anon Public Key** | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` *(Configured in `.env.local`)* |
-| **Service Role Key** | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` *(Configured in `.env.local`)* |
+| **Supabase URL** | `https://<your-project-ref>.supabase.co` |
+| **Anon Public Key** | `<set in .env.local - never commit>` *(Configured in `.env.local`)* |
+| **Service Role Key** | `<set in .env.local - never commit>` *(Configured in `.env.local`)* |
 
 ### ⚡ One-Time Database Initialization in Supabase:
 1. Log into your **[Supabase Dashboard](https://supabase.com/dashboard/project/ycovxvfzmzfpehbozrut)**.
@@ -60,9 +60,9 @@ git push -u origin main
 2. Click **"New +"** → **"Blueprint"** (or **"Web Service"**).
 3. Connect your GitHub repository `RCA_SMS`.
 4. Render will read `render.yaml`. Set the following environment variables when prompted:
-   - `NEXT_PUBLIC_SUPABASE_URL`: `https://ycovxvfzmzfpehbozrut.supabase.co`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inljb3Z4dmZ6bXpmcGVoYm96cnV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxNTA5NzAsImV4cCI6MjEwMjcyNjk3MH0.KKVQlm_O2Be6Q8pfejnCAV7TCFVBwGd53qHdN0Kvvgo`
-   - `SUPABASE_SERVICE_ROLE_KEY`: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inljb3Z4dmZ6bXpmcGVoYm96cnV0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzE1MDk3MCwiZXhwIjoyMTAyNzI2OTcwfQ.R3HFSCVs-SXrcT8eKLsCXlcdowsb_Qq2G44X9p1Nr-k`
+   - `NEXT_PUBLIC_SUPABASE_URL`: `https://<your-project-ref>.supabase.co`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: `<set in Render dashboard - never commit>`
+   - `SUPABASE_SERVICE_ROLE_KEY`: `<set in Render dashboard - never commit>`
    - `NODE_ENV`: `production`
 5. Click **"Apply"** to deploy. Your portal will be live at `https://rca-sms.onrender.com`!
 
@@ -74,9 +74,17 @@ You have full control over creating and assigning accounts to your testers.
 
 ### 1. Primary Administrator Login (For You / Owner)
 
-| Role | Username / ID | Recommended Email | Default Password | Access Level |
-|---|---|---|---|---|
-| **Step 1: Super Admin** | `dominic370` | `dominic370@royalcrownacademy.edu.ng` | `RoyalCrown@2025` | Full System Control, Staff Creation, Student Enrollment, Fees, Broad Permissions. |
+Logins are real Supabase Auth accounts; there are no default passwords. Create (or reset) the
+Super Admin login once, from your own machine, with the service-role key in your environment:
+
+```bash
+cd rca-sms
+NEXT_PUBLIC_SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... \
+  node scripts/create-login.mjs --email <admin email> --password '<strong password>' --staff-id RCA/PERS/025
+```
+
+The same script links a login to any other staff record (`--staff-id`) or to a student / parent
+account (`--admission-no`). The role always comes from the `staff.role` column in the database.
 
 ---
 
