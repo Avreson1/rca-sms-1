@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+:root {
+  /* Scheme 1 (Vibrant Royal & Academic Contrast) */
+  --brand-royal: #0000FF; /* 60% Vibrant Royal Blue */
+  --brand-royal-dark: #000088;
+  --brand-royal-deep: #050B2E;
+  --brand-cyan: #00FFFF; /* 25% Bright Cyan / Sky Blue */
+  --brand-cyan-glow: rgba(0, 255, 255, 0.35);
+  --brand-red: #FF0000; /* 10% Vivid Red */
+  --brand-red-light: #FFF0F0;
+  --brand-white: #FFFFFF; /* 5% Pure White */
+
+  --background: #f4f7fe;
+  --foreground: #0a1128;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* Custom modern scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3b82f6;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #1d4ed8;
+}
+
+/* Scheme 1 Global Utility Classes */
+.bg-scheme-royal {
+  background-color: #0000FF;
+}
+
+.text-scheme-royal {
+  color: #0000FF;
+}
+
+.bg-scheme-cyan {
+  background-color: #00FFFF;
+}
+
+.text-scheme-cyan {
+  color: #00FFFF;
+}
+
+.bg-scheme-red {
+  background-color: #FF0000;
+}
+
+.text-scheme-red {
+  color: #FF0000;
+}
+
+.border-scheme-royal {
+  border-color: #0000FF;
+}
+
+.border-scheme-cyan {
+  border-color: #00FFFF;
+}
+
+.border-scheme-red {
+  border-color: #FF0000;
+}
+
+/* Scheme 1 Glow Effects */
+.shadow-cyan-glow {
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.45);
+}
+
+.shadow-royal-glow {
+  box-shadow: 0 8px 24px rgba(0, 0, 255, 0.25);
+}
+
+.shadow-red-glow {
+  box-shadow: 0 0 12px rgba(255, 0, 0, 0.35);
+}
+
+/* High-Contrast Print Styles for Scorecards and Reports */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .print\:hidden {
+    display: none !important;
+  }
+  .print\:block {
+    display: block !important;
+  }
+  .page-break-after-always {
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+}

@@ -29,13 +29,13 @@ graph TD
 2. **Execute Database Schema Migration**:
    - In your Supabase Dashboard, navigate to the **SQL Editor** (icon on the left sidebar).
    - Click **"New query"**.
-   - Copy the entire contents of [`rca-sms/supabase/schema.sql`](file:///c:/Users/EGLF%20Media/OneDrive/Desktop/AVRESON/RCA_SMS/rca-sms/supabase/schema.sql) and paste it into the query editor.
+   - Copy the entire contents of [`supabase/schema.sql`](file:///c:/Users/EGLF%20Media/OneDrive/Desktop/AVRESON/RCA_SMS/rca-sms/supabase/schema.sql) and paste it into the query editor.
    - Click **"Run"**.
    - *Verification*: Go to the **Table Editor** to verify that tables (`students`, `staff`, `ca_scores`, `grading_tiers`, `cbt_questions`, `cbt_exam_sessions`, `invoices`, `transactions`, `audit_logs`, `inmail_messages`) have been created with Row Level Security (RLS) active.
 
 3. **(Optional) Seed Official Baseline School Configuration**:
    - Open a new query in the **SQL Editor**.
-   - Copy the contents of [`rca-sms/supabase/seed.sql`](file:///c:/Users/EGLF%20Media/OneDrive/Desktop/AVRESON/RCA_SMS/rca-sms/supabase/seed.sql) and run it.
+   - Copy the contents of [`supabase/seed.sql`](file:///c:/Users/EGLF%20Media/OneDrive/Desktop/AVRESON/RCA_SMS/rca-sms/supabase/seed.sql) and run it.
    - This sets up the default administrator account (`dominic370`) and the 4 educational grading scales (*Pre-Play/Play*, *Nursery 1-2*, *Primary 1-5*, and *Secondary*).
 
 4. **Retrieve API Credentials**:

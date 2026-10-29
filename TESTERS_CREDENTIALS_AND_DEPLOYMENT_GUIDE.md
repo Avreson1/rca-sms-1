@@ -12,16 +12,16 @@ Your project URL has been configured into `.env` and `.env.local`:
 |---|---|
 | **Project Reference** | `ycovxvfzmzfpehbozrut` |
 | **Supabase URL** | `https://ycovxvfzmzfpehbozrut.supabase.co` |
-| **Anon Public Key** | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` *(Configured in `.env.local`)* |
-| **Service Role Key** | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` *(Configured in `.env.local`)* |
+| **Anon Public Key** | Stored only in `.env.local` (never commit it) |
+| **Service Role Key** | Stored only in `.env.local` (server-side secret — never commit it) |
 
 ### ⚡ One-Time Database Initialization in Supabase:
 1. Log into your **[Supabase Dashboard](https://supabase.com/dashboard/project/ycovxvfzmzfpehbozrut)**.
 2. Click on the **SQL Editor** icon on the left sidebar.
 3. Click **"New query"**.
-4. Open [`rca-sms/supabase/schema.sql`](file:///c:/Users/EGLF%20Media/OneDrive/Desktop/AVRESON/RCA_SMS/rca-sms/supabase/schema.sql) in this project, copy its entire contents, and paste it into the Supabase SQL editor.
+4. Open [`supabase/schema.sql`](file:///c:/Users/EGLF%20Media/OneDrive/Desktop/AVRESON/RCA_SMS/rca-sms/supabase/schema.sql) in this project, copy its entire contents, and paste it into the Supabase SQL editor.
 5. Click **"Run"** (Green button).
-6. Next, copy and run [`rca-sms/supabase/seed.sql`](file:///c:/Users/EGLF%20Media/OneDrive/Desktop/AVRESON/RCA_SMS/rca-sms/supabase/seed.sql) to initialize the official multi-tier grading matrix and baseline admin record (`dominic370`).
+6. Next, copy and run [`supabase/seed.sql`](file:///c:/Users/EGLF%20Media/OneDrive/Desktop/AVRESON/RCA_SMS/rca-sms/supabase/seed.sql) to initialize the official multi-tier grading matrix and baseline admin record (`dominic370`).
 
 ---
 
@@ -60,9 +60,12 @@ git push -u origin main
 2. Click **"New +"** → **"Blueprint"** (or **"Web Service"**).
 3. Connect your GitHub repository `RCA_SMS`.
 4. Render will read `render.yaml`. Set the following environment variables when prompted:
-   - `NEXT_PUBLIC_SUPABASE_URL`: `https://ycovxvfzmzfpehbozrut.supabase.co`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inljb3Z4dmZ6bXpmcGVoYm96cnV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxNTA5NzAsImV4cCI6MjEwMjcyNjk3MH0.KKVQlm_O2Be6Q8pfejnCAV7TCFVBwGd53qHdN0Kvvgo`
-   - `SUPABASE_SERVICE_ROLE_KEY`: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inljb3Z4dmZ6bXpmcGVoYm96cnV0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzE1MDk3MCwiZXhwIjoyMTAyNzI2OTcwfQ.R3HFSCVs-SXrcT8eKLsCXlcdowsb_Qq2G44X9p1Nr-k`
+   - `NEXT_PUBLIC_SUPABASE_URL`: your Supabase project URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: your Supabase anon key (Dashboard → Settings → API)
+   - `SUPABASE_SERVICE_ROLE_KEY`: your Supabase service-role key (dashboard only, never commit)
+   - `AUTH_SESSION_SECRET`: a long random string used to sign login sessions
+   - `AUTH_SUPER_ADMIN_USERNAME` / `AUTH_SUPER_ADMIN_PASSWORD`: the administrator login
+   - `AUTH_EXAM_OFFICER_*`, `AUTH_TEACHER_*`, `AUTH_ACCOUNTANT_*`, `AUTH_STUDENT_PARENT_*`: optional additional logins
    - `NODE_ENV`: `production`
 5. Click **"Apply"** to deploy. Your portal will be live at `https://rca-sms.onrender.com`!
 
@@ -76,7 +79,7 @@ You have full control over creating and assigning accounts to your testers.
 
 | Role | Username / ID | Recommended Email | Default Password | Access Level |
 |---|---|---|---|---|
-| **Step 1: Super Admin** | `dominic370` | `dominic370@royalcrownacademy.edu.ng` | `RoyalCrown@2025` | Full System Control, Staff Creation, Student Enrollment, Fees, Broad Permissions. |
+| **Step 1: Super Admin** | `dominic370` | `dominic370@royalcrownacademy.edu.ng` | Set via `AUTH_SUPER_ADMIN_PASSWORD` | Full System Control, Staff Creation, Student Enrollment, Fees, Broad Permissions. |
 
 ---
 
