@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { SCHOOL_INFO, CURRENT_USER, ROLES, RBAC_STEPS } from "./constants";
+import { SCHOOL_INFO, ROLES, RBAC_STEPS } from "./constants";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "./supabase/client";
 import {
   fetchStudentsFromSupabase,
@@ -293,18 +293,6 @@ export interface AuthUserSession {
   assignedClass?: string;
   loginTime: string;
 }
-
-export const DEFAULT_AUTH_SESSION: AuthUserSession = {
-  id: "u-025",
-  username: "dominic370",
-  fullName: "Dr. Dominic Mark",
-  role: "SUPER_ADMIN",
-  staffId: "RCA/PERS/025",
-  email: "dominic370@royalcrownacademy.edu.ng",
-  assignedSubject: "Information & Communication Technology",
-  assignedClass: "SS 2",
-  loginTime: "2026-01-01T00:00:00.000Z",
-};
 
 export interface TimetableEntryRecord {
   id: string;
@@ -1084,7 +1072,7 @@ export function useRealtimeSubjectScores() {
   };
 
   const bulkSaveSubjectScores = (records: Omit<SubjectScoreRecord, "id">[]) => {
-    let updated = [...subjectScores];
+    const updated = [...subjectScores];
     for (const record of records) {
       const total = (record.test1 || 0) + (record.test2 || 0) + (record.project || 0) + (record.midTerm || 0) + (record.exam || 0);
       const gradeInfo = calculateGradeForClass(total, record.className);
@@ -2256,46 +2244,81 @@ export function useRealtimeActivityTemplates() {
 // Hook: Real-Time Authentication & Session Store (Tiered 5-Role Support)
 // -------------------------------------------------------------
 export function useRealtimeAuth() {
-  const [currentUser, setCurrentUser] = useState<AuthUserSession | null>(DEFAULT_AUTH_SESSION);
+  const [currentUser, setCurrentUser] = useState<AuthUserSession | null>(null);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    let cancelled = false;
+    let channel: BroadcastChannel | null = null;
+
+    const applyStoredSession = () => {
       const stored = localStorage.getItem(STORAGE_KEYS.AUTH_SESSION);
       if (stored) {
         try {
           setCurrentUser(JSON.parse(stored));
-        } catch (e) {
-          setCurrentUser(DEFAULT_AUTH_SESSION);
+          return;
+        } catch {
+          // fall through to server check
         }
-      } else {
-        localStorage.setItem(STORAGE_KEYS.AUTH_SESSION, JSON.stringify(DEFAULT_AUTH_SESSION));
       }
-    }
+      setCurrentUser(null);
+    };
 
-    let channel: BroadcastChannel | null = null;
-    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
-      channel = new BroadcastChannel(CHANNEL_NAME);
-      channel.onmessage = (event) => {
-        if (event.data?.type === "AUTH_SESSION_UPDATED") {
-          const stored = localStorage.getItem(STORAGE_KEYS.AUTH_SESSION);
-          if (stored) {
-            try {
-              setCurrentUser(JSON.parse(stored));
-            } catch (e) {
-              setCurrentUser(null);
-            }
+    if (typeof window !== "undefined") {
+      // The server session cookie is the source of truth. If it is valid it
+      // overwrites whatever localStorage claims; if it is missing/expired the
+      // client is treated as logged out even if localStorage still has data.
+      void fetch("/api/auth/session", { cache: "no-store" })
+        .then(async (response) => {
+          if (cancelled) return;
+          if (!response.ok) {
+            localStorage.removeItem(STORAGE_KEYS.AUTH_SESSION);
+            localStorage.removeItem(STORAGE_KEYS.ACTIVE_RBAC_ROLE);
+            setCurrentUser(null);
+            return;
+          }
+          const payload = (await response.json()) as { user?: AuthUserSession };
+          if (payload?.user) {
+            const session: AuthUserSession = {
+              id: payload.user.username,
+              username: payload.user.username,
+              fullName: payload.user.fullName,
+              role: payload.user.role,
+              staffId: payload.user.staffId,
+              email: payload.user.email,
+              loginTime: new Date().toISOString(),
+            };
+            localStorage.setItem(STORAGE_KEYS.AUTH_SESSION, JSON.stringify(session));
+            localStorage.setItem(STORAGE_KEYS.ACTIVE_RBAC_ROLE, session.role);
+            setCurrentUser(session);
           } else {
+            localStorage.removeItem(STORAGE_KEYS.AUTH_SESSION);
+            localStorage.removeItem(STORAGE_KEYS.ACTIVE_RBAC_ROLE);
             setCurrentUser(null);
           }
-        }
-      };
+        })
+        .catch(() => {
+          if (!cancelled) applyStoredSession();
+        });
+
+      if ("BroadcastChannel" in window) {
+        channel = new BroadcastChannel(CHANNEL_NAME);
+        channel.onmessage = (event) => {
+          if (event.data?.type === "AUTH_SESSION_UPDATED") {
+            applyStoredSession();
+          }
+        };
+      }
     }
     return () => {
+      cancelled = true;
       channel?.close();
     };
   }, []);
 
-  const loginWithRole = (role: "SUPER_ADMIN" | "EXAM_OFFICER" | "TEACHER" | "ACCOUNTANT" | "STUDENT_PARENT") => {
+  const loginWithRole = (
+    role: "SUPER_ADMIN" | "EXAM_OFFICER" | "TEACHER" | "ACCOUNTANT" | "STUDENT_PARENT",
+    profile?: { username?: string; fullName?: string; staffId?: string; email?: string }
+  ) => {
     const roleProfiles: Record<string, AuthUserSession> = {
       SUPER_ADMIN: {
         id: "u-025",
@@ -2352,7 +2375,17 @@ export function useRealtimeAuth() {
       },
     };
 
-    const targetUser = roleProfiles[role] || roleProfiles.SUPER_ADMIN;
+    const targetUser: AuthUserSession = profile
+      ? {
+          id: profile.username ?? role,
+          username: profile.username ?? "",
+          fullName: profile.fullName ?? "",
+          role,
+          staffId: profile.staffId ?? "",
+          email: profile.email,
+          loginTime: new Date().toISOString(),
+        }
+      : roleProfiles[role] || roleProfiles.SUPER_ADMIN;
     setCurrentUser(targetUser);
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEYS.AUTH_SESSION, JSON.stringify(targetUser));

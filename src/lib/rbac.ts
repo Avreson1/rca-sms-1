@@ -127,12 +127,13 @@ export const ROLE_ROUTE_ACCESS: Record<UserRole, RoleAccessRule> = {
  * Checks if a specific route is accessible for a given role.
  */
 export function isRouteAllowed(role: UserRole | string | undefined, pathname: string): boolean {
-  if (!role || role === "SUPER_ADMIN") return true;
+  if (role === "SUPER_ADMIN") return true;
   if (pathname === "/" || pathname === "/login" || pathname === "/_not-found") return true;
+  if (!role) return false;
 
   const normalizedRole = role as UserRole;
   const config = ROLE_ROUTE_ACCESS[normalizedRole];
-  if (!config) return true;
+  if (!config) return false;
 
   // If explicitly denied
   if (config.deniedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"))) {
@@ -155,7 +156,8 @@ export function isActionAuthorized(
   role: UserRole | string | undefined,
   action: "EDIT_SETUP" | "EDIT_FEES" | "PUBLISH_RESULTS" | "ENTER_CA" | "SYSTEM_PURGE" | "EDIT_STAFF"
 ): boolean {
-  if (!role || role === "SUPER_ADMIN") return true;
+  if (role === "SUPER_ADMIN") return true;
+  if (!role) return false;
 
   switch (action) {
     case "SYSTEM_PURGE":

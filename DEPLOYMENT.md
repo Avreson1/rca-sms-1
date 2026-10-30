@@ -29,16 +29,20 @@ graph TD
 2. **Execute Database Schema Migration**:
    - In your Supabase Dashboard, navigate to the **SQL Editor** (icon on the left sidebar).
    - Click **"New query"**.
-   - Copy the entire contents of [`supabase/schema.sql`](file:///c:/Users/EGLF%20Media/OneDrive/Desktop/AVRESON/RCA_SMS/rca-sms/supabase/schema.sql) and paste it into the query editor.
+   - Copy the entire contents of [`supabase/schema.sql`](supabase/schema.sql) and paste it into the query editor.
    - Click **"Run"**.
    - *Verification*: Go to the **Table Editor** to verify that tables (`students`, `staff`, `ca_scores`, `grading_tiers`, `cbt_questions`, `cbt_exam_sessions`, `invoices`, `transactions`, `audit_logs`, `inmail_messages`) have been created with Row Level Security (RLS) active.
 
-3. **(Optional) Seed Official Baseline School Configuration**:
+3. **Harden Row Level Security (Important)**:
    - Open a new query in the **SQL Editor**.
-   - Copy the contents of [`supabase/seed.sql`](file:///c:/Users/EGLF%20Media/OneDrive/Desktop/AVRESON/RCA_SMS/rca-sms/supabase/seed.sql) and run it.
-   - This sets up the default administrator account (`dominic370`) and the 4 educational grading scales (*Pre-Play/Play*, *Nursery 1-2*, *Primary 1-5*, and *Secondary*).
+   - Run [`supabase/harden-rls.sql`](supabase/harden-rls.sql). This removes the permissive "public read/write" policies that the old app relied on. Student, staff, and invoice data is then only reachable through the app's authenticated API routes.
 
-4. **Retrieve API Credentials**:
+4. **(Optional) Seed Official Baseline School Configuration**:
+   - Open a new query in the **SQL Editor**.
+   - Copy the contents of [`supabase/seed.sql`](supabase/seed.sql) and run it.
+   - This sets up the 4 educational grading scales (*Pre-Play/Play*, *Nursery 1-2*, *Primary 1-5*, and *Secondary*). Login accounts are **not** stored in the database — they are provisioned with environment variables (see Step 2).
+
+5. **Retrieve API Credentials**:
    - Navigate to **Project Settings** (gear icon) → **API**.
    - Copy:
      - **Project URL** (`https://<project-ref>.supabase.co`)
@@ -53,12 +57,13 @@ graph TD
 1. Push your repository to **GitHub** or **GitLab**.
 2. Log into [Render.com](https://render.com).
 3. Click **"New +"** → **"Blueprint"**.
-4. Connect your `RCA_SMS` repository.
-5. Render will automatically detect [`render.yaml`](file:///c:/Users/EGLF%20Media/OneDrive/Desktop/AVRESON/RCA_SMS/render.yaml) and configure the web service.
+4. Connect your `rca-sms-1` repository.
+5. Render will automatically detect [`render.yaml`](render.yaml) and configure the web service.
 6. When prompted, fill in the Environment Variables:
    - `NEXT_PUBLIC_SUPABASE_URL`: Your Supabase Project URL.
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your Supabase Anon Key.
    - `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase Service Role Key.
+   - `AUTH_SUPER_ADMIN_PASSWORD`: A strong password for the `dominic370` super-admin account.
 7. Click **"Apply"** to trigger automatic build and deployment.
 
 ### Option B: Manual Web Service Deployment
@@ -66,7 +71,6 @@ graph TD
 2. Connect your Git repository.
 3. Configure the following build parameters:
    - **Name**: `rca-sms`
-   - **Root Directory**: `rca-sms`
    - **Runtime**: `Node`
    - **Build Command**: `npm install && npm run build`
    - **Start Command**: `npm run start`
@@ -75,11 +79,13 @@ graph TD
    | Key | Value | Description |
    |---|---|---|
    | `NODE_ENV` | `production` | Production mode |
-   | `PORT` | `3000` | Port binding |
    | `NEXT_PUBLIC_SUPABASE_URL` | `https://your-ref.supabase.co` | Supabase endpoint |
    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `eyJhbGciOi...` | Supabase Anon Key |
    | `SUPABASE_SERVICE_ROLE_KEY` | `eyJhbGciOi...` | Supabase Service Role Key |
-   | `NEXTAUTH_SECRET` | *(Random 32-char string)* | Session encryption |
+   | `AUTH_SESSION_SECRET` | *(Random 32+ char string)* | Signs login session cookies |
+   | `AUTH_SUPER_ADMIN_USERNAME` | `dominic370` | Super-admin login username |
+   | `AUTH_SUPER_ADMIN_PASSWORD` | *(strong password)* | Super-admin login password |
+   | `AUTH_SUPER_ADMIN_NAME` / `AUTH_SUPER_ADMIN_STAFF_ID` / `AUTH_SUPER_ADMIN_EMAIL` | *(optional)* | Profile shown in the portal |
 5. Click **"Create Web Service"**.
 
 ---
@@ -88,8 +94,10 @@ graph TD
 
 Once your Render deployment is live at `https://rca-sms.onrender.com`:
 
-1. **Verify Role Switcher**:
-   - Access the top navbar role switcher: switch between **Step 1: Super Admin**, **Step 2: Exam Officer**, **Step 3: Teacher**, and **Step 4: Student/Parent**.
+1. **Verify Login & Role Access**:
+   - Sign in at `/login` with the super-admin credentials you set (`AUTH_SUPER_ADMIN_USERNAME` / `AUTH_SUPER_ADMIN_PASSWORD`).
+   - Confirm you land on the dashboard, then log out and confirm you are redirected back to `/login` when trying to visit any page directly.
+   - Each role (exam officer, teacher, accountant, parent) has its own username/password pair — log in with each to verify the correct menus appear.
 2. **Bulk Student Enrollment via CSV**:
    - Navigate to **Operations** → **Student Enrollment** ([`/operations/students`](http://localhost:3000/operations/students)).
    - Click **"Bulk Upload CSV"** and import your student roster across Pre-Play to Primary 5 & Secondary.
@@ -103,6 +111,7 @@ Once your Render deployment is live at `https://rca-sms.onrender.com`:
 
 ## 🔒 Security Best Practices for Production
 
-- **Row Level Security (RLS)**: Enforce authenticated Supabase user roles for granular table-level security.
-- **Service Role Key**: Keep `SUPABASE_SERVICE_ROLE_KEY` strictly on Render server-side environment variables; never prefix with `NEXT_PUBLIC_`.
+- **Row Level Security (RLS)**: After running `schema.sql`, also run `supabase/harden-rls.sql` in the SQL Editor. This removes the permissive public policies; student/staff/invoice data then flows only through the app's authenticated API.
+- **Service Role Key**: Keep `SUPABASE_SERVICE_ROLE_KEY` strictly in Render server-side environment variables; never prefix it with `NEXT_PUBLIC_`.
+- **Session Secret**: `AUTH_SESSION_SECRET` must be a long random string. Anyone who knows it can forge login cookies.
 - **Automatic HTTPS**: Render automatically provisions and renews SSL/TLS certificates for your custom domain (e.g., `portal.royalcrownacademy.edu.ng`).

@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { SCHOOL_INFO, CURRENT_USER } from "@/lib/constants";
+import { SCHOOL_INFO } from "@/lib/constants";
 import {
   purgeAllDemoData,
   restoreDefaultSeedData,

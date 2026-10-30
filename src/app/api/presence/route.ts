@@ -12,7 +12,7 @@ interface UserPresenceItem {
 }
 
 // In-memory active presence cache (dynamic heartbeats from active sessions)
-let activeUsers: Record<string, UserPresenceItem> = {};
+const activeUsers: Record<string, UserPresenceItem> = {};
 
 export async function GET() {
   const now = Date.now();

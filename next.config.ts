@@ -3,8 +3,8 @@ import path from "path";
 
 const nextConfig: NextConfig = {
   turbopack: {
-    // Explicitly set the root to this project directory so Turbopack
-    // doesn't get confused by the parent repo's package-lock.json
+    // Pin the Turbopack root to this directory so builds are independent of
+    // whatever lockfiles or package.json files exist in parent folders.
     root: path.resolve(__dirname),
   },
 };

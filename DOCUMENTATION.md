@@ -15,15 +15,9 @@
 2. [Complete Class Hierarchy (Pre-Play to Primary 5 & Secondary)](#2-complete-class-hierarchy-pre-play-to-primary-5--secondary)
 3. [Adjustable Multi-Tier Grading Engine](#3-adjustable-multi-tier-grading-engine)
 4. [How to Add and Manage Staff](#4-how-to-add-and-manage-staff)
-5. [Complete Cloud Deployment Guide](#5-complete-cloud-deployment-guide)
-   - [Method A: Vercel + Supabase (Recommended Serverless Cloud)](#method-a-vercel--supabase-postgresql-recommended)
-   - [Method B: Linux VPS (Ubuntu / AWS EC2 / DigitalOcean / PM2 + Nginx)](#method-b-linux-cloud-vps-aws-ec2--digitalocean--pm2--nginx)
-   - [Method C: Docker & Container Cloud (Railway / Render / Fly.io)](#method-c-docker--container-cloud-railway--render)
-6. [Student Enrollment & Class Arm Setup Protocol](#6-student-enrollment--class-arm-setup-protocol)
-7. [CBT Examination Engine & AI Anti-Malpractice Proctoring](#7-cbt-examination-engine--ai-anti-malpractice-proctoring)
-8. [Continuous Assessment (CA) Gradebook & Result Publishing](#8-continuous-assessment-ca-gradebook--result-publishing)
-9. [Bursary Fee Invoicing & Payment Operations](#9-bursary-fee-invoicing--payment-operations)
-10. [Production Maintenance, Security & Backup Protocols](#10-production-maintenance-security--backup-protocols)
+5. [Cloud Deployment (Render + Supabase)](#5-cloud-deployment-render--supabase)
+6. [Continuous Assessment (CA) Gradebook & Result Publishing](#6-continuous-assessment-ca-gradebook--result-publishing)
+7. [Current Security Posture & Limitations](#7-current-security-posture--limitations)
 
 ---
 
@@ -34,11 +28,11 @@ The portal implements an enterprise 4-Step RBAC hierarchy that governs module vi
 | Step | Role Code | Institutional Designation | Authorized Privileges |
 | :--- | :--- | :--- | :--- |
 | **Step 1** | `SUPER_ADMIN` | Executive, Proprietor & Head of School | Full institutional control: tuition structure, staff management, grading policy authorization, master score overrides, and database purge. |
-| **Step 2** | `EXAM_OFFICER` | Academic Directorate & Exam Controller | Curriculum subject packages, tier grading adjustment (`/setup/grading`), CBT exam pools, proctoring audit logs, and result publication. |
+| **Step 2** | `EXAM_OFFICER` | Academic Directorate & Exam Controller | Curriculum subject packages, tier grading adjustment (`/setup/grading`), CBT exam pools, and result publication. |
 | **Step 3** | `TEACHER` | Teaching Staff & Form Masters | Continuous Assessment (CA) score entry, affective/psychomotor trait matrix grading, attendance registers, and classroom invigilation. |
 | **Step 4** | `STUDENT_PARENT` | Student & Parent Portal | Take CBT examinations, view published terminal report cards (`/operations/score-card`), inspect fee invoices, and download payment receipts. |
 
-*Note: You can switch between active RBAC tiers directly in the navigation bar using the top-right role dropdown to test different permission levels in real time.*
+*Note: Each user signs in with their own username and password on the login page. The role assigned to that account determines which modules are visible. There is no role-switching dropdown — to test a different tier, log out and sign in with that tier's credentials.*
 
 ---
 
@@ -136,35 +130,34 @@ Staff registration and teaching workload allocation are handled through the **St
 4. Click **"Register & Send Activation"**:
    - The system automatically generates a unique Staff ID: `RCA/PERS/XXX`
    - Generates the official institutional email: `[name]@royalcrownacademy.edu.ng`
-   - Dispatches a secure activation and password setup email via the integrated Resend API gateway.
    - Adds the teacher to the real-time staff ledger and broadcasts updates across all administrative terminals.
+   - **Note:** The app does not currently send activation emails automatically. Create the staff record here, then give the person their login credentials as described in `TESTERS_CREDENTIALS_AND_DEPLOYMENT_GUIDE.md` (accounts are provisioned via environment variables by the administrator).
 
 ---
 
-## 5. Complete Cloud Deployment Guide
+## 5. Cloud Deployment (Render + Supabase)
 
-The VCS portal is built as a cloud-native Next.js application. Below are the 3 production deployment paths:
+The VCS portal is a Next.js application deployed via the Render blueprint in `render.yaml`:
 
-### Method A: Vercel + Supabase PostgreSQL (Recommended)
-1. Push codebase to GitHub:
+1. Push the codebase to GitHub:
    ```bash
    git add .
    git commit -m "Deploy RCA VCS portal"
    git push origin main
    ```
-2. Link repository in [Vercel Dashboard](https://vercel.com).
-3. Set environment variables:
+2. In [Render](https://render.com), choose **New + → Blueprint** and connect the repository.
+3. Set the environment variables when prompted (see `.env.example` for the full list):
    ```env
-   DATABASE_URL="postgresql://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres?pgbouncer=true"
-   DIRECT_URL="postgresql://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres"
-   NEXTAUTH_SECRET="rca_vcs_super_secret_jwt_key_2026_jos_plateau"
-   NEXTAUTH_URL="https://portal.royalcrownacademy.edu.ng"
-   RESEND_API_KEY="re_xxxxxxxxxxxxxxxxxxxxxxxxx"
-   TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-   TWILIO_AUTH_TOKEN="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-   TWILIO_PHONE_NUMBER="+1234567890"
+   NEXT_PUBLIC_SUPABASE_URL="https://[PROJECT-REF].supabase.co"
+   NEXT_PUBLIC_SUPABASE_ANON_KEY="[anon-key]"
+   SUPABASE_SERVICE_ROLE_KEY="[service-role-key]"
+   AUTH_SESSION_SECRET="[generate-a-long-random-string]"
+   AUTH_SUPER_ADMIN_USERNAME="dominic370"
+   AUTH_SUPER_ADMIN_PASSWORD="[choose-a-strong-password]"
    ```
-4. Click **Deploy**. Vercel will build and distribute the app globally with HTTPS and Edge CDN caching.
+4. Click **Apply**. Render builds and serves the app over HTTPS.
+
+Staff/tester accounts are created by adding more `AUTH_<ROLE>_USERNAME` / `AUTH_<ROLE>_PASSWORD` environment variables — see `src/lib/auth/accounts.ts` for the exact variable names.
 
 ---
 
@@ -174,15 +167,26 @@ The terminal assessment formula enforces the 40:60 Continuous Assessment ratio:
 $$\text{Terminal Total (100)} = \text{1st Test (10)} + \text{2nd Test (10)} + \text{Project (10)} + \text{Mid-Term (10)} + \text{Exam / CBT (60)}$$
 
 1. **Continuous Assessment Input:** Open [`/operations/update-ca`](http://localhost:3000/operations/update-ca). Select the class level (e.g. `Pre-Play`, `Play`, `Nursery 1`, `Primary 1-5`, `SS 2A`) and enter marks.
-2. **CBT Integration:** Scores from proctored online exams scale automatically into the 60-point exam column.
+2. **CBT Integration:** Scores from CBT online exams scale automatically into the 60-point exam column.
 3. **Approval & Publication:** The Exam Officer navigates to [`/operations/publish-results`](http://localhost:3000/operations/publish-results), reviews class broadsheets, and toggles **"Publish Results to Parents & Students"**.
 
 ---
 
-## 7. Production Maintenance, Security & Backup Protocols
+## 7. Current Security Posture & Limitations
 
-- **Nightly PostgreSQL Backups:** Run automated `pg_dump` snapshots to AWS S3.
-- **SSL / TLS 1.3 Strict Transport Security:** Enforced across all student and bursary subdomains.
-- **Anti-Malpractice Audit Logs:** Stored for 5 years in compliance with WAEC and Plateau State Ministry of Education guidelines.
+What is actually in place today:
+
+- **Server-side login:** Passwords are verified on the server and sessions are signed, HttpOnly cookies (`src/lib/auth/`). Unauthenticated visitors are redirected to `/login` by `src/proxy.ts`.
+- **Database access control:** Student, staff, and invoice data is read and written only through the authenticated API routes (`/api/students`, `/api/staff`, `/api/invoices`). The browser no longer holds direct write access to these tables, and `supabase/harden-rls.sql` removes the old permissive "public read/write" policies.
+- **Transport encryption:** HTTPS is provided by the hosting platform (Render) and Supabase.
+- **Supabase-managed backups:** Supabase projects include automated backups on paid tiers.
+
+Known limitations (do not claim these to parents, staff, or regulators):
+
+- **No email/SMS sending:** Resend and Twilio are not integrated. Staff activation and result notifications must be communicated manually.
+- **No payment gateway:** Fee invoices are tracked in the bursary module, but online payments are not processed.
+- **No AI proctoring or audit-log retention:** The CBT module records exam scores and basic sync flags, but there is no camera/AI proctoring and no long-term anti-malpractice audit store.
+- **Role checks on the client:** Route and action permissions are enforced in the UI; a technically skilled user could bypass client-side checks, which is why the data APIs above are the real boundary.
+- **"Realtime" sync is per-browser:** Cross-user live updates use `BroadcastChannel` (same browser only), not server push.
 
 *Manual verified by: Dominic Mark (`dominic370`), Royal Crown Academy ICT Directorate.*

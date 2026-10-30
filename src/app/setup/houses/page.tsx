@@ -111,7 +111,7 @@ export default function SetupHousesPage() {
                 </div>
 
                 <h3 className="text-base font-bold text-slate-900 mt-2">{h.name}</h3>
-                <p className="text-xs italic text-slate-500">"{h.motto}"</p>
+                <p className="text-xs italic text-slate-500">&ldquo;{h.motto}&rdquo;</p>
               </div>
 
               <div className="pt-3 border-t border-slate-100 text-xs space-y-1">

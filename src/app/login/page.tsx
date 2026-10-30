@@ -50,7 +50,7 @@ export default function LoginPage() {
         return;
       }
 
-      const user = loginWithRole(result.user.role);
+      const user = loginWithRole(result.user.role, result.user);
       setSuccessToast(`Authenticated successfully as ${user.fullName}`);
       setTimeout(() => {
         router.push("/");

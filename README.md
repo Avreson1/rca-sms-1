@@ -65,3 +65,14 @@ The schema and seed data live in [`supabase/schema.sql`](supabase/schema.sql) an
 - [DOCUMENTATION.md](DOCUMENTATION.md) — roles, class hierarchy, grading tiers, module walkthrough
 - [DEPLOYMENT.md](DEPLOYMENT.md) — Supabase + Render deployment steps
 - [TESTERS_CREDENTIALS_AND_DEPLOYMENT_GUIDE.md](TESTERS_CREDENTIALS_AND_DEPLOYMENT_GUIDE.md) — QA onboarding
+
+## Current limitations
+
+Be aware of what this system does **not** do today:
+
+- **No email or SMS sending** — staff activation and notifications are manual.
+- **No online payments** — invoices are tracked, not paid through the portal.
+- **Role checks are client-side** in the UI; the real security boundary is that student/staff/invoice data only flows through the authenticated `/api/*` routes (`src/lib/supabase/db.ts`).
+- **"Realtime" sync is per-browser** (`BroadcastChannel`), not server push across users.
+- **No AI proctoring or long-term audit store** for CBT exams.
+- Run [`supabase/harden-rls.sql`](supabase/harden-rls.sql) in your Supabase project after `schema.sql` — until you do, the old permissive public policies remain on tables not used by the API.

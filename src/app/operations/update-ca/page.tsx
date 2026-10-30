@@ -190,16 +190,14 @@ export default function UpdateCAPage() {
     exportToCSV(`RCA_${selectedClass.replace(/\s+/g, "_")}_${selectedSubject.replace(/\s+/g, "_")}_ScoreSheet`, headers, rows);
   };
 
-  // Filtered students by class and search
-  const filteredStudents = useMemo(() => {
-    return students.filter((s) => {
-      const matchesClass = selectedClass === "all" || s.className === selectedClass;
-      const matchesSearch =
-        s.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.admissionNo.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesClass && matchesSearch;
-    });
-  }, [students, selectedClass, searchQuery]);
+  // Filtered students by class and search (React Compiler memoizes this automatically)
+  const filteredStudents = students.filter((s) => {
+    const matchesClass = selectedClass === "all" || s.className === selectedClass;
+    const matchesSearch =
+      s.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.admissionNo.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesClass && matchesSearch;
+  });
 
   // Statistics calculated dynamically from live scores
   const stats = useMemo(() => {

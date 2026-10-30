@@ -3,7 +3,7 @@
 import React, { useState, useRef } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { SCHOOL_INFO, ALL_SCHOOL_SECTIONS } from "@/lib/constants";
+import { SCHOOL_INFO, ALL_SCHOOL_SECTIONS, ALL_CLASSES } from "@/lib/constants";
 import { useRealtimeSubjects, SubjectRecord } from "@/lib/realtime-store";
 import {
   BookOpen,
@@ -23,25 +23,6 @@ import {
   AlertCircle,
   Tag,
 } from "lucide-react";
-
-// Master flat list of all official school classes
-const ALL_CLASSES = [
-  "Pre-Play Class",
-  "Play Class",
-  "Nursery 1",
-  "Nursery 2",
-  "Primary 1",
-  "Primary 2",
-  "Primary 3",
-  "Primary 4",
-  "Primary 5",
-  "JSS 1",
-  "JSS 2",
-  "JSS 3",
-  "SS 1",
-  "SS 2",
-  "SS 3",
-];
 
 const CATEGORIES = [
   "General / Core",

@@ -204,36 +204,11 @@ ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.inmail_messages ENABLE ROW LEVEL SECURITY;
 
--- Allow public read/write access via anon key for the portal application (or authenticate via Auth)
-CREATE POLICY "Allow public read staff" ON public.staff FOR SELECT USING (true);
-CREATE POLICY "Allow public all staff" ON public.staff FOR ALL USING (true);
-
-CREATE POLICY "Allow public read students" ON public.students FOR SELECT USING (true);
-CREATE POLICY "Allow public all students" ON public.students FOR ALL USING (true);
-
-CREATE POLICY "Allow public read ca_scores" ON public.ca_scores FOR SELECT USING (true);
-CREATE POLICY "Allow public all ca_scores" ON public.ca_scores FOR ALL USING (true);
-
-CREATE POLICY "Allow public read grading_tiers" ON public.grading_tiers FOR SELECT USING (true);
-CREATE POLICY "Allow public all grading_tiers" ON public.grading_tiers FOR ALL USING (true);
-
-CREATE POLICY "Allow public read cbt_questions" ON public.cbt_questions FOR SELECT USING (true);
-CREATE POLICY "Allow public all cbt_questions" ON public.cbt_questions FOR ALL USING (true);
-
-CREATE POLICY "Allow public read cbt_exam_sessions" ON public.cbt_exam_sessions FOR SELECT USING (true);
-CREATE POLICY "Allow public all cbt_exam_sessions" ON public.cbt_exam_sessions FOR ALL USING (true);
-
-CREATE POLICY "Allow public read invoices" ON public.invoices FOR SELECT USING (true);
-CREATE POLICY "Allow public all invoices" ON public.invoices FOR ALL USING (true);
-
-CREATE POLICY "Allow public read transactions" ON public.transactions FOR SELECT USING (true);
-CREATE POLICY "Allow public all transactions" ON public.transactions FOR ALL USING (true);
-
-CREATE POLICY "Allow public read audit_logs" ON public.audit_logs FOR SELECT USING (true);
-CREATE POLICY "Allow public all audit_logs" ON public.audit_logs FOR ALL USING (true);
-
-CREATE POLICY "Allow public read inmail" ON public.inmail_messages FOR SELECT USING (true);
-CREATE POLICY "Allow public all inmail" ON public.inmail_messages FOR ALL USING (true);
+-- The browser only needs read access to reference data. Every other table is
+-- reached through the authenticated API routes, which use the service-role key
+-- (service role bypasses RLS). For an existing database run supabase/harden-rls.sql.
+CREATE POLICY "Public read grading tiers" ON public.grading_tiers
+    FOR SELECT TO anon, authenticated USING (true);
 
 -- ------------------------------------------------------------------------------
 -- 10. REALTIME SUBSCRIPTION PUBLICATIONS
