@@ -1,4 +1,4 @@
-export type UserRole = "SUPER_ADMIN" | "EXAM_OFFICER" | "TEACHER" | "ACCOUNTANT" | "STUDENT_PARENT";
+export type UserRole = "SUPER_ADMIN" | "EXAM_OFFICER" | "TEACHER" | "ACCOUNTANT" | "STUDENT_PARENT" | "TESTERS";
 
 export interface RoleAccessRule {
   allowedPrefixes: string[];
@@ -120,6 +120,13 @@ export const ROLE_ROUTE_ACCESS: Record<UserRole, RoleAccessRule> = {
       "/settings",
       "/video-guides",
     ],
+  },
+  TESTERS: {
+    // QA role: can navigate and exercise every module, but never reaches the
+    // settings/purge screens or passes any write authorization check.
+    allowedPrefixes: ["/"],
+    exactRoutes: ["/", "/login"],
+    deniedPrefixes: ["/settings"],
   },
 };
 

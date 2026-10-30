@@ -286,7 +286,7 @@ export interface AuthUserSession {
   id: string;
   username: string;
   fullName: string;
-  role: "SUPER_ADMIN" | "EXAM_OFFICER" | "TEACHER" | "ACCOUNTANT" | "STUDENT_PARENT";
+  role: "SUPER_ADMIN" | "EXAM_OFFICER" | "TEACHER" | "ACCOUNTANT" | "STUDENT_PARENT" | "TESTERS";
   staffId: string;
   email?: string;
   assignedSubject?: string;
@@ -2316,7 +2316,7 @@ export function useRealtimeAuth() {
   }, []);
 
   const loginWithRole = (
-    role: "SUPER_ADMIN" | "EXAM_OFFICER" | "TEACHER" | "ACCOUNTANT" | "STUDENT_PARENT",
+    role: "SUPER_ADMIN" | "EXAM_OFFICER" | "TEACHER" | "ACCOUNTANT" | "STUDENT_PARENT" | "TESTERS",
     profile?: { username?: string; fullName?: string; staffId?: string; email?: string }
   ) => {
     const roleProfiles: Record<string, AuthUserSession> = {
@@ -2371,6 +2371,15 @@ export function useRealtimeAuth() {
         role: "STUDENT_PARENT",
         staffId: "RCA/PAR/104",
         email: "parent.oladipo@gmail.com",
+        loginTime: new Date().toISOString(),
+      },
+      TESTERS: {
+        id: "u-tst",
+        username: "tester",
+        fullName: "QA Tester",
+        role: "TESTERS",
+        staffId: "RCA/TST/001",
+        email: "",
         loginTime: new Date().toISOString(),
       },
     };

@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { SessionRole, SessionUser } from "./session";
+import { verifyTesterCredentials } from "./tester-accounts";
 
 interface AccountRecord extends SessionUser {
   password: string;
@@ -93,7 +94,7 @@ function passwordMatches(expected: string, provided: string): boolean {
   return timingSafeEqual(expectedHash, providedHash);
 }
 
-export function verifyCredentials(username: string, password: string): SessionUser | null {
+export async function verifyCredentials(username: string, password: string): Promise<SessionUser | null> {
   const normalized = username.trim().toLowerCase();
 
   for (const account of readAccounts()) {
@@ -104,5 +105,7 @@ export function verifyCredentials(username: string, password: string): SessionUs
     return user;
   }
 
-  return null;
+  // App-generated accounts (TESTERS role), created from Settings by the super
+  // admin. Skipped silently when Supabase is not configured.
+  return verifyTesterCredentials(normalized, password);
 }

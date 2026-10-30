@@ -3,7 +3,8 @@ export type SessionRole =
   | "EXAM_OFFICER"
   | "TEACHER"
   | "ACCOUNTANT"
-  | "STUDENT_PARENT";
+  | "STUDENT_PARENT"
+  | "TESTERS";
 
 export interface SessionUser {
   username: string;

@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Enter both your username and passcode." }, { status: 400 });
   }
 
-  const user = verifyCredentials(username, password);
+  const user = await verifyCredentials(username, password);
   if (!user) {
     return NextResponse.json({ error: "Invalid credentials. Please check your username and passcode." }, { status: 401 });
   }
