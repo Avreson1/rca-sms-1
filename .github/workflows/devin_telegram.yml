@@ -1,0 +1,83 @@
+name: Devin Next.js Agent & Daily Log Summary
+
+on:
+  workflow_dispatch:
+    inputs:
+      direct_prompt:
+        description: "Optional one-shot instruction (leave blank for interactive Telegram chat)"
+        required: false
+        default: ""
+      session_minutes:
+        description: "How many minutes to keep interactive Telegram session open"
+        required: false
+        default: "15"
+      run_daily_summary:
+        description: "Set to 'true' to immediately test the 11 PM daily log summary"
+        required: false
+        default: "false"
+
+  schedule:
+    # 1. Background Telegram message queue check every 30 minutes
+    - cron: '*/30 * * * *'
+    # 2. Daily Log Summary at 11:00 PM WAT (22:00 UTC)
+    - cron: '0 22 * * *'
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+
+jobs:
+  devin-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout Repository (Full History for Daily Logs)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Cloudflared Tunnel
+        run: |
+          curl -fsSL --output /tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i /tmp/cloudflared.deb
+          rm -f /tmp/cloudflared.deb
+
+      - name: Install Python Agent Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-genai PyGithub
+
+      - name: Install Node Dependencies (if package.json exists)
+        run: |
+          if [ -f package.json ]; then
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Pre-pull Docker Sandbox Image
+        run: docker pull node:20-slim
+
+      - name: Launch Autonomous Devin Agent
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
+          DIRECT_PROMPT: ${{ github.event.inputs.direct_prompt }}
+          SESSION_MINUTES: ${{ github.event.inputs.session_minutes || '15' }}
+          RUN_DAILY_SUMMARY: ${{ github.event.inputs.run_daily_summary || 'false' }}
+        run: python devin_telegram_agent.py
