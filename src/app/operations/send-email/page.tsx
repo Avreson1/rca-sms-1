@@ -52,11 +52,11 @@ export default function SendEmailBroadcastPage() {
               <span>/</span>
               <span className="text-slate-800 font-semibold">Bulk Email</span>
             </div>
-            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
               Institutional Email Broadcast
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Send notifications, term newsletters, and academic circulars powered by the **Resend API**.
+              Send notifications, term newsletters, and academic circulars powered by the <strong>Resend API</strong>.
             </p>
           </div>
         </div>
@@ -110,12 +110,12 @@ export default function SendEmailBroadcastPage() {
               />
             </div>
 
-            <div className="pt-2 flex items-center justify-between">
-              <span className="text-[11px] text-slate-400">Sender: portal@royalcrownacademy.edu.ng</span>
+            <div className="pt-2 flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <span className="break-all text-[11px] text-slate-400">Sender: portal@royalcrownacademy.edu.ng</span>
               <button
                 type="submit"
                 disabled={isSending}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer"
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Send className="w-3.5 h-3.5" />
                 {isSending ? "Dispatching Broadcast..." : "Send Email Broadcast"}

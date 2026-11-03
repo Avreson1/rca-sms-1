@@ -138,7 +138,7 @@ export default function OperationsAcademicsPage() {
               <span>/</span>
               <span className="text-slate-800 font-semibold">Academics &amp; Timetable</span>
             </div>
-            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
               Academic Operations &amp; Master Timetable
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -167,7 +167,7 @@ export default function OperationsAcademicsPage() {
         </div>
 
         {/* View Selection Tabs */}
-        <div className="flex items-center gap-2 border-b border-slate-200 pb-2 print:hidden">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2 print:hidden">
           <button
             onClick={() => setActiveTab("class")}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
@@ -205,13 +205,13 @@ export default function OperationsAcademicsPage() {
         {/* Tab 1: Class Arm Timetable */}
         {activeTab === "class" && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between bg-white p-4 border border-slate-200 rounded-xl shadow-xs print:hidden">
-              <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-white p-4 border border-slate-200 rounded-xl shadow-xs print:hidden">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                 <span className="text-xs font-bold text-slate-700">Select Class Arm:</span>
                 <select
                   value={selectedClass}
                   onChange={(e) => setSelectedClass(e.target.value)}
-                  className="text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-blue-900 outline-none"
+                  className="min-w-0 max-w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-blue-900 outline-none"
                 >
                   {classes.map((c) => (
                     <option key={c.id} value={c.name}>
@@ -292,7 +292,7 @@ export default function OperationsAcademicsPage() {
                                     {isSuperOrExamOfficer && (
                                       <button
                                         onClick={() => removeEntry(entry.id)}
-                                        className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 text-rose-600 hover:text-rose-800 transition-opacity"
+                                        className="absolute top-1 right-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 text-rose-600 hover:text-rose-800 transition-opacity"
                                         title="Remove period"
                                       >
                                         <Trash2 className="w-3 h-3" />
@@ -498,7 +498,7 @@ export default function OperationsAcademicsPage() {
         {/* Modal: Schedule Class Period */}
         {isAddModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto border border-slate-200 space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h3 className="text-base font-bold text-slate-900">Schedule Class Period</h3>
                 <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">

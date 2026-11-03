@@ -365,7 +365,7 @@ export default function ProctoredCBTPage() {
     return (
       <DashboardShell>
         <div className="min-h-[75vh] flex flex-col items-center justify-center p-4 select-none">
-          <div className="max-w-2xl w-full bg-white border-2 border-amber-200 rounded-3xl p-8 md:p-10 shadow-xl shadow-amber-950/5 space-y-6 text-center animate-in zoom-in-95 duration-200">
+          <div className="max-w-2xl w-full max-h-[90vh] overflow-y-auto bg-white border-2 border-amber-200 rounded-3xl p-8 md:p-10 shadow-xl shadow-amber-950/5 space-y-6 text-center animate-in zoom-in-95 duration-200">
             {/* Padlock Icon */}
             <div className="w-20 h-20 bg-amber-100 text-amber-700 rounded-3xl flex items-center justify-center mx-auto shadow-inner ring-8 ring-amber-50">
               <Lock className="w-10 h-10 text-amber-600" />
@@ -493,8 +493,8 @@ export default function ProctoredCBTPage() {
               <span>/</span>
               <span className="text-slate-800 font-semibold">CBT Examination Center</span>
             </div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                 Computer-Based Testing (CBT) & AI Proctor
               </h1>
               <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
@@ -549,7 +549,7 @@ export default function ProctoredCBTPage() {
                   <select
                     value={selectedStudentId}
                     onChange={(e) => setSelectedStudentId(e.target.value)}
-                    className="text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                    className="flex-1 min-w-0 max-w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                   >
                     {students.map((s) => (
                       <option key={s.id} value={s.id}>
@@ -583,7 +583,7 @@ export default function ProctoredCBTPage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 w-full md:w-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full md:w-auto">
                 <div className="bg-slate-800/80 border border-slate-700 p-3 rounded-xl text-center">
                   <span className="text-xs text-slate-400 block">Tab Switch Cap</span>
                   <strong className="text-amber-400 text-base font-extrabold">Max 2 Strikes</strong>
@@ -748,7 +748,7 @@ export default function ProctoredCBTPage() {
             {/* Warning Strike Modal */}
             {activeWarningModal && !isExpelled && (
               <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in zoom-in-95 duration-200">
-                <div className="bg-white rounded-2xl max-w-lg w-full border-2 border-red-500 shadow-2xl p-6 space-y-4 text-center">
+                <div className="bg-white rounded-2xl max-w-lg w-full border-2 border-red-500 shadow-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4 text-center">
                   <div className="w-14 h-14 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto animate-bounce">
                     <ShieldAlert className="w-8 h-8" />
                   </div>
@@ -912,7 +912,7 @@ export default function ProctoredCBTPage() {
                 <div className="lg:col-span-8 bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
                   
                   {/* Top Bar */}
-                  <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
                     <div>
                       <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
                         {SCHOOL_INFO.shortName} Live Assessment
@@ -952,7 +952,7 @@ export default function ProctoredCBTPage() {
                             key={idx}
                             onClick={() => handleSelectOption(idx)}
                             type="button"
-                            className={`w-full text-left p-4 rounded-xl border text-xs md:text-sm font-medium transition-all flex items-center gap-3.5 cursor-pointer ${
+                            className={`w-full text-left p-4 rounded-xl border text-xs md:text-sm font-medium transition-all flex items-start gap-3.5 cursor-pointer ${
                               isSelected
                                 ? "bg-blue-50 border-blue-600 text-blue-950 font-bold shadow-xs ring-1 ring-blue-600"
                                 : "bg-white border-slate-200 hover:border-slate-300 text-slate-800"
@@ -994,7 +994,7 @@ export default function ProctoredCBTPage() {
                   </div>
 
                   {/* Navigation Buttons */}
-                  <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4 border-t border-slate-200">
                     <button
                       onClick={() => setCurrentQIndex((i) => Math.max(0, i - 1))}
                       disabled={currentQIndex === 0}

@@ -532,7 +532,7 @@ export default function SOPManualPage() {
               <span className="text-slate-800 font-semibold">SOP Manual</span>
             </div>
             <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                 Standard Operating Procedures (SOP) Manual
               </h1>
               <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${roleBadge.color} flex items-center gap-1`}>
@@ -570,7 +570,7 @@ export default function SOPManualPage() {
         </div>
 
         {/* RBAC Role Clearance Notice Banner */}
-        <div className="bg-gradient-to-r from-blue-50/80 via-cyan-50/40 to-slate-50 border border-blue-200/80 rounded-2xl p-4 shadow-xs flex items-center justify-between gap-4 print:hidden">
+        <div className="bg-gradient-to-r from-blue-50/80 via-cyan-50/40 to-slate-50 border border-blue-200/80 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4 print:hidden">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-[#0000FF] text-white flex items-center justify-center font-bold shadow-sm">
               <UserCheck className="w-5 h-5 text-cyan-300" />

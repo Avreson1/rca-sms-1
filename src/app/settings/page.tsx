@@ -383,7 +383,7 @@ export default function SettingsPage() {
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block font-bold text-slate-700 mb-1">Current Academic Session</label>
                         <input
@@ -428,7 +428,7 @@ export default function SettingsPage() {
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block font-bold text-slate-700 mb-1">Next Term Resumption Date</label>
                         <input
@@ -466,7 +466,7 @@ export default function SettingsPage() {
 
             {/* Universal Educational Grading Compliance */}
             <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
                 <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
                   <Award className="w-4 h-4 text-[#0000FF]" />
                   Approved Universal Grading System (A – F Scale)
@@ -480,7 +480,7 @@ export default function SettingsPage() {
                 </Link>
               </div>
 
-              <div className="grid grid-cols-5 gap-2 text-xs text-center">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs text-center">
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl">
                   <strong className="text-base font-black text-[#0000FF] block">A</strong>
                   <span className="text-[11px] font-bold text-slate-700 block">70 – 100%</span>

@@ -70,7 +70,7 @@ export default function StudentPromotionPage() {
               <span>/</span>
               <span className="text-slate-800 font-semibold">Promotion</span>
             </div>
-            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
               Annual Student Class Promotion Engine
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -107,8 +107,8 @@ export default function StudentPromotionPage() {
 
         {/* Transition Selector */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
+            <div className="min-w-0 flex-1">
               <label className="block text-[11px] font-bold text-slate-500 uppercase">From Current Class</label>
               <select
                 value={sourceClass}
@@ -116,7 +116,7 @@ export default function StudentPromotionPage() {
                   setSourceClass(e.target.value);
                   setPromotedIds([]);
                 }}
-                className="mt-1 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                className="mt-1 w-full min-w-0 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
               >
                 {classes.map((c) => (
                   <option key={c.id} value={c.name}>
@@ -126,16 +126,16 @@ export default function StudentPromotionPage() {
               </select>
             </div>
 
-            <div className="pt-4 text-slate-400">
+            <div className="hidden sm:block pt-4 text-slate-400">
               <ArrowRight className="w-5 h-5" />
             </div>
 
-            <div>
+            <div className="min-w-0 flex-1">
               <label className="block text-[11px] font-bold text-slate-500 uppercase">Promote Into</label>
               <select
                 value={targetClass}
                 onChange={(e) => setTargetClass(e.target.value)}
-                className="mt-1 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg p-2 text-blue-700 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                className="mt-1 w-full min-w-0 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg p-2 text-blue-700 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
               >
                 {classes.map((c) => (
                   <option key={c.id} value={c.name}>

@@ -238,8 +238,8 @@ export default function TraitsAssessmentsPage() {
               <span>/</span>
               <span className="text-slate-800 font-semibold">Psychomotor Engine</span>
             </div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                 Affective &amp; Psychomotor Assessment Engine
               </h1>
               <span className="bg-purple-50 border border-purple-200 text-purple-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
@@ -458,8 +458,8 @@ export default function TraitsAssessmentsPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      <div className="hidden sm:flex items-center gap-2 text-xs">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
                         <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
                           Affective: {affAvg} / 5
                         </span>

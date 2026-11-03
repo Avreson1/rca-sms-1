@@ -328,10 +328,10 @@ export default function AcademicCalendarPage() {
           <div className="space-y-6">
             {/* Filter Toolbar */}
             <div className="flex items-center justify-between bg-white border border-slate-200 rounded-2xl p-3 shadow-2xs flex-wrap gap-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Filter className="w-4 h-4 text-slate-400" />
                 <span className="text-xs font-bold text-slate-700">Filter by Term:</span>
-                <div className="flex gap-1">
+                <div className="flex flex-wrap gap-1">
                   {["All", "First Term", "Second Term", "Third Term"].map((term) => (
                     <button
                       key={term}
@@ -561,7 +561,7 @@ export default function AcademicCalendarPage() {
         {/* Modal: Add Calendar Milestone */}
         {isModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
                   <Calendar className="w-5 h-5 text-[#0000FF]" />
@@ -588,7 +588,7 @@ export default function AcademicCalendarPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">Date or Range</label>
                     <input
@@ -615,7 +615,7 @@ export default function AcademicCalendarPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">Academic Term</label>
                     <select
@@ -677,7 +677,7 @@ export default function AcademicCalendarPage() {
         {/* Modal: Add Activity Template */}
         {isActivityModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
                   <Activity className="w-5 h-5 text-cyan-600" />
@@ -704,7 +704,7 @@ export default function AcademicCalendarPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">Activity Category</label>
                     <select
@@ -733,7 +733,7 @@ export default function AcademicCalendarPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">Coordinator / Lead</label>
                     <input
@@ -757,7 +757,7 @@ export default function AcademicCalendarPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">Budget Allocation</label>
                     <input

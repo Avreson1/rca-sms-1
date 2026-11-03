@@ -374,7 +374,7 @@ export default function DashboardHome() {
             </div>
 
             {/* Inmail & Quick Communication Link */}
-            <div className="bg-gradient-to-r from-blue-900 to-indigo-950 text-white p-5 rounded-2xl flex items-center justify-between shadow-xs">
+            <div className="bg-gradient-to-r from-blue-900 to-indigo-950 text-white p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
               <div className="space-y-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-300 bg-cyan-400/20 px-2.5 py-0.5 rounded-full border border-cyan-400/30">
                   Institutional Inmail Desk

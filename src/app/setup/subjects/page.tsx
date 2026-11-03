@@ -250,8 +250,8 @@ export default function SetupSubjectsPage() {
               <span>/</span>
               <span className="text-slate-800 font-semibold">Subjects</span>
             </div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                 Curriculum Subjects Setup
               </h1>
               <span className="bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
@@ -517,7 +517,7 @@ export default function SetupSubjectsPage() {
         {/* Modal: Seamless Subject Addition (Single & Batch Modes) */}
         {isModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-            <div className="bg-white rounded-2xl max-w-xl w-full border shadow-2xl p-6 space-y-4 max-h-[92vh] overflow-y-auto">
+            <div className="bg-white rounded-2xl max-w-xl w-full border shadow-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4 max-h-[92vh] overflow-y-auto">
               {/* Modal Header */}
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
