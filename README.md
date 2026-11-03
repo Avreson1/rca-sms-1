@@ -142,9 +142,13 @@ under its `DEFAULT 'F'`, which would book a failed grade against a child who was
 
 ## Deployment
 
-`render.yaml` describes a Render web service; the [`Dockerfile`](Dockerfile) is the plain
-Docker path (multi-stage, `npm run build` then `npm run start`). Set the environment variables
-in the Render dashboard, then deploy.
+`render.yaml` describes the Render web service that is actually running: `runtime: node`,
+`autoDeploy: true`, and its own `buildCommand`/`startCommand` — so Render builds with
+`npm install && npm run build`, **not** the Dockerfile. (`npm ci` in the Dockerfile is the pinned,
+reproducible path; use one or the other, not both.) The service is named `rca-sms` in
+`render.yaml`, but Render assigned it the hostname **`https://rca-sms-1.onrender.com`** — the
+`rca-sms.onrender.com` in older docs has no server behind it. Set the environment variables in the
+Render dashboard, then deploy.
 
 ## Repository layout
 

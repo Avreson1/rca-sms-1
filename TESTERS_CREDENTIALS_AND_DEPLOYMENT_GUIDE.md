@@ -46,7 +46,7 @@ If the push asks for credentials, sign in with your GitHub account in the popup 
 4. Render will read `render.yaml`. Set the following environment variables when prompted:
 
    - `NODE_ENV`: `production`
-5. Click **"Apply"** to deploy. Your portal will be live at `https://rca-sms.onrender.com`!
+5. Click **"Apply"** to deploy. Your portal will be live at `https://rca-sms-1.onrender.com`!
 
 ---
 
