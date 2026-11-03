@@ -110,11 +110,20 @@ Inside that, each data route also checks the role:
 | Route | Read | Write |
 | --- | --- | --- |
 | `/api/staff` | Super admin, exam officer, QA tester | Super admin |
-| `/api/students` | Super admin, exam officer, teacher, bursar, QA tester | Super admin, exam officer |
-| `/api/invoices` | Super admin, bursar, QA tester | Super admin, bursar |
+| `/api/students` | Super admin, exam officer, teacher, bursar, QA tester | Super admin, exam officer (enrol, and `DELETE` to unenrol) |
+| `/api/invoices` | Super admin, bursar, QA tester | Super admin, bursar (one invoice or a batch) |
 | `/api/ca` | — | Super admin, exam officer, teacher |
 | `/api/accounts` | Super admin | Super admin |
 | `/api/presence` | any signed-in role | any signed-in role |
+
+The screens use them: enrolling one pupil or a CSV class list, unenroling a pupil, recording a fee
+payment, generating invoices, and saving CA scores all post to the server. `POST /api/invoices`
+takes one invoice or an array, resolves `student_id` from the admission number on the server
+(404 if the pupil is not enrolled — the browser's own `inv-…` ids are never trusted) and upserts on
+`invoice_no`; a number already filed for a different pupil is rejected with 409 rather than
+rewriting that family's balance. `DELETE /api/students` removes the pupil and, through the
+schema's `ON DELETE CASCADE`, their CA scores and invoices — which is why the confirmation on
+Students Management says so.
 
 ### `POST /api/ca` — the CA write path
 
@@ -140,6 +149,19 @@ rejected, and `total_score` is never sent because the database computes it. Rows
 duplicating it. `grade` is required from the caller: the schema would otherwise file the row
 under its `DEFAULT 'F'`, which would book a failed grade against a child who was never graded.
 
+*Update CA* is the caller. It sends one request per pupil for the subject chosen on screen, under
+the session and term in `SCHOOL_INFO`, and skips rows that are still all zero — an untouched pupil
+is not a score of nought for that subject.
+
+### What the screen says when a call is refused
+
+`src/lib/sync-status.ts` holds the last reported outcome and `SyncStatusNotice`
+(`src/components/layout/sync-status-notice.tsx`, mounted by `DashboardShell`) renders it in the
+bottom-right corner. A failure stays until it is dismissed; a success hides itself after five
+seconds. Reads say what could not be loaded and that the device's own copy is being shown; writes
+say the record was **not** saved and why — `403` (role), `401` (signed out), `503`/`502`
+(database) — with the route's own message in front of it.
+
 ## Deployment
 
 `render.yaml` describes the Render web service that is actually running: `runtime: node`,
@@ -161,25 +183,13 @@ cannot break the build. Nothing in `rca-sms/` reaches production.
 
 Be aware of what this system does **not** do today:
 
-- **Students, staff and invoices do go through the routes; CA does not.**
-  `src/lib/realtime-store.ts` calls `GET /api/students`, `GET /api/staff` and `GET /api/invoices`
-  when the dashboard mounts, and posts new students and staff to `POST /api/students` /
-  `POST /api/staff`. Only `/api/ca` has no caller yet, so grades entered in *Update CA* stay in
-  the browser's own storage until that screen posts to it. Every route checks the signed-in role
-  through `requireRole()` (`src/lib/auth/guard.ts`).
-- **A refused fetch or write is invisible on screen.** `requestJson()` turns any non-2xx response
-  into `null`, and the store then keeps its local copy; `insertStudentToSupabase()` and
-  `insertStaffToSupabase()` ignore the result entirely. So when the role gates answer 403 — a
-  teacher opening the staff list, a parent opening the roll — the screen shows whatever that
-  browser already had, or an empty list on a fresh device (the initial seeds in
-  `realtime-store.ts` are intentionally empty), and looks like it worked. Surfacing those
-  failures is the next change.
-- **Most mutations are still browser-only.** Recording a fee payment (`recordPayment`),
-  editing a student, saving scores and deleting a student write to `localStorage` and nothing
-  else — only adding a student and adding staff reach the database. A payment entered on the
-  bursar's laptop does not exist for anyone else and disappears if that browser's storage is
-  cleared. The server-side routes for these exist (`/api/invoices`, `/api/ca`); the store does
-  not call them yet.
+- **Some screens still keep their work in the browser.** The CBT-to-CA sync
+  (`syncCBTScoreToCA`) writes this device's copy; that score only reaches the database when
+  *Update CA* files it. `fetchGradingTiersFromSupabase()` reads Supabase directly with the anon
+  key instead of going through a route, so under the tightened RLS it returns 401 and the grading
+  tiers fall back to the built-in defaults without a notice — the one call the notice does not
+  cover. Settings, subject templates, timetable and the rest of the `localStorage` keys have no
+  route behind them at all.
 - **A parent cannot fetch their own child's records from those routes.** `/api/students` and
   `/api/invoices` return the whole school, so `STUDENT_PARENT` is deliberately excluded until
   they filter by admission number. Parents still see their child's results through the pages

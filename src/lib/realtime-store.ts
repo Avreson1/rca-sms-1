@@ -10,7 +10,11 @@ import {
   fetchGradingTiersFromSupabase,
   insertStudentToSupabase,
   bulkInsertStudentsToSupabase,
+  deleteStudentFromSupabase,
   insertStaffToSupabase,
+  saveInvoiceToSupabase,
+  bulkSaveInvoicesToSupabase,
+  saveCaScoresToSupabase,
 } from "./supabase/db";
 
 // Channel for instant multi-tab & multi-window event synchronization
@@ -185,6 +189,10 @@ export interface InvoiceRecord {
   amountPaid: number;
   paymentStatus: "Paid" | "Partial" | "Unpaid";
   lastPaymentDate: string;
+  // Without these, saving a payment on an older invoice would re-date it to the
+  // current session and term.
+  session?: string;
+  term?: string;
 }
 
 export interface FeeComponentRecord {
@@ -798,6 +806,46 @@ export function useRealtimeGradingScales() {
   return { gradingTiers, updateGradingTierBrackets, resetGradingScalesToDefault };
 }
 
+/**
+ * On screen a pupil has one set of CA scores; in the database the `ca_scores`
+ * row is keyed by subject, session and term as well. Without the subject a
+ * typed score has nowhere to be filed, so only screens that know it can push
+ * scores to the server. Returns how many pupils were sent.
+ */
+function fileCaScoresOnServer(students: StudentRecord[], subject: string) {
+  const scored = students.filter((s) => {
+    const { test1, test2, project, midTerm, exam } = s.caScores;
+    return test1 + test2 + project + midTerm + exam > 0;
+  });
+  if (!isSupabaseConfigured || scored.length === 0) return 0;
+
+  const records = scored.map((student) => {
+    const { test1, test2, project, midTerm, exam } = student.caScores;
+    const total = test1 + test2 + project + midTerm + exam;
+    const { grade, remark } = calculateGradeForClass(total, student.className);
+    return {
+      admissionNo: student.admissionNo,
+      subject,
+      session: SCHOOL_INFO.currentSession,
+      term: SCHOOL_INFO.currentTerm,
+      test1,
+      test2,
+      project,
+      midTerm,
+      exam,
+      total,
+      grade,
+      remark,
+    };
+  });
+
+  void saveCaScoresToSupabase(
+    records,
+    `${subject} scores for ${scored.length} pupil${scored.length === 1 ? "" : "s"} (${SCHOOL_INFO.currentSession}, ${SCHOOL_INFO.currentTerm})`
+  );
+  return scored.length;
+}
+
 // -------------------------------------------------------------
 // Hook: Real-Time Students Store (Connected to Supabase & Live Sync)
 // -------------------------------------------------------------
@@ -955,7 +1003,8 @@ export function useRealtimeStudents() {
       project?: number;
       midTerm?: number;
       exam?: number;
-    }[]
+    }[],
+    subject?: string
   ) => {
     const scoreMap = new Map(scoresList.map((item) => [item.admissionNo.trim().toUpperCase(), item]));
     const updated = students.map((s) => {
@@ -978,13 +1027,24 @@ export function useRealtimeStudents() {
     setStudents(updated);
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updated));
     broadcast("STUDENTS_UPDATED");
+
+    if (subject) {
+      const imported = updated.filter((s) => scoreMap.has(s.admissionNo.trim().toUpperCase()));
+      return fileCaScoresOnServer(imported, subject);
+    }
+    return 0;
   };
 
   const deleteStudent = (studentId: string) => {
+    const removed = students.find((s) => s.id === studentId);
     const updated = students.filter((s) => s.id !== studentId);
     setStudents(updated);
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updated));
     broadcast("STUDENTS_UPDATED");
+
+    if (removed && isSupabaseConfigured) {
+      void deleteStudentFromSupabase(removed.admissionNo);
+    }
   };
 
   const clearAllStudents = () => {
@@ -993,7 +1053,14 @@ export function useRealtimeStudents() {
     broadcast("STUDENTS_UPDATED");
   };
 
-  return { students, updateStudentScore, addStudent, bulkAddStudents, bulkUpdateScores, deleteStudent, clearAllStudents };
+  /**
+   * The score grid edits this device's copy as you type, so the Save button is
+   * where the class on screen is filed against the subject chosen above it.
+   */
+  const saveCaScores = (subject: string, roster?: StudentRecord[]) =>
+    fileCaScoresOnServer(roster ?? students, subject);
+
+  return { students, updateStudentScore, addStudent, bulkAddStudents, bulkUpdateScores, deleteStudent, clearAllStudents, saveCaScores };
 }
 
 // -------------------------------------------------------------
@@ -1545,9 +1612,33 @@ export function useRealtimeInvoices() {
       localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(updated));
       broadcast("INVOICES_UPDATED");
     }
+
+    const paid = updated.find((inv) => inv.id === invoiceId);
+    if (paid && isSupabaseConfigured) {
+      void saveInvoiceToSupabase(paid);
+    }
   };
 
-  return { invoices, recordPayment };
+  /**
+   * Generated invoices only exist on this device until they reach the server,
+   * so the list is filed in one bulk request instead of waiting for a page
+   * reload to read the browser's own copy back again.
+   */
+  const addInvoices = (generated: InvoiceRecord[]) => {
+    if (generated.length === 0) return;
+    const updated = [...generated, ...invoices];
+    setInvoices(updated);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(updated));
+      broadcast("INVOICES_UPDATED");
+    }
+
+    if (isSupabaseConfigured) {
+      void bulkSaveInvoicesToSupabase(generated);
+    }
+  };
+
+  return { invoices, recordPayment, addInvoices };
 }
 
 // -------------------------------------------------------------

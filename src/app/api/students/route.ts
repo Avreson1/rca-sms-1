@@ -11,6 +11,8 @@ export const dynamic = "force-dynamic";
 const READ_STUDENTS = ["SUPER_ADMIN", "EXAM_OFFICER", "TEACHER", "ACCOUNTANT", "TESTERS"] as const;
 const WRITE_STUDENTS = ["SUPER_ADMIN", "EXAM_OFFICER"] as const;
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 type StudentPayload = {
   id?: string;
   admission_no?: string;
@@ -29,7 +31,9 @@ function sanitizeStudent(raw: StudentPayload) {
   const fullName = typeof raw.full_name === "string" ? raw.full_name.trim() : "";
   if (!admissionNo || !fullName) return null;
   return {
-    id: typeof raw.id === "string" && raw.id.trim() ? raw.id.trim() : undefined,
+    // The browser invents its own ids (`s-1730…`); only a real database id may
+    // update a row, otherwise the upsert targets a UUID column with garbage.
+    id: typeof raw.id === "string" && UUID_PATTERN.test(raw.id.trim()) ? raw.id.trim() : undefined,
     admission_no: admissionNo,
     full_name: fullName,
     gender: raw.gender === "Female" ? "Female" : "Male",
@@ -79,4 +83,43 @@ export async function POST(request: Request) {
   const { error } = await supabase.from("students").upsert(rows, { onConflict: "id" });
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 502 });
   return NextResponse.json({ success: true });
+}
+
+/**
+ * Removes one student, addressed by admission number. Their CA scores and
+ * invoices go with them: both tables reference students(id) ON DELETE CASCADE,
+ * which is why this route takes the admission number the school actually uses
+ * rather than a client-generated id.
+ */
+export async function DELETE(request: Request) {
+  const denied = await requireRole(WRITE_STUDENTS);
+  if (denied) return denied;
+
+  let body: { admissionNo?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const admissionNo = typeof body.admissionNo === "string" ? body.admissionNo.trim() : "";
+  if (!admissionNo) {
+    return NextResponse.json({ success: false, error: "Provide the admission number of the student to remove." }, { status: 400 });
+  }
+
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
+
+  const { data: removed, error } = await supabase
+    .from("students")
+    .delete()
+    .eq("admission_no", admissionNo)
+    .select("id");
+
+  if (error) return NextResponse.json({ success: false, error: error.message }, { status: 502 });
+  if (!removed || removed.length === 0) {
+    return NextResponse.json({ success: false, error: `No student on file with admission number ${admissionNo}.` }, { status: 404 });
+  }
+
+  return NextResponse.json({ success: true, data: { admissionNo } });
 }

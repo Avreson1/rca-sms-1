@@ -351,7 +351,7 @@ export default function StudentsPage() {
                         </Link>
                         <button
                           onClick={() => {
-                            if (confirm(`Remove ${s.fullName} from enrollment records?`)) {
+                            if (confirm(`Remove ${s.fullName} from enrollment records? Their saved CA scores and invoices go with them.`)) {
                               deleteStudent(s.id);
                             }
                           }}
