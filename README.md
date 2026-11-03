@@ -50,6 +50,12 @@ Credentials are checked in this order, and the first match wins:
 If no `AUTH_SESSION_SECRET` is configured, login fails with a clear message rather than
 issuing an unsigned cookie.
 
+Five wrong passcodes from one address against one username locks that combination for 15
+minutes (`429` with a `Retry-After` header), and a successful sign-in clears the count. The
+tally lives in the server's memory, so a restart or a second instance resets it — it raises
+the cost of a scripted password run, it is not a replacement for a shared store if the portal
+ever runs more than one instance.
+
 ## Managing people from the app
 
 Settings → **User Access** (super admin only). For each account you can:

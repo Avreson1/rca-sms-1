@@ -6,6 +6,11 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
+    // Scoped, because these rules come from plugins that eslint-config-next
+    // registers only for app sources. Left unscoped, any other file type in the
+    // tree (a scratch .cjs script, for instance) makes the whole run fail with
+    // "could not find plugin react-hooks" instead of reporting anything useful.
+    files: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.mjs"],
     rules: {
       // The realtime-store hydrates many small slices of state from
       // localStorage inside effects (an intentional, well-understood pattern
@@ -27,6 +32,9 @@ const eslintConfig = defineConfig([
     // Vendored second copy of the portal with its own tsconfig/eslint config.
     // Not part of this build; see the matching `exclude` in tsconfig.json.
     "rca-sms/**",
+    // Throwaway browser-check scripts written while verifying a fix by hand.
+    // Never committed, so they must not join the lint run or the CI gate.
+    ".verify/**",
   ]),
 ]);
 

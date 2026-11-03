@@ -1,5 +1,6 @@
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
+import { getSupabaseServerClient, missingDatabaseConfig } from "@/lib/supabase/server";
 import type { UserRole } from "@/lib/rbac";
 import type { SessionUser } from "./session";
 
@@ -9,6 +10,8 @@ import type { SessionUser } from "./session";
 // by the server, which holds the service-role key.
 
 const SCRYPT_KEYLEN = 64;
+// The cast is for the overload set in @types/node; the callback shape guarantees a Buffer.
+const deriveScrypt = promisify(scrypt) as (password: string, salt: string, keylen: number) => Promise<Buffer>;
 
 const ACCOUNT_COLUMNS =
   "id, username, display_name, role, staff_id, email, status, token_epoch, created_by, created_at, last_login_at";
@@ -50,14 +53,16 @@ export function generatePassword(length = 14): string {
   return randomBytes(11).toString("base64url").slice(0, length);
 }
 
-function hashPassword(password: string, salt?: string): { salt: string; hash: string } {
+// scrypt is deliberately slow, so it runs off the request loop: a synchronous
+// derivation held every other visitor's request for its whole duration.
+async function hashPassword(password: string, salt?: string): Promise<{ salt: string; hash: string }> {
   const actualSalt = salt ?? randomBytes(16).toString("hex");
-  const derived = scryptSync(password, actualSalt, SCRYPT_KEYLEN);
+  const derived = await deriveScrypt(password, actualSalt, SCRYPT_KEYLEN);
   return { salt: actualSalt, hash: derived.toString("hex") };
 }
 
-function verifyPassword(password: string, salt: string, expectedHash: string): boolean {
-  const { hash } = hashPassword(password, salt);
+async function verifyPassword(password: string, salt: string, expectedHash: string): Promise<boolean> {
+  const { hash } = await hashPassword(password, salt);
   const expected = Buffer.from(expectedHash, "hex");
   const actual = Buffer.from(hash, "hex");
   return expected.length === actual.length && timingSafeEqual(expected, actual);
@@ -77,7 +82,13 @@ type CredentialRow = {
 
 export async function verifyAppAccountCredentials(username: string, password: string): Promise<SessionUser | null> {
   const supabase = getSupabaseServerClient();
-  if (!supabase) return null;
+  if (!supabase) {
+    // The person at the keyboard still sees "Invalid credentials" — naming a
+    // missing server variable on a public endpoint tells an attacker more than
+    // it tells them. This line is what the deploy logs are for.
+    console.error(`[auth] cannot check app-created accounts: ${missingDatabaseConfig()}`);
+    return null;
+  }
 
   const { data, error } = await supabase
     .from("app_accounts")
@@ -88,7 +99,7 @@ export async function verifyAppAccountCredentials(username: string, password: st
   if (error || !data) return null;
   if (data.status !== "Active") return null;
   if (!isAssignableRole(data.role)) return null;
-  if (!verifyPassword(password, data.password_salt, data.password_hash)) return null;
+  if (!(await verifyPassword(password, data.password_salt, data.password_hash))) return null;
 
   void supabase.from("app_accounts").update({ last_login_at: new Date().toISOString() }).eq("username", data.username);
 
@@ -147,7 +158,7 @@ export async function createAppAccount(input: NewAppAccount): Promise<{
   if (!supabase) return { account: null, error: "Database not configured" };
 
   const password = generatePassword();
-  const { salt, hash } = hashPassword(password);
+  const { salt, hash } = await hashPassword(password);
 
   const { data, error } = await supabase
     .from("app_accounts")
@@ -177,7 +188,7 @@ export async function resetAppAccountPassword(id: string): Promise<{
   if (!supabase) return { account: null, error: "Database not configured" };
 
   const password = generatePassword();
-  const { salt, hash } = hashPassword(password);
+  const { salt, hash } = await hashPassword(password);
   const epoch = await nextEpoch(id);
   if (epoch === null) return { account: null, error: "Account not found" };
 
