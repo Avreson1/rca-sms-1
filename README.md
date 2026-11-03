@@ -167,8 +167,15 @@ Be aware of what this system does **not** do today:
   into `null`, and the store then keeps its local copy; `insertStudentToSupabase()` and
   `insertStaffToSupabase()` ignore the result entirely. So when the role gates answer 403 — a
   teacher opening the staff list, a parent opening the roll — the screen shows whatever that
-  browser already had, or the seeded demo records on a fresh device, and looks like it worked.
-  Surfacing those failures is the next change.
+  browser already had, or an empty list on a fresh device (the initial seeds in
+  `realtime-store.ts` are intentionally empty), and looks like it worked. Surfacing those
+  failures is the next change.
+- **Most mutations are still browser-only.** Recording a fee payment (`recordPayment`),
+  editing a student, saving scores and deleting a student write to `localStorage` and nothing
+  else — only adding a student and adding staff reach the database. A payment entered on the
+  bursar's laptop does not exist for anyone else and disappears if that browser's storage is
+  cleared. The server-side routes for these exist (`/api/invoices`, `/api/ca`); the store does
+  not call them yet.
 - **A parent cannot fetch their own child's records from those routes.** `/api/students` and
   `/api/invoices` return the whole school, so `STUDENT_PARENT` is deliberately excluded until
   they filter by admission number. Parents still see their child's results through the pages
