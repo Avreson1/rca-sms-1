@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
+import { requireRole } from "@/lib/auth/guard";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+// Teachers and the bursary need the roll; enrolling a student is an admissions
+// action. A parent's own child is not served here — this route returns the whole
+// school, so STUDENT_PARENT stays off the read list until it filters by admission
+// number.
+const READ_STUDENTS = ["SUPER_ADMIN", "EXAM_OFFICER", "TEACHER", "ACCOUNTANT", "TESTERS"] as const;
+const WRITE_STUDENTS = ["SUPER_ADMIN", "EXAM_OFFICER"] as const;
 
 type StudentPayload = {
   id?: string;
@@ -34,6 +42,9 @@ function sanitizeStudent(raw: StudentPayload) {
 }
 
 export async function GET() {
+  const denied = await requireRole(READ_STUDENTS);
+  if (denied) return denied;
+
   const supabase = getSupabaseServerClient();
   if (!supabase) return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
 
@@ -46,6 +57,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = await requireRole(WRITE_STUDENTS);
+  if (denied) return denied;
+
   const supabase = getSupabaseServerClient();
   if (!supabase) return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
 

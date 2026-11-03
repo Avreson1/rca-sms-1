@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
+import { requireRole } from "@/lib/auth/guard";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+// Invoices carry every family's balances, so a parent is not on this list: the
+// route has no per-child filter yet. Giving STUDENT_PARENT access here would
+// expose the whole school's finances.
+const READ_INVOICES = ["SUPER_ADMIN", "ACCOUNTANT", "TESTERS"] as const;
+const WRITE_INVOICES = ["SUPER_ADMIN", "ACCOUNTANT"] as const;
 
 type InvoicePayload = {
   id?: string;
@@ -42,6 +49,9 @@ function sanitizeInvoice(raw: InvoicePayload) {
 }
 
 export async function GET() {
+  const denied = await requireRole(READ_INVOICES);
+  if (denied) return denied;
+
   const supabase = getSupabaseServerClient();
   if (!supabase) return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
 
@@ -51,6 +61,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = await requireRole(WRITE_INVOICES);
+  if (denied) return denied;
+
   const supabase = getSupabaseServerClient();
   if (!supabase) return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
 

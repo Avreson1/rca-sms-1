@@ -105,6 +105,17 @@ Everything else — including every `/api/*` route — requires a valid signed c
 app-managed sessions are additionally re-checked against their database row (see revocation
 above).
 
+Inside that, each data route also checks the role:
+
+| Route | Read | Write |
+| --- | --- | --- |
+| `/api/staff` | Super admin, exam officer, QA tester | Super admin |
+| `/api/students` | Super admin, exam officer, teacher, bursar, QA tester | Super admin, exam officer |
+| `/api/invoices` | Super admin, bursar, QA tester | Super admin, bursar |
+| `/api/ca` | — | Super admin, exam officer, teacher |
+| `/api/accounts` | Super admin | Super admin |
+| `/api/presence` | any signed-in role | any signed-in role |
+
 ## Deployment
 
 `render.yaml` describes a Render web service; the [`Dockerfile`](Dockerfile) is the plain
@@ -122,11 +133,17 @@ cannot break the build. Nothing in `rca-sms/` reaches production.
 
 Be aware of what this system does **not** do today:
 
-- **`/api/*` routes check that you are signed in, not what role you are.** A logged-in
-  student or parent can call `/api/staff` or `/api/students` directly and receive the data,
-  even though the UI will not show them those pages. Closing this means adding a role check
-  inside each route handler — see `isActionAuthorized()` in `src/lib/rbac.ts` for the matrix
-  it should follow.
+- **Data routes are role-gated, but no screen calls them yet.** `/api/staff`, `/api/students`,
+  `/api/invoices` and `/api/ca` each check the signed-in role through `requireRole()`
+  (`src/lib/auth/guard.ts`), but nothing in the UI fetches them today — the dashboard works from
+  per-browser storage. The checks close a surface that was open; they do not change behaviour.
+- **A parent cannot fetch their own child's records from those routes.** `/api/students` and
+  `/api/invoices` return the whole school, so `STUDENT_PARENT` is deliberately excluded until
+  they filter by admission number. Parents still see their child's results through the pages
+  they can reach.
+- **`/api/ca` acknowledges a CA submission it does not save.** It returns a success message and
+  persists nothing; the gradebook writes you see in the UI are browser-local. Treat that route
+  as unfinished rather than as the CA store.
 - **No password reset by email.** Only a super admin can set a password, by generating a new
   one from User Access. Self-service reset needs Supabase Auth (`auth.users`), which is the
   deliberate next step.

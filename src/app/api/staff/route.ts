@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
+import { requireRole } from "@/lib/auth/guard";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+// Reading the staff register is for administration and QA; the bursary is not
+// entitled to it. Only the super admin may add or change a staff record.
+const READ_STAFF = ["SUPER_ADMIN", "EXAM_OFFICER", "TESTERS"] as const;
+const WRITE_STAFF = ["SUPER_ADMIN"] as const;
 
 type StaffPayload = {
   id?: string;
@@ -42,6 +48,9 @@ function sanitizeStaff(raw: StaffPayload) {
 }
 
 export async function GET() {
+  const denied = await requireRole(READ_STAFF);
+  if (denied) return denied;
+
   const supabase = getSupabaseServerClient();
   if (!supabase) return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
 
@@ -51,6 +60,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = await requireRole(WRITE_STAFF);
+  if (denied) return denied;
+
   const supabase = getSupabaseServerClient();
   if (!supabase) return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
 
