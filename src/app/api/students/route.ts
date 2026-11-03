@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/guard";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { databaseUnavailable, getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +50,7 @@ export async function GET() {
   if (denied) return denied;
 
   const supabase = getSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
+  if (!supabase) return databaseUnavailable();
 
   const { data, error } = await supabase
     .from("students")
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
   if (denied) return denied;
 
   const supabase = getSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
+  if (!supabase) return databaseUnavailable();
 
   let body: unknown;
   try {
@@ -108,7 +108,7 @@ export async function DELETE(request: Request) {
   }
 
   const supabase = getSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
+  if (!supabase) return databaseUnavailable();
 
   const { data: removed, error } = await supabase
     .from("students")

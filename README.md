@@ -77,8 +77,8 @@ See [.env.example](.env.example). The essentials:
 | Variable | Purpose |
 | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser-safe Supabase key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-only key used by `/api/*` routes — never expose it |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser-safe Supabase key. The server routes do **not** fall back to it |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Required.** Server-only key used by `/api/*` routes — never expose it. Row-level security denies the anon key on every school table, so without this the data routes answer 503 and accounts created in User Access cannot sign in |
 | `AUTH_SESSION_SECRET` | Signs the login cookie; required in production |
 | `AUTH_SUPER_ADMIN_USERNAME` / `AUTH_SUPER_ADMIN_PASSWORD` | Bootstrap administrator |
 | `AUTH_EXAM_OFFICER_*`, `AUTH_TEACHER_*`, `AUTH_ACCOUNTANT_*`, `AUTH_STUDENT_PARENT_*` | Optional environment accounts; `_NAME`, `_STAFF_ID`, `_EMAIL` suffixes are read too |

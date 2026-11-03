@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/guard";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { databaseUnavailable, getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -125,7 +125,7 @@ export async function POST(request: Request) {
   }
 
   const supabase = getSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
+  if (!supabase) return databaseUnavailable();
 
   const { data: student, error: lookupError } = await supabase
     .from("students")

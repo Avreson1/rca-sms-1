@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/guard";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { databaseUnavailable, getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +49,7 @@ export async function GET() {
   if (denied) return denied;
 
   const supabase = getSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
+  if (!supabase) return databaseUnavailable();
 
   const { data, error } = await supabase.from("invoices").select("*").order("created_at", { ascending: false });
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 502 });
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
   const rows = invoices as NonNullable<ReturnType<typeof sanitizeInvoice>>[];
 
   const supabase = getSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
+  if (!supabase) return databaseUnavailable();
 
   // invoices.student_id is NOT NULL, and the browser only knows admission
   // numbers, so the id is resolved here rather than trusted from the client.

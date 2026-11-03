@@ -27,8 +27,11 @@ async function serverReason(response: Response): Promise<string> {
         ? "the server could not reach the database"
         : `the server replied ${response.status}`;
   try {
-    const payload = (await response.json()) as { error?: string };
-    return payload?.error ? `${payload.error} (${statusText})` : statusText;
+    const payload = (await response.json()) as { error?: string; reason?: string };
+    // `reason` names the setting that is missing, which is the part an operator
+    // can act on; the status text alone only says the database was unreachable.
+    const detail = [payload?.error, payload?.reason].filter(Boolean).join(" — ");
+    return detail ? `${detail} (${statusText})` : statusText;
   } catch {
     return statusText;
   }
