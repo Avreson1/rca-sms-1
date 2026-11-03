@@ -11,9 +11,6 @@ Your project URL has been configured into `.env` and `.env.local`:
 | Variable | Configured Value |
 |---|---|
 | **Project Reference** | `ycovxvfzmzfpehbozrut` |
-| **Supabase URL** | `https://ycovxvfzmzfpehbozrut.supabase.co` |
-| **Anon Public Key** | Stored only in `.env.local` (never commit it) |
-| **Service Role Key** | Stored only in `.env.local` (server-side secret — never commit it) |
 
 ### ⚡ One-Time Database Initialization in Supabase:
 1. Log into your **[Supabase Dashboard](https://supabase.com/dashboard/project/ycovxvfzmzfpehbozrut)**.
@@ -47,12 +44,7 @@ If the push asks for credentials, sign in with your GitHub account in the popup 
 2. Click **"New +"** → **"Blueprint"** (or **"Web Service"**).
 3. Connect your GitHub repository `rca-sms-1`.
 4. Render will read `render.yaml`. Set the following environment variables when prompted:
-   - `NEXT_PUBLIC_SUPABASE_URL`: your Supabase project URL
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: your Supabase anon key (Dashboard → Settings → API)
-   - `SUPABASE_SERVICE_ROLE_KEY`: your Supabase service-role key (dashboard only, never commit)
-   - `AUTH_SESSION_SECRET`: a long random string used to sign login sessions
-   - `AUTH_SUPER_ADMIN_USERNAME` / `AUTH_SUPER_ADMIN_PASSWORD`: the administrator login
-   - `AUTH_EXAM_OFFICER_*`, `AUTH_TEACHER_*`, `AUTH_ACCOUNTANT_*`, `AUTH_STUDENT_PARENT_*`: optional additional logins
+
    - `NODE_ENV`: `production`
 5. Click **"Apply"** to deploy. Your portal will be live at `https://rca-sms.onrender.com`!
 
@@ -63,12 +55,6 @@ If the push asks for credentials, sign in with your GitHub account in the popup 
 You have full control over creating and assigning accounts to your testers. 
 
 ### 1. Primary Administrator Login (For You / Owner)
-
-| Role | Username / ID | Recommended Email | Default Password | Access Level |
-|---|---|---|---|---|
-| **Step 1: Super Admin** | `dominic370` | `dominic370@royalcrownacademy.edu.ng` | Set via `AUTH_SUPER_ADMIN_PASSWORD` | Full System Control, Staff Creation, Student Enrollment, Fees, Broad Permissions. |
-
----
 
 ### 2. How to Manually Create & Assign Staff / Tester Accounts
 
