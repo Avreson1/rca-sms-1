@@ -2,11 +2,15 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, MapPin, ShieldCheck, User, LogOut, CheckCircle2 } from "lucide-react";
+import { Bell, MapPin, Menu, ShieldCheck, User, LogOut, CheckCircle2 } from "lucide-react";
 import { SCHOOL_INFO } from "@/lib/constants";
 import { useRealtimeAuth } from "@/lib/realtime-store";
 
-export function Navbar() {
+interface NavbarProps {
+  onMenuClick: () => void;
+}
+
+export function Navbar({ onMenuClick }: NavbarProps) {
   const router = useRouter();
   const { currentUser, logout } = useRealtimeAuth();
   const [mounted, setMounted] = useState(false);
@@ -58,22 +62,31 @@ export function Navbar() {
 
   return (
     <>
-      <header className="h-16 border-b border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs select-none">
-        {/* Left: Location & School indicator */}
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <MapPin className="w-3.5 h-3.5 text-[#0000FF] flex-shrink-0" />
-          <span className="font-extrabold text-slate-900 hidden sm:inline tracking-tight">{SCHOOL_INFO.name}</span>
-          <span className="text-slate-300 hidden sm:inline">•</span>
-          <span className="text-slate-500 text-[11px] truncate max-w-[200px] md:max-w-none">
+      <header className="h-16 border-b border-slate-200 bg-white px-3 sm:px-4 md:px-6 flex items-center justify-between gap-2 sticky top-0 z-30 shadow-xs select-none">
+        {/* Left: Mobile navigation trigger, location & school indicator */}
+        <div className="flex items-center gap-2 min-w-0 text-xs text-slate-500">
+          <button
+            type="button"
+            onClick={onMenuClick}
+            aria-label="Open navigation"
+            aria-expanded="false"
+            className="lg:hidden flex-shrink-0 p-2 -ml-1 rounded-xl text-slate-600 hover:bg-blue-50 hover:text-[#0000FF] transition-colors cursor-pointer"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <MapPin className="w-3.5 h-3.5 text-[#0000FF] flex-shrink-0 hidden sm:block" />
+          <span className="font-extrabold text-slate-900 hidden md:inline tracking-tight truncate">{SCHOOL_INFO.name}</span>
+          <span className="text-slate-300 hidden md:inline">•</span>
+          <span className="text-slate-500 text-[11px] truncate hidden sm:inline max-w-[200px] lg:max-w-none">
             Rayfield Academic Complex, Jos
           </span>
         </div>
 
         {/* Right: Authenticated User, Role Indicator & Logout */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 lg:gap-3 flex-shrink-0">
           
           {/* Role Badge (Live Active Session Indicator) */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold shadow-2xs">
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold shadow-2xs">
             <ShieldCheck className="w-3.5 h-3.5 text-[#0000FF]" />
             <span className="font-bold text-slate-900 hidden md:inline text-[11px]">Role:</span>
             <span className={`px-2 py-0.5 rounded-md text-[10px] font-black tracking-wide border ${getRoleBadgeStyle(activeUser.role)}`}>
@@ -85,7 +98,7 @@ export function Navbar() {
           <button 
             type="button"
             aria-label="Notifications"
-            className="relative p-2 rounded-xl text-slate-500 hover:bg-blue-50 hover:text-[#0000FF] transition-colors cursor-pointer"
+            className="relative flex min-h-10 min-w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-blue-50 hover:text-[#0000FF] transition-colors cursor-pointer"
           >
             <Bell className="w-4 h-4" />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#FF0000] rounded-full ring-2 ring-white" />
@@ -96,7 +109,7 @@ export function Navbar() {
             <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#0000FF] to-blue-600 text-white flex items-center justify-center font-black text-xs shadow-md shadow-blue-500/20 ring-1 ring-cyan-400/50">
               {getInitials(activeUser.fullName)}
             </div>
-            <div className="text-xs hidden sm:block">
+            <div className="text-xs hidden xl:block">
               <p className="font-bold text-slate-900 leading-tight truncate max-w-[140px]">{activeUser.fullName}</p>
               <p className="text-slate-500 text-[10px] font-mono font-medium">{activeUser.staffId}</p>
             </div>
@@ -106,7 +119,7 @@ export function Navbar() {
           <button
             type="button"
             onClick={() => setShowLogoutModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-[#FF0000] hover:text-white border border-rose-200 hover:border-transparent rounded-xl transition-all shadow-2xs cursor-pointer ml-1 group"
+            className="flex min-h-10 items-center justify-center gap-1.5 px-2.5 sm:px-3 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-[#FF0000] hover:text-white border border-rose-200 hover:border-transparent rounded-xl transition-all shadow-2xs cursor-pointer ml-1 group"
             title="Log Out of Session"
           >
             <LogOut className="w-3.5 h-3.5 text-[#FF0000] group-hover:text-white transition-colors" />

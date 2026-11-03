@@ -103,7 +103,7 @@ export default function PublishResultsPage() {
               <span>/</span>
               <span className="text-slate-800 font-semibold">Publish Results</span>
             </div>
-            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
               Terminal Result Publishing &amp; Approval
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">

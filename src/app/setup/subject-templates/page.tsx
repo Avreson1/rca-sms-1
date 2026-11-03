@@ -201,8 +201,8 @@ export default function SubjectTemplatesPage() {
               <span>/</span>
               <span className="text-slate-800 font-semibold">Subject Templates</span>
             </div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                 Curriculum &amp; Subject Packages
               </h1>
               <span className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
@@ -210,7 +210,7 @@ export default function SubjectTemplatesPage() {
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Build dynamic curriculum packages for **Pre-Play, Play, Nursery 1-2, Primary 1-5, JSS, and SSS** for {SCHOOL_INFO.name}.
+              Build dynamic curriculum packages for <strong>Pre-Play, Play, Nursery 1-2, Primary 1-5, JSS, and SSS</strong> for {SCHOOL_INFO.name}.
             </p>
           </div>
 
@@ -351,7 +351,7 @@ export default function SubjectTemplatesPage() {
         {/* Modal: Create Template */}
         {isModalOpen && (
           <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-            <div className="bg-white rounded-2xl max-w-lg w-full border shadow-xl p-6 space-y-4">
+            <div className="bg-white rounded-2xl max-w-lg w-full border shadow-xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
                   <Layers className="w-4 h-4 text-blue-600" />
@@ -375,7 +375,7 @@ export default function SubjectTemplatesPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">Tier / Department</label>
                     <select

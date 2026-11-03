@@ -54,7 +54,7 @@ export default function RecordPaymentPage() {
               <span>/</span>
               <span className="text-slate-800 font-semibold">Record Payment</span>
             </div>
-            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
               Bursary Fee Collection & Receipts
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -107,7 +107,7 @@ export default function RecordPaymentPage() {
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Amount to Pay (₦)</label>
                   <input
