@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Navbar } from "@/components/layout/navbar";
+import { SyncStatusNotice } from "@/components/layout/sync-status-notice";
 import { useRealtimeAuth } from "@/lib/realtime-store";
 import { isRouteAllowed } from "@/lib/rbac";
 import { ShieldAlert, ArrowLeft, LogIn, Lock } from "lucide-react";
@@ -72,6 +73,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
 
       <div className="flex min-h-screen flex-col lg:pl-64">
         <Navbar onMenuClick={() => setSidebarOpen(true)} />
+        <SyncStatusNotice />
         <main className="mx-auto w-full max-w-7xl min-w-0 flex-1 p-4 sm:p-6 md:p-8">
           {isAllowed ? (
             children
