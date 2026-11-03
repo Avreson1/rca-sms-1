@@ -148,12 +148,6 @@ The VCS portal is a Next.js application deployed via the Render blueprint in `re
 2. In [Render](https://render.com), choose **New + → Blueprint** and connect the repository.
 3. Set the environment variables when prompted (see `.env.example` for the full list):
    ```env
-   NEXT_PUBLIC_SUPABASE_URL="https://[PROJECT-REF].supabase.co"
-   NEXT_PUBLIC_SUPABASE_ANON_KEY="[anon-key]"
-   SUPABASE_SERVICE_ROLE_KEY="[service-role-key]"
-   AUTH_SESSION_SECRET="[generate-a-long-random-string]"
-   AUTH_SUPER_ADMIN_USERNAME="dominic370"
-   AUTH_SUPER_ADMIN_PASSWORD="[choose-a-strong-password]"
    ```
 4. Click **Apply**. Render builds and serves the app over HTTPS.
 
