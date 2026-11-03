@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { TesterAccess } from "@/components/settings/tester-access";
+import { UserAccess } from "@/components/settings/user-access";
 import { SCHOOL_INFO } from "@/lib/constants";
 import {
   purgeAllDemoData,
@@ -185,7 +185,7 @@ export default function SettingsPage() {
           </div>
         )}
 
-        <TesterAccess />
+        <UserAccess />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-5xl">
           

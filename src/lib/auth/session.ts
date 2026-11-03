@@ -12,6 +12,12 @@ export interface SessionUser {
   role: SessionRole;
   staffId: string;
   email: string;
+  /**
+   * Revision counter of an app-managed account, carried so the proxy can tell a
+   * still-current cookie from one issued before a reset or suspension. Absent on
+   * environment accounts, which are not revocable and need no database lookup.
+   */
+  epoch?: number;
 }
 
 export const SESSION_COOKIE = "rca_session";
@@ -88,6 +94,7 @@ export async function verifySessionToken(
       role: payload.role,
       staffId: String(payload.staffId ?? ""),
       email: String(payload.email ?? ""),
+      epoch: typeof payload.epoch === "number" ? payload.epoch : undefined,
     };
   } catch {
     return null;

@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { SessionRole, SessionUser } from "./session";
-import { verifyTesterCredentials } from "./tester-accounts";
+import { verifyAppAccountCredentials } from "./app-accounts";
 
 interface AccountRecord extends SessionUser {
   password: string;
@@ -105,7 +105,7 @@ export async function verifyCredentials(username: string, password: string): Pro
     return user;
   }
 
-  // App-generated accounts (TESTERS role), created from Settings by the super
-  // admin. Skipped silently when Supabase is not configured.
-  return verifyTesterCredentials(normalized, password);
+  // People created from Settings → User Access. Environment accounts are checked
+  // first, so a misconfigured or empty database can never lock out the admin.
+  return verifyAppAccountCredentials(normalized, password);
 }
