@@ -24,6 +24,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored second copy of the portal with its own tsconfig/eslint config.
+    // Not part of this build; see the matching `exclude` in tsconfig.json.
+    "rca-sms/**",
   ]),
 ]);
 
