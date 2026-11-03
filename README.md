@@ -116,6 +116,30 @@ Inside that, each data route also checks the role:
 | `/api/accounts` | Super admin | Super admin |
 | `/api/presence` | any signed-in role | any signed-in role |
 
+### `POST /api/ca` — the CA write path
+
+Super admin, exam officer, or teacher signs in and sends one student's scores:
+
+```json
+{
+  "admissionNo": "RCA/2025/001",
+  "session": "2025/2026",
+  "term": "First Term",
+  "scores": [
+    { "subject": "Mathematics", "test1": 8, "test2": 7, "project": 9,
+      "midTerm": 6, "exam": 45, "grade": "B2", "remark": "Very good" }
+  ]
+}
+```
+
+The student is looked up by admission number (404 if unknown), the component limits from the
+schema's CHECK constraints are enforced before anything reaches Supabase (`0–10` for
+`test1`/`test2`/`project`/`midTerm`, `0–60` for `exam`), a repeated subject in one submission is
+rejected, and `total_score` is never sent because the database computes it. Rows are upserted on
+`(student_id, subject, session, term)`, so re-submitting a subject updates it instead of
+duplicating it. `grade` is required from the caller: the schema would otherwise file the row
+under its `DEFAULT 'F'`, which would book a failed grade against a child who was never graded.
+
 ## Deployment
 
 `render.yaml` describes a Render web service; the [`Dockerfile`](Dockerfile) is the plain
@@ -141,9 +165,12 @@ Be aware of what this system does **not** do today:
   `/api/invoices` return the whole school, so `STUDENT_PARENT` is deliberately excluded until
   they filter by admission number. Parents still see their child's results through the pages
   they can reach.
-- **`/api/ca` acknowledges a CA submission it does not save.** It returns a success message and
-  persists nothing; the gradebook writes you see in the UI are browser-local. Treat that route
-  as unfinished rather than as the CA store.
+- **`/api/ca` now writes `ca_scores`, but the CA screen still does not call it.** The endpoint
+  persists real rows; the grades you enter in *Update CA* are still browser-local until that
+  screen posts to it. Until then the database holds no CA data from everyday use.
+- **Grading maths still runs in the browser.** `/api/ca` records the `grade` the caller sends
+  instead of deriving it from `total_score`, so a crafted request can file any letter grade under
+  a passing or failing total. Server-side grading is the next change.
 - **No password reset by email.** Only a super admin can set a password, by generating a new
   one from User Access. Self-service reset needs Supabase Auth (`auth.users`), which is the
   deliberate next step.
