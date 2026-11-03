@@ -17,7 +17,79 @@ from github import Github, Auth
 
 
 # =====================================================================
-# 1. TELEGRAM BOT BRIDGE (With Deduplicated Live Status & Photo Upload)
+# 0. AUTOMATIC GEMINI MODEL DISCOVERY (Prevents 404 NOT_FOUND)
+# =====================================================================
+
+_VERIFIED_PRO_MODEL: Optional[str] = None
+_VERIFIED_FLASH_MODEL: Optional[str] = None
+
+
+def get_working_model(client: genai.Client, prefer_pro: bool = True) -> str:
+    """
+    Dynamically discovers and verifies a working Gemini model for this specific API key.
+    Avoids 404 NOT_FOUND errors when Google restricts legacy 2.5 or preview endpoints on new keys.
+    """
+    global _VERIFIED_PRO_MODEL, _VERIFIED_FLASH_MODEL
+
+    if prefer_pro and _VERIFIED_PRO_MODEL:
+        return _VERIFIED_PRO_MODEL
+    if not prefer_pro and _VERIFIED_FLASH_MODEL:
+        return _VERIFIED_FLASH_MODEL
+
+    # Priority order covering Gemini 3.x and 2.5 series
+    pro_candidates = [
+        "gemini-3.1-pro-preview",
+        "gemini-3-flash-preview",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-3.1-flash-lite",
+    ]
+    flash_candidates = [
+        "gemini-3-flash-preview",
+        "gemini-3.1-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-3.1-pro-preview",
+    ]
+
+    # Discover all models explicitly enabled on this API key
+    discovered: List[str] = []
+    try:
+        for m in client.models.list():
+            name = (getattr(m, "name", "") or "").replace("models/", "")
+            actions = getattr(m, "supported_actions", []) or []
+            if "generateContent" in actions and "gemini" in name:
+                # Skip specialized audio/image-only/tts/embedding models
+                if not any(x in name for x in ("tts", "image", "embedding", "live", "transcribe", "aqa", "banana")):
+                    discovered.append(name)
+    except Exception as e:
+        print(f"[!] Warning listing models: {e}")
+
+    candidates = (pro_candidates if prefer_pro else flash_candidates) + discovered
+    seen = set()
+    ordered_candidates = [x for x in candidates if not (x in seen or seen.add(x))]
+
+    for model_id in ordered_candidates:
+        try:
+            client.models.generate_content(
+                model=model_id,
+                contents="ping",
+                config=types.GenerateContentConfig(max_output_tokens=5),
+            )
+            print(f"[+] Verified working Gemini model ({'PRO' if prefer_pro else 'FLASH'}): {model_id}")
+            if prefer_pro:
+                _VERIFIED_PRO_MODEL = model_id
+            else:
+                _VERIFIED_FLASH_MODEL = model_id
+            return model_id
+        except Exception as e:
+            print(f"[-] Model '{model_id}' unavailable on this key ({e.__class__.__name__}), trying next...")
+
+    raise RuntimeError("No working Gemini text generation model found for this GEMINI_API_KEY.")
+
+
+# =====================================================================
+# 1. TELEGRAM BOT BRIDGE
 # =====================================================================
 
 class TelegramBridge:
@@ -45,8 +117,15 @@ class TelegramBridge:
             print(f"[!] Telegram API exception ({method}): {e}")
             return {"ok": False, "error": str(e)}
 
+    def flush_old_updates(self) -> None:
+        """Clears stale messages queued while the runner was offline so old commands don't auto-fire."""
+        res = self._api_request("getUpdates", {"timeout": 1, "allowed_updates": ["message"]})
+        if res.get("ok") and res.get("result"):
+            last_uid = res["result"][-1]["update_id"]
+            self._api_request("getUpdates", {"offset": last_uid + 1, "timeout": 1})
+            print(f"[*] Flushed {len(res['result'])} stale Telegram update(s) up to offset {last_uid}.")
+
     def send_message(self, text: str) -> Optional[int]:
-        """Sends a plain-text message to Telegram (chunked safely at 4000 chars)."""
         if not text or not text.strip():
             return None
         max_len = 4000
@@ -66,7 +145,6 @@ class TelegramBridge:
         return last_msg_id
 
     def edit_message(self, message_id: Optional[int], text: str) -> None:
-        """Updates an existing Telegram message in-place if the text changed."""
         if not message_id or not text:
             return
         trimmed = text[:4000]
@@ -83,7 +161,6 @@ class TelegramBridge:
         )
 
     def send_photo(self, image_path: Path, caption: str = "") -> None:
-        """Uploads a PNG screenshot directly to Telegram using multipart/form-data."""
         if not image_path.exists():
             return
         boundary = f"----DevinBoundary{int(time.time() * 1000)}"
@@ -118,7 +195,6 @@ class TelegramBridge:
             print(f"[!] Failed to upload photo to Telegram: {e}")
 
     def fetch_pending_commands(self) -> List[Dict[str, Any]]:
-        """Polls Telegram for new messages in interactive mode."""
         res = self._api_request("getUpdates", {"timeout": 6, "allowed_updates": ["message"]})
         if not res.get("ok"):
             return []
@@ -136,16 +212,10 @@ class TelegramBridge:
 
 
 # =====================================================================
-# 2. GIT-PLUMBING PERSISTENT MEMORY (Zero Working-Tree Interference)
+# 2. GIT-PLUMBING PERSISTENT MEMORY
 # =====================================================================
 
 class GitMemoryStore:
-    """
-    Persists conversation state to `refs/heads/devin-memory` on origin using
-    low-level Git plumbing (`hash-object`, `mktree`, `commit-tree`) so it uses
-    the existing authenticated `.git/config` without touching the working tree.
-    """
-
     @staticmethod
     def load_history(repo_path: str) -> List[Dict[str, str]]:
         subprocess.run(
@@ -182,7 +252,6 @@ class GitMemoryStore:
             history = history[-10:]
             payload = json.dumps(history, indent=2)
 
-            # 1. Write blob into git object database
             blob_proc = subprocess.run(
                 ["git", "hash-object", "-w", "--stdin"],
                 input=payload,
@@ -193,7 +262,6 @@ class GitMemoryStore:
             )
             blob_sha = blob_proc.stdout.strip()
 
-            # 2. Create tree containing memory.json
             tree_input = f"100644 blob {blob_sha}\tmemory.json\n"
             tree_proc = subprocess.run(
                 ["git", "mktree"],
@@ -205,7 +273,6 @@ class GitMemoryStore:
             )
             tree_sha = tree_proc.stdout.strip()
 
-            # 3. Create orphan commit and push using repository's authenticated origin
             env = os.environ.copy()
             env["GIT_AUTHOR_NAME"] = "Devin-Memory"
             env["GIT_AUTHOR_EMAIL"] = "devin-memory@users.noreply.github.com"
@@ -262,7 +329,6 @@ class HardenedWorkspace:
         self.telegram.edit_message(self.status_msg_id, f"⚙️ Agent Status: {step_text}")
 
     def _scrubbed_env(self) -> Dict[str, str]:
-        """Strips all secrets and tokens from subprocesses to block prompt-injection leaks."""
         clean = {
             k: v
             for k, v in os.environ.items()
@@ -310,7 +376,6 @@ class HardenedWorkspace:
 
     @staticmethod
     def _kill_process_group(proc: Optional[subprocess.Popen]) -> None:
-        """Kills the entire POSIX process group so child Node workers never orphan."""
         if not proc:
             return
         try:
@@ -435,12 +500,10 @@ class HardenedWorkspace:
             if p.exists():
                 p.unlink()
 
-        # Remove stale Next.js dev lock if present
         lock_file = self.repo_path / ".next" / "dev" / "lock"
         if lock_file.exists():
             lock_file.unlink()
 
-        # Prefer fast production server if build exists, else dev server
         has_prod_build = (self.repo_path / ".next" / "BUILD_ID").exists()
         server_cmd = (
             ["npx", "next", "start", "-H", "127.0.0.1", "-p", str(port)]
@@ -492,8 +555,9 @@ class HardenedWorkspace:
             self.telegram.send_photo(desktop_png, caption=f"🖥️ Desktop Render ({norm_route})")
             self.telegram.send_photo(mobile_png, caption=f"📱 Mobile Render ({norm_route})")
 
+            vision_model = get_working_model(self.client, prefer_pro=True)
             vision_resp = self.client.models.generate_content(
-                model="gemini-2.5-pro",
+                model=vision_model,
                 contents=[
                     types.Part.from_bytes(data=desktop_png.read_bytes(), mime_type="image/png"),
                     types.Part.from_bytes(data=mobile_png.read_bytes(), mime_type="image/png"),
@@ -633,19 +697,19 @@ class DevinTelegramAgent:
             workspace.host_ephemeral_preview,
         ]
 
-        chat = self.client.chats.create(
-            model="gemini-2.5-pro",
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                tools=tools,
-                temperature=0.1,
-                automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                    maximum_remote_calls=18
-                ),
-            ),
-        )
-
         try:
+            active_model = get_working_model(self.client, prefer_pro=True)
+            chat = self.client.chats.create(
+                model=active_model,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    tools=tools,
+                    temperature=0.1,
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                        maximum_remote_calls=18
+                    ),
+                ),
+            )
             full_input = f"{memory_context}CURRENT USER DIRECTIVE:\n{user_prompt}"
             response = chat.send_message(full_input)
             reply = response.text or "✅ Task completed and verified."
@@ -674,7 +738,6 @@ def send_daily_log_summary(telegram: TelegramBridge, repo_path: str) -> None:
         text=True,
     ).stdout.strip() or "No new commits in the last 24 hours."
 
-    # Safe 24h diff stat without relying on local git reflog
     old_sha = subprocess.run(
         ["git", "rev-list", "-n", "1", "--before=24 hours ago", "HEAD"],
         cwd=repo_path,
@@ -691,7 +754,7 @@ def send_daily_log_summary(telegram: TelegramBridge, repo_path: str) -> None:
         ).stdout.strip() or "No file diff changes in the last 24 hours."
     else:
         git_diff_stat = subprocess.run(
-            ["git", " show", "--stat", "--oneline", "HEAD"],
+            ["git", "show", "--stat", "--oneline", "HEAD"],
             cwd=repo_path,
             capture_output=True,
             text=True,
@@ -710,17 +773,21 @@ def send_daily_log_summary(telegram: TelegramBridge, repo_path: str) -> None:
         except Exception as e:
             ci_summary = f"CI fetch error: {e}"
 
-    client = genai.Client()
-    resp = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=(
-            f"You are Lead Staff Engineer for `{repo_name}`. Analyze the past 24 hours of logs and write a clear "
-            f"11:00 PM daily summary for the developer on Telegram:\n\n"
-            f"COMMITS (24h):\n{git_commits}\n\nDIFF STATS:\n{git_diff_stat}\n\nCI/CD RUNS:\n{ci_summary}\n\n"
-            "Structure with: 1) 📌 Executive Summary, 2) 🔍 Technical Log Interpretation, 3) 🛡️ Recommended Next Actions."
-        ),
-    )
-    telegram.send_message(f"🌙 Daily 11:00 PM Engineering Log Report\n\n{resp.text}")
+    try:
+        client = genai.Client()
+        fast_model = get_working_model(client, prefer_pro=False)
+        resp = client.models.generate_content(
+            model=fast_model,
+            contents=(
+                f"You are Lead Staff Engineer for `{repo_name}`. Analyze the past 24 hours of logs and write a clear "
+                f"11:00 PM daily summary for the developer on Telegram:\n\n"
+                f"COMMITS (24h):\n{git_commits}\n\nDIFF STATS:\n{git_diff_stat}\n\nCI/CD RUNS:\n{ci_summary}\n\n"
+                "Structure with: 1) 📌 Executive Summary, 2) 🔍 Technical Log Interpretation, 3) 🛡️ Recommended Next Actions."
+            ),
+        )
+        telegram.send_message(f"🌙 Daily 11:00 PM Engineering Log Report (via {fast_model})\n\n{resp.text}")
+    except Exception as e:
+        telegram.send_message(f"⚠️ Could not generate AI summary ({e}). Raw 24h commits:\n{git_commits}")
 
 
 # =====================================================================
@@ -744,7 +811,6 @@ def commit_and_open_pr_if_changed(repo_path: str, summary: str) -> Optional[str]
     subprocess.run(["git", "config", "user.email", "devin-agent@users.noreply.github.com"], cwd=repo_path, check=True)
     subprocess.run(["git", "checkout", "-b", branch_name], cwd=repo_path, check=True)
 
-    # Ensure build/dependency folders are never staged even if .gitignore is missing
     for ignore_pattern in ("node_modules/", ".next/", "out/", ".env", ".env.local"):
         subprocess.run(["git", "reset", ignore_pattern], cwd=repo_path, capture_output=True)
 
@@ -814,9 +880,12 @@ def main() -> None:
             telegram.send_message(f"✅ Pull Request Opened: {pr_url}")
         return
 
-    # 3. Interactive Live Session (When triggered manually via workflow_dispatch with blank prompt)
+    # 3. Interactive Live Session (Flush old queued messages first!)
+    telegram.flush_old_updates()
+    active_model = get_working_model(agent.client, prefer_pro=True)
     telegram.send_message(
         f"🟢 Devin Agent (`Avreson1/rca-sms-1`) is ONLINE for {session_minutes} mins.\n"
+        f"• Active Model: `{active_model}`\n"
         "• Persistent Git Memory: ACTIVE\n"
         "• Playwright Multimodal Vision QA: ACTIVE\n"
         "Send your instruction below (or `/summary` / `/exit`):"
