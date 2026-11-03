@@ -131,6 +131,12 @@ rewriting that family's balance. `DELETE /api/students` removes the pupil and, t
 schema's `ON DELETE CASCADE`, their CA scores and invoices — which is why the confirmation on
 Students Management says so.
 
+`/api/presence` is the exception: it carries no school data, only who is signed in. The heartbeat
+widget posts an empty body and the server takes the name, role and staff ID from the signed cookie,
+because the body used to be able to claim any of them. The list lives in the server's memory and
+drops anyone who has not beat in 10 minutes, so a restart empties it and each dashboard refills it
+within one 5-second sync.
+
 ### `POST /api/ca` — the CA write path
 
 Super admin, exam officer, or teacher signs in and sends one student's scores:

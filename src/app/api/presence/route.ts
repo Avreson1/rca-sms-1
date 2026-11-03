@@ -1,65 +1,69 @@
 import { NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/auth/guard";
 
-interface UserPresenceItem {
+type PresenceStatus = "Active now" | "Idle (2m)" | "Active (5m)";
+
+interface PresenceEntry {
   id: string;
   username: string;
   name: string;
   role: string;
-  staffId?: string;
+  staffId: string;
   lastSeen: number;
-  status: "Active now" | "Idle (2m)" | "Active (5m)";
-  isSelf?: boolean;
 }
 
-// In-memory active presence cache (dynamic heartbeats from active sessions)
-const activeUsers: Record<string, UserPresenceItem> = {};
+// Heartbeats live in this process's memory and are forgotten on a restart; the
+// widget re-registers within one 5-second sync. A shared store would be needed
+// for the count to survive more than one instance.
+const activeUsers = new Map<string, PresenceEntry>();
+
+const STALE_AFTER_MS = 10 * 60 * 1000;
 
 export async function GET() {
+  const viewer = await getSessionUser();
+  if (!viewer) {
+    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+  }
+
   const now = Date.now();
-  // Filter users active in the last 10 minutes
-  const activeEntries = Object.entries(activeUsers).filter(
-    ([, user]) => now - user.lastSeen < 10 * 60 * 1000
-  );
+  for (const [username, entry] of activeUsers) {
+    if (now - entry.lastSeen >= STALE_AFTER_MS) activeUsers.delete(username);
+  }
 
-  const onlineList = activeEntries.map(([, user]) => {
-    const diffSeconds = Math.floor((now - user.lastSeen) / 1000);
-    let statusText: "Active now" | "Idle (2m)" | "Active (5m)" = "Active now";
-    if (diffSeconds > 120) statusText = "Active (5m)";
-    else if (diffSeconds > 60) statusText = "Idle (2m)";
+  const users = Array.from(activeUsers.values())
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((entry) => {
+      const secondsAgo = Math.floor((now - entry.lastSeen) / 1000);
+      const status: PresenceStatus = secondsAgo > 120 ? "Active (5m)" : secondsAgo > 60 ? "Idle (2m)" : "Active now";
+      return { ...entry, status, secondsAgo, isSelf: entry.username === viewer.username };
+    });
 
-    return {
-      ...user,
-      status: statusText,
-      secondsAgo: diffSeconds,
-    };
-  });
-
-  return NextResponse.json({
-    onlineCount: onlineList.length,
-    users: onlineList,
-    serverTimestamp: now,
-  });
+  return NextResponse.json({ onlineCount: users.length, users, serverTimestamp: now });
 }
 
-export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    const username = body.username || "dominic370";
-    const now = Date.now();
-
-    activeUsers[username] = {
-      id: `p-${username}`,
-      username: username,
-      name: body.name || "Dominic Mark (You)",
-      role: body.role || "Administrator / ICT",
-      staffId: body.staffId || "RCA/PERS/025",
-      lastSeen: now,
-      status: "Active now",
-      isSelf: true,
-    };
-
-    return NextResponse.json({ success: true, timestamp: now });
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to record heartbeat" }, { status: 400 });
+/**
+ * The heartbeat carries no identity. It used to accept name, role and staff ID
+ * from the request body, so any signed-in browser could put "Administrator /
+ * ICT" and someone else's staff number on its own presence card.
+ */
+export async function POST() {
+  const session = await getSessionUser();
+  if (!session) {
+    return NextResponse.json(
+      { success: false, error: "Presence needs a session. Sign in again." },
+      { status: 401 }
+    );
   }
+
+  const now = Date.now();
+  activeUsers.set(session.username, {
+    id: `p-${session.username}`,
+    username: session.username,
+    name: session.fullName || session.username,
+    role: session.role.replace(/_/g, " "),
+    staffId: session.staffId,
+    lastSeen: now,
+  });
+
+  return NextResponse.json({ success: true, timestamp: now });
 }

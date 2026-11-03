@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import { Radio } from "lucide-react";
-import { useRealtimeAuth } from "@/lib/realtime-store";
 
 interface OnlineUser {
   id: string;
@@ -14,40 +13,38 @@ interface OnlineUser {
 }
 
 export function UsersOnlineWidget() {
-  const { currentUser } = useRealtimeAuth();
   const [users, setUsers] = useState<OnlineUser[]>([]);
   const [onlineCount, setOnlineCount] = useState<number>(0);
   const [lastSyncTime, setLastSyncTime] = useState<string>("Connecting...");
+  const [syncFailed, setSyncFailed] = useState(false);
 
   const syncPresence = async () => {
     try {
-      const activeName = currentUser?.fullName ? `${currentUser.fullName} (You)` : "Staff Member (You)";
-      const activeRole = currentUser?.role ? currentUser.role.replace("_", " ") : "Administrator";
-      const activeStaffId = currentUser?.staffId || "RCA/PERS/001";
-      const activeUsername = currentUser?.username || "admin";
-
-      // Send heartbeat
-      await fetch("/api/presence", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: activeUsername,
-          name: activeName,
-          role: activeRole,
-          staffId: activeStaffId,
-        }),
-      });
-
-      // Fetch live presence list
+      // Nothing about who is sending the heartbeat: the server reads that from
+      // the signed session cookie, so a browser cannot claim another identity.
+      const heartbeat = await fetch("/api/presence", { method: "POST" });
       const res = await fetch("/api/presence");
+      if (!heartbeat.ok || !res.ok) {
+        setUsers([]);
+        setOnlineCount(0);
+        setLastSyncTime("Not recorded");
+        setSyncFailed(true);
+        return;
+      }
+
       const data = await res.json();
       if (data.users) {
         setUsers(data.users);
         setOnlineCount(data.onlineCount);
         setLastSyncTime(new Date().toLocaleTimeString());
+        setSyncFailed(false);
       }
     } catch (err) {
       console.error("Presence sync failed:", err);
+      setUsers([]);
+      setOnlineCount(0);
+      setLastSyncTime("Not recorded");
+      setSyncFailed(true);
     }
   };
 
@@ -88,7 +85,7 @@ export function UsersOnlineWidget() {
               </div>
               <div className="min-w-0">
                 <p className="font-bold text-slate-800 truncate">
-                  {user.name}
+                  {user.isSelf ? `${user.name} (You)` : user.name}
                 </p>
                 <p className="text-[10px] text-slate-500 truncate">{user.role}</p>
               </div>
@@ -107,7 +104,7 @@ export function UsersOnlineWidget() {
       </div>
 
       <div className="pt-3 mt-2 border-t border-slate-100 text-[10px] text-slate-400 flex items-center justify-between">
-        <span>Auto-synced via Realtime API</span>
+        <span>{syncFailed ? "Presence not recorded — the server refused" : "Auto-synced via Realtime API"}</span>
         <span className="text-slate-500 font-mono text-[9px]">Last Sync: {lastSyncTime}</span>
       </div>
     </div>
