@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   UserCheck,
   Lock,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SCHOOL_INFO } from "@/lib/constants";
@@ -113,7 +114,12 @@ const navItems: NavItem[] = [
   },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { currentUser, logout } = useRealtimeAuth();
@@ -169,23 +175,37 @@ export function Sidebar() {
     .filter(Boolean) as NavItem[];
 
   return (
-    <aside className="w-64 bg-[#0a1128] text-slate-100 flex flex-col flex-shrink-0 min-h-screen border-r border-blue-950/80 select-none shadow-2xl">
+    <aside
+      className={cn(
+        "fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-[#0a1128] text-slate-100 select-none shadow-2xl transition-transform duration-300 ease-out",
+        "border-r border-blue-950/80 lg:visible lg:translate-x-0",
+        open ? "visible translate-x-0" : "invisible -translate-x-full"
+      )}
+    >
       {/* Brand Header - Royal Blue with Cyan accent */}
       <div className="p-4 border-b border-blue-900/40 flex items-center gap-3 bg-gradient-to-r from-[#0000FF]/25 via-[#000080]/30 to-[#0a1128]">
-        <div className="bg-[#0000FF] p-2.5 rounded-xl text-white shadow-lg shadow-blue-700/40 ring-1 ring-cyan-400/40">
+        <div className="bg-[#0000FF] p-2.5 rounded-xl text-white shadow-lg shadow-blue-700/40 ring-1 ring-cyan-400/40 flex-shrink-0">
           <School className="w-5 h-5 text-cyan-200" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <h1 className="font-extrabold text-sm leading-tight text-white tracking-wider drop-shadow-sm">{SCHOOL_INFO.shortName}</h1>
             <span className="text-[10px] bg-cyan-500/20 text-cyan-300 font-bold px-1.5 py-0.5 rounded border border-cyan-400/40 uppercase tracking-wider">SMS</span>
           </div>
-          <p className="text-[11px] text-blue-200/80 truncate w-40 mt-0.5 font-medium">{SCHOOL_INFO.name}</p>
+          <p className="text-[11px] text-blue-200/80 truncate mt-0.5 font-medium">{SCHOOL_INFO.name}</p>
         </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close navigation"
+          className="flex-shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-blue-950/70 transition-colors cursor-pointer lg:hidden"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Navigation Links */}
-      <nav className="flex-1 overflow-y-auto p-3 space-y-1 text-sm scrollbar-thin scrollbar-thumb-blue-900">
+      <nav className="flex-1 min-h-0 overflow-y-auto p-3 space-y-1 text-sm scrollbar-thin scrollbar-thumb-blue-900">
         {visibleNavItems.map((item) => {
           const Icon = item.icon;
           const hasChildren = item.children && item.children.length > 0;
@@ -222,6 +242,7 @@ export function Sidebar() {
                         <Link
                           key={child.href}
                           href={child.href}
+                          onClick={onClose}
                           className={cn(
                             "block px-2.5 py-1.5 rounded-lg text-xs transition-all tracking-wide",
                             isCurrentChild
@@ -243,6 +264,7 @@ export function Sidebar() {
             <Link
               key={item.title}
               href={item.href || "#"}
+              onClick={onClose}
               className={cn(
                 "flex items-center justify-between px-3 py-2 rounded-xl font-medium transition-all text-xs tracking-wide",
                 isActive
@@ -304,7 +326,7 @@ export function Sidebar() {
       </nav>
 
       {/* Footer Info */}
-      <div className="p-3 border-t border-blue-900/40 text-[11px] text-slate-400 bg-slate-950/60">
+      <div className="p-3 border-t border-blue-900/40 text-[11px] text-slate-400 bg-slate-950/60 flex-shrink-0">
         <div className="flex justify-between items-center">
           <span className="text-slate-400">Academic Session:</span>
           <span className="text-cyan-300 font-bold">{SCHOOL_INFO.currentSession}</span>

@@ -545,7 +545,7 @@ export default function ScoreCardPage() {
         </div>
 
         {/* Academic Performance Table */}
-        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+        <div className="border border-slate-200 rounded-xl overflow-x-auto shadow-2xs">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               {reportMode === "single" ? (
@@ -670,7 +670,7 @@ export default function ScoreCardPage() {
                 </span>
                 <span className="text-[10px] text-slate-500 font-semibold">5: Excellent • 1: Poor</span>
               </div>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
                 {Object.entries(psy.affectiveRatings || {}).slice(0, 8).map(([trait, val], idx) => (
                   <div key={idx} className="flex items-center justify-between border-b border-slate-100 pb-0.5">
                     <span className="text-slate-700 truncate pr-1">{trait.replace(/tr-[a-z]+/, "") || trait}</span>
@@ -690,7 +690,7 @@ export default function ScoreCardPage() {
                 </span>
                 <span className="text-[10px] text-slate-500 font-semibold">5: Excellent • 1: Poor</span>
               </div>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
                 {Object.entries(psy.psychomotorRatings || {}).slice(0, 8).map(([trait, val], idx) => (
                   <div key={idx} className="flex items-center justify-between border-b border-slate-100 pb-0.5">
                     <span className="text-slate-700 truncate pr-1">{trait.replace(/tr-[a-z]+/, "") || trait}</span>
@@ -706,7 +706,7 @@ export default function ScoreCardPage() {
 
         {/* Attendance Summary */}
         {showAttendanceRemarks && (
-          <div className="grid grid-cols-3 gap-3 bg-slate-50 border border-slate-200 p-3 rounded-xl text-center text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 border border-slate-200 p-3 rounded-xl text-center text-xs">
             <div>
               <span className="text-[10px] uppercase font-bold text-slate-400 block">Days School Opened</span>
               <strong className="text-slate-800 font-mono text-sm">{psy.attendance.daysOpened}</strong>
@@ -730,7 +730,7 @@ export default function ScoreCardPage() {
             </span>
             <span className="font-bold text-[10px] text-[#0000FF]">Pass Mark: 45% (D)</span>
           </div>
-          <div className="grid grid-cols-5 gap-2 text-center text-[10px]">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-[10px]">
             <div className="bg-white p-1 rounded border border-blue-200">
               <strong className="text-[#0000FF] block font-black">A: 70 - 100%</strong>
               <span className="text-slate-500">Distinction (4.0)</span>
@@ -756,7 +756,7 @@ export default function ScoreCardPage() {
 
         {/* Endorsements & Signatures */}
         {showAttendanceRemarks && (
-          <div className="grid grid-cols-2 gap-8 pt-4 border-t-2 border-slate-300 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 pt-4 border-t-2 border-slate-300 text-xs">
             <div className="space-y-3">
               <div>
                 <span className="text-[10px] font-bold uppercase text-slate-400 block">Form Master&apos;s Appraisal</span>
@@ -862,7 +862,7 @@ export default function ScoreCardPage() {
               <span className="text-slate-800 font-semibold">Terminal Score Card</span>
             </div>
             <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                 {isParentOrStudent ? "Ward Academic Dossier & Report Card" : "Terminal Score Card & Dossier Engine"}
               </h1>
               {isParentOrStudent ? (
@@ -1065,7 +1065,7 @@ export default function ScoreCardPage() {
                 <select
                   value={themeScheme}
                   onChange={(e) => setThemeScheme(e.target.value as any)}
-                  className="text-xs font-bold bg-slate-50 text-slate-800 border border-slate-200 rounded-lg p-1.5 cursor-pointer"
+                  className="min-w-0 max-w-full text-xs font-bold bg-slate-50 text-slate-800 border border-slate-200 rounded-lg p-1.5 cursor-pointer"
                 >
                   <option value="royal">Scheme 1: Royal Blue &amp; Cyan</option>
                   <option value="scheme2">Scheme 2: Deep Navy &amp; Magenta</option>

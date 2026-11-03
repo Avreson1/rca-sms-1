@@ -319,8 +319,8 @@ export default function StaffManagementPage() {
               <span>/</span>
               <span className="text-slate-800 font-semibold">Staff Management</span>
             </div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                 Staff Directory &amp; Permissions
               </h1>
               <span className="bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -577,7 +577,7 @@ export default function StaffManagementPage() {
         {/* Modal: Edit Existing Staff Permissions */}
         {editingStaff && (
           <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-            <div className="bg-white rounded-2xl max-w-lg w-full border shadow-xl p-6 space-y-4">
+            <div className="bg-white rounded-2xl max-w-lg w-full border shadow-xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
                   <KeyRound className="w-5 h-5 text-blue-600" />
@@ -599,7 +599,7 @@ export default function StaffManagementPage() {
                   <strong className="text-blue-700">{editingStaff.role}</strong>
                 </p>
 
-                <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
                   {[
                     { key: "canEnterScores", label: "Enter CA Scores" },
                     { key: "canEditScores", label: "Edit / Override Scores" },
@@ -655,7 +655,7 @@ export default function StaffManagementPage() {
         {/* Modal: Single Staff Registration */}
         {isModalOpen && (
           <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-            <div className="bg-white rounded-2xl max-w-xl w-full border shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-2xl max-w-xl w-full border shadow-xl max-h-[90vh] overflow-y-auto p-6 space-y-4 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-blue-600" />
@@ -682,7 +682,7 @@ export default function StaffManagementPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">Role Assignment</label>
                     <select
@@ -709,7 +709,7 @@ export default function StaffManagementPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">Primary Teaching Subject</label>
                     <input
@@ -761,7 +761,7 @@ export default function StaffManagementPage() {
                     <span className="text-[10px] text-blue-700 font-semibold">Configurable Toggles</span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
                     <label className="flex items-center gap-2 p-1 rounded hover:bg-white cursor-pointer">
                       <input
                         type="checkbox"
@@ -867,7 +867,7 @@ export default function StaffManagementPage() {
         {/* Modal: Bulk CSV Upload */}
         {isCsvModalOpen && (
           <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-            <div className="bg-white rounded-2xl max-w-2xl w-full border shadow-xl p-6 space-y-4">
+            <div className="bg-white rounded-2xl max-w-2xl w-full border shadow-xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
                   <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
@@ -915,7 +915,7 @@ export default function StaffManagementPage() {
                 )}
 
                 {csvPreview.length > 0 && (
-                  <div className="border border-slate-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+                  <div className="border border-slate-200 rounded-xl overflow-x-auto max-h-48 overflow-y-auto">
                     <table className="w-full text-left text-[11px]">
                       <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0">
                         <tr>
@@ -975,9 +975,9 @@ export default function StaffManagementPage() {
         {/* Modal: Out-of-Band Credential Distribution Slip */}
         {credentialSlip && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-            <div className="bg-white rounded-2xl max-w-lg w-full border-2 border-[#0000FF]/30 shadow-2xl p-6 space-y-4">
+            <div className="bg-white rounded-2xl max-w-lg w-full border-2 border-[#0000FF]/30 shadow-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 flex-wrap">
                   <div className="w-9 h-9 rounded-xl bg-[#0000FF] flex items-center justify-center text-white font-black shadow-md">
                     <Lock className="w-5 h-5 text-[#00FFFF]" />
                   </div>
@@ -1013,7 +1013,7 @@ export default function StaffManagementPage() {
 
               {/* Staff Details & Credentials Card */}
               <div className="bg-gradient-to-br from-slate-50 to-blue-50/40 border border-[#0000FF]/20 rounded-xl p-4 space-y-3">
-                <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   <div>
                     <span className="text-[10px] uppercase font-bold text-slate-500 block">Staff Member</span>
                     <span className="font-extrabold text-slate-900">{credentialSlip.fullName}</span>

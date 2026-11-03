@@ -229,8 +229,8 @@ export default function UpdateCAPage() {
               <span>/</span>
               <span className="text-slate-800 font-semibold">Continuous Assessment</span>
             </div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                 Continuous Assessment (CA) Gradebook
               </h1>
               <span className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -536,7 +536,7 @@ export default function UpdateCAPage() {
         {/* Modal: Bulk Score Sheet CSV Upload */}
         {isCsvModalOpen && (
           <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-            <div className="bg-white rounded-2xl max-w-2xl w-full border shadow-xl p-6 space-y-4">
+            <div className="bg-white rounded-2xl max-w-2xl w-full border shadow-xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
                   <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
@@ -578,7 +578,7 @@ export default function UpdateCAPage() {
                 )}
 
                 {csvPreview.length > 0 && (
-                  <div className="border border-slate-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+                  <div className="border border-slate-200 rounded-xl overflow-x-auto max-h-48 overflow-y-auto">
                     <table className="w-full text-left text-[11px]">
                       <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0">
                         <tr>

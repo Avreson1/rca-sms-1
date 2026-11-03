@@ -105,7 +105,7 @@ export default function SetupGradingPage() {
               <span>/</span>
               <span className="text-slate-900 font-extrabold">Universal Grading System</span>
             </div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="text-2xl font-black text-slate-900 tracking-tight">
                 Approved Universal Grading Criteria
               </h1>

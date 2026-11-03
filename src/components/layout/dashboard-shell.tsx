@@ -14,24 +14,65 @@ interface DashboardShellProps {
   children: React.ReactNode;
 }
 
+const DESKTOP_BREAKPOINT_PX = 1024;
+
 export function DashboardShell({ children }: DashboardShellProps) {
   const pathname = usePathname();
   const { currentUser } = useRealtimeAuth();
   const [mounted, setMounted] = React.useState(false);
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
 
   React.useEffect(() => {
     setMounted(true);
   }, []);
 
+  // The drawer is only reachable below the desktop breakpoint, so navigating
+  // always dismisses it and a resize past the breakpoint closes it.
+  React.useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname]);
+
+  React.useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= DESKTOP_BREAKPOINT_PX) setSidebarOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSidebarOpen(false);
+    };
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    document.body.style.overflow = sidebarOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [sidebarOpen]);
+
   const currentRole = (mounted ? currentUser?.role : null) || "SUPER_ADMIN";
   const isAllowed = isRouteAllowed(currentRole, pathname);
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <Navbar />
-        <main className="flex-1 p-6 md:p-8 overflow-y-auto max-w-7xl w-full mx-auto">
+    <div className="min-h-screen bg-slate-50">
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
+      {sidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs lg:hidden"
+        />
+      )}
+
+      <div className="flex min-h-screen flex-col lg:pl-64">
+        <Navbar onMenuClick={() => setSidebarOpen(true)} />
+        <main className="mx-auto w-full max-w-7xl min-w-0 flex-1 p-4 sm:p-6 md:p-8">
           {isAllowed ? (
             children
           ) : (
