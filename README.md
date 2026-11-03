@@ -157,17 +157,22 @@ cannot break the build. Nothing in `rca-sms/` reaches production.
 
 Be aware of what this system does **not** do today:
 
-- **Data routes are role-gated, but no screen calls them yet.** `/api/staff`, `/api/students`,
-  `/api/invoices` and `/api/ca` each check the signed-in role through `requireRole()`
-  (`src/lib/auth/guard.ts`), but nothing in the UI fetches them today — the dashboard works from
-  per-browser storage. The checks close a surface that was open; they do not change behaviour.
+- **Students, staff and invoices do go through the routes; CA does not.**
+  `src/lib/realtime-store.ts` calls `GET /api/students`, `GET /api/staff` and `GET /api/invoices`
+  when the dashboard mounts, and posts new students and staff to `POST /api/students` /
+  `POST /api/staff`. Only `/api/ca` has no caller yet, so grades entered in *Update CA* stay in
+  the browser's own storage until that screen posts to it. Every route checks the signed-in role
+  through `requireRole()` (`src/lib/auth/guard.ts`).
+- **A refused fetch or write is invisible on screen.** `requestJson()` turns any non-2xx response
+  into `null`, and the store then keeps its local copy; `insertStudentToSupabase()` and
+  `insertStaffToSupabase()` ignore the result entirely. So when the role gates answer 403 — a
+  teacher opening the staff list, a parent opening the roll — the screen shows whatever that
+  browser already had, or the seeded demo records on a fresh device, and looks like it worked.
+  Surfacing those failures is the next change.
 - **A parent cannot fetch their own child's records from those routes.** `/api/students` and
   `/api/invoices` return the whole school, so `STUDENT_PARENT` is deliberately excluded until
   they filter by admission number. Parents still see their child's results through the pages
   they can reach.
-- **`/api/ca` now writes `ca_scores`, but the CA screen still does not call it.** The endpoint
-  persists real rows; the grades you enter in *Update CA* are still browser-local until that
-  screen posts to it. Until then the database holds no CA data from everyday use.
 - **Grading maths still runs in the browser.** `/api/ca` records the `grade` the caller sends
   instead of deriving it from `total_score`, so a crafted request can file any letter grade under
   a passing or failing total. Server-side grading is the next change.
