@@ -8,7 +8,7 @@ import {
   MessageSquare,
   ArrowLeft,
   Send,
-  CheckCircle2,
+  Copy,
   Phone,
   Sparkles,
 } from "lucide-react";
@@ -16,23 +16,20 @@ import {
 export default function SendSMSBroadcastPage() {
   const [recipientGroup, setRecipientGroup] = useState("all-parents");
   const [smsText, setSmsText] = useState("");
-  const [isSending, setIsSending] = useState(false);
-  const [successToast, setSuccessToast] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const charCount = smsText.length;
   const pageCount = Math.ceil(charCount / 160) || 1;
 
-  const handleSend = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCopy = async () => {
     if (!smsText.trim()) return;
-
-    setIsSending(true);
-    setTimeout(() => {
-      setIsSending(false);
-      setSuccessToast(true);
-      setSmsText("");
-      setTimeout(() => setSuccessToast(false), 4000);
-    }, 1500);
+    try {
+      await navigator.clipboard.writeText(smsText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // clipboard is unavailable without a secure context; the draft stays on screen
+    }
   };
 
   return (
@@ -56,22 +53,21 @@ export default function SendSMSBroadcastPage() {
               Parent & Staff SMS Gateway
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Send emergency alerts, fee reminders, and attendance notifications powered by <strong>Twilio</strong>.
+              Draft emergency alerts, fee reminders, and attendance notifications for parents and staff.
             </p>
           </div>
         </div>
 
-        {/* Success Alert */}
-        {successToast && (
-          <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl p-4 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-            SMS batch delivered to 310 phone numbers!
-          </div>
-        )}
+        {/* No SMS provider is wired up, so a dispatch would silently go nowhere. */}
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[11px] text-amber-900 max-w-2xl">
+          No SMS provider is connected to this portal yet, so nothing can be sent from it. A message drafted here is
+          not stored anywhere either; use <strong>Copy message</strong> and send it from the school&apos;s own SMS
+          account.
+        </div>
 
         {/* SMS Form */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs max-w-2xl space-y-4">
-          <form onSubmit={handleSend} className="space-y-4 text-xs">
+          <div className="space-y-4 text-xs">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Target Phone Audience</label>
               <select
@@ -79,8 +75,8 @@ export default function SendSMSBroadcastPage() {
                 onChange={(e) => setRecipientGroup(e.target.value)}
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium"
               >
-                <option value="all-parents">All Registered Parent Phone Numbers (310 Contacts)</option>
-                <option value="ss2-parents">SS 2A & 2B Parents Only (62 Contacts)</option>
+                <option value="all-parents">All Registered Parent Phone Numbers</option>
+                <option value="ss2-parents">SS 2A &amp; 2B Parents Only</option>
                 <option value="debtors">Parents with Overdue Fee Balance Only</option>
                 <option value="staff">Teaching Staff Direct Contacts</option>
               </select>
@@ -104,18 +100,30 @@ export default function SendSMSBroadcastPage() {
               />
             </div>
 
-            <div className="pt-2 flex items-center justify-between">
-              <span className="text-[11px] text-slate-400">Sender ID: ROYACROWN</span>
-              <button
-                type="submit"
-                disabled={isSending}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer"
-              >
-                <Send className="w-3.5 h-3.5" />
-                {isSending ? "Dispatching SMS..." : "Broadcast SMS"}
-              </button>
+            <div className="pt-2 flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-[11px] text-slate-400">Sender ID: ROYACROWN (no SMS account is configured)</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  disabled={!smsText.trim()}
+                  className="px-4 py-2.5 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white border border-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  {copied ? "Copied to clipboard" : "Copy message"}
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  title="No SMS provider is connected to this portal"
+                  className="px-5 py-2.5 bg-slate-200 text-slate-500 font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-not-allowed"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  Broadcast SMS
+                </button>
+              </div>
             </div>
-          </form>
+          </div>
         </div>
 
       </div>

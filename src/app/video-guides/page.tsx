@@ -407,7 +407,7 @@ const SOP_MANUAL_DATA: SOPItem[] = [
     procedureSteps: [
       "Navigate to Accounts → Invoicing (/accounts/invoicing) to inspect your ward's itemized fee invoice.",
       "Review tuition breakdown, development levies, ICT fees, and current payment status ('Fully Cleared', 'Outstanding').",
-      "Obtain the official Royal Crown Academy bank details (GTBank / Account: 0123456789) from the invoice or attached newsletter.",
+      "Obtain the official Royal Crown Academy bank details printed on the invoice or on the circular issued by the Bursary.",
       "To send enquiries to the Form Teacher, Bursar, or Principal, navigate to Inmail Desk (/inmail) → click 'Compose Message' → select recipient.",
       "Verify replies in your Inmail inbox for official school administrative updates.",
     ],

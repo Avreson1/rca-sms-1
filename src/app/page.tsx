@@ -3,7 +3,6 @@
 import React from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { EmailBanner } from "@/components/dashboard/email-banner";
 import { SubjectsCard } from "@/components/dashboard/subjects-card";
 import { UsersOnlineWidget } from "@/components/dashboard/users-online";
 import { SCHOOL_INFO } from "@/lib/constants";
@@ -35,37 +34,28 @@ export default function DashboardHome() {
     setMounted(true);
   }, []);
 
-  const activeUser = (mounted ? currentUser : null) || {
-    id: "u-025",
-    username: "dominic370",
-    fullName: "Dr. Dominic Mark",
-    role: "SUPER_ADMIN" as const,
-    staffId: "RCA/PERS/025",
-    email: "dominic370@royalcrownacademy.edu.ng",
-    assignedSubject: "Information & Communication Technology",
-    assignedClass: "SS 2",
-    loginTime: "2026-01-01T00:00:00.000Z",
-  };
+  // Identity comes from the server session only; naming a super admin here used to
+  // greet visitors as someone who may never have signed in.
+  const activeUser = mounted ? currentUser : null;
 
-  const userFullName = activeUser.fullName;
-  const userRole = activeUser.role;
-  const userStaffId = activeUser.staffId;
-  const userEmail = activeUser.email;
+  const userFullName = activeUser?.fullName;
+  const userRole = activeUser?.role;
+  const userStaffId = activeUser?.staffId;
 
   // Dynamic assigned subjects based on active user or curriculum
-  const assignedSubjects = activeUser.assignedSubject
+  const assignedSubjects = activeUser?.assignedSubject
     ? [
         {
           id: "sub-assigned",
           name: activeUser.assignedSubject,
-          className: activeUser.assignedClass || "Primary 1",
+          className: activeUser.assignedClass || "",
           studentsCount: students.filter((s) => s.className === activeUser.assignedClass).length || 0,
           caSubmitted: false,
         },
       ]
     : [];
 
-  const getRoleBadge = (role: string) => {
+  const getRoleBadge = (role?: string) => {
     switch (role) {
       case "SUPER_ADMIN":
         return { label: "Tier 1: Super Administrator", bg: "bg-purple-100 text-purple-800 border-purple-200" };
@@ -91,9 +81,11 @@ export default function DashboardHome() {
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
-              <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${roleBadge.bg}`}>
-                {roleBadge.label}
-              </span>
+              {userRole && (
+                <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${roleBadge.bg}`}>
+                  {roleBadge.label}
+                </span>
+              )}
               <span className="text-xs text-slate-400">•</span>
               <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
                 <Calendar className="w-3 h-3 text-slate-400" />
@@ -102,11 +94,11 @@ export default function DashboardHome() {
             </div>
 
             <h2 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">
-              Welcome back, {userFullName}
+              {userFullName ? `Welcome back, ${userFullName}` : "Signing in…"}
             </h2>
 
             <p className="text-xs md:text-sm text-slate-500 flex flex-wrap items-center gap-2">
-              <span>Staff ID / Ref: <strong className="font-mono text-slate-800 font-semibold">{userStaffId}</strong></span>
+              <span>Staff ID / Ref: <strong className="font-mono text-slate-800 font-semibold">{userStaffId || "—"}</strong></span>
               <span>•</span>
               <span>Institution: <strong className="text-slate-800 font-semibold">{SCHOOL_INFO.name}</strong></span>
             </p>

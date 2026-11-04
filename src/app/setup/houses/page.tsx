@@ -29,40 +29,40 @@ const initialHouses: SportsHouse[] = [
     name: "Sapphire House",
     colorName: "Blue",
     colorHex: "bg-blue-600 text-white",
-    houseMaster: "Mr. Dominic Mark",
-    studentCount: 78,
+    houseMaster: "",
+    studentCount: 0,
     motto: "Bravery and Diligence",
-    points: 420,
+    points: 0,
   },
   {
     id: "h-2",
     name: "Ruby House",
     colorName: "Red",
     colorHex: "bg-red-600 text-white",
-    houseMaster: "Mrs. Sarah Danjuma",
-    studentCount: 82,
+    houseMaster: "",
+    studentCount: 0,
     motto: "Passion and Victory",
-    points: 450,
+    points: 0,
   },
   {
     id: "h-3",
     name: "Emerald House",
     colorName: "Green",
     colorHex: "bg-emerald-600 text-white",
-    houseMaster: "Mr. John Paul Gyang",
-    studentCount: 75,
+    houseMaster: "",
+    studentCount: 0,
     motto: "Growth and Resilience",
-    points: 395,
+    points: 0,
   },
   {
     id: "h-4",
     name: "Topaz House",
     colorName: "Yellow / Gold",
     colorHex: "bg-amber-500 text-slate-950",
-    houseMaster: "Mr. Emmanuel Pam",
-    studentCount: 75,
+    houseMaster: "",
+    studentCount: 0,
     motto: "Shine with Honor",
-    points: 410,
+    points: 0,
   },
 ];
 
@@ -95,6 +95,12 @@ export default function SetupHousesPage() {
           </div>
         </div>
 
+        {/* House points reach a report card, so an unrecorded total must not look like a tally. */}
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[11px] text-amber-900">
+          House points are recorded by the sports prefect; no points, house master, or membership figures have been
+          entered for this school yet.
+        </div>
+
         {/* Houses Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {houses.map((h) => (
@@ -115,7 +121,7 @@ export default function SetupHousesPage() {
               </div>
 
               <div className="pt-3 border-t border-slate-100 text-xs space-y-1">
-                <p className="text-slate-500">Master: <strong className="text-slate-800">{h.houseMaster}</strong></p>
+                <p className="text-slate-500">Master: <strong className="text-slate-800">{h.houseMaster || "—"}</strong></p>
                 <p className="text-slate-500">Membership: <strong className="text-blue-700">{h.studentCount} Students</strong></p>
               </div>
             </div>

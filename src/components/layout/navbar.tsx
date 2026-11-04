@@ -47,17 +47,14 @@ export function Navbar({ onMenuClick }: NavbarProps) {
     }, 1000);
   };
 
-  const activeUser = (mounted ? currentUser : null) || {
-    username: "dominic370",
-    fullName: "Dr. Dominic Mark",
-    role: "SUPER_ADMIN" as const,
-    staffId: "RCA/PERS/025",
-  };
+  // The server session names the signed-in person; until it resolves the header
+  // used to show a super admin who may never have signed in.
+  const activeUser = mounted ? currentUser : null;
 
   const getInitials = (name: string) => {
     const parts = name.split(" ").filter(Boolean);
     if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-    return (parts[0]?.substring(0, 2) || "DM").toUpperCase();
+    return (parts[0]?.substring(0, 2) || "—").toUpperCase();
   };
 
   return (
@@ -89,9 +86,15 @@ export function Navbar({ onMenuClick }: NavbarProps) {
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold shadow-2xs">
             <ShieldCheck className="w-3.5 h-3.5 text-[#0000FF]" />
             <span className="font-bold text-slate-900 hidden md:inline text-[11px]">Role:</span>
-            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black tracking-wide border ${getRoleBadgeStyle(activeUser.role)}`}>
-              {activeUser.role}
-            </span>
+            {activeUser ? (
+              <span className={`px-2 py-0.5 rounded-md text-[10px] font-black tracking-wide border ${getRoleBadgeStyle(activeUser.role)}`}>
+                {activeUser.role}
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wide border border-slate-200 bg-slate-100 text-slate-500">
+                Signing in…
+              </span>
+            )}
           </div>
 
           {/* Notification Bell */}
@@ -107,11 +110,13 @@ export function Navbar({ onMenuClick }: NavbarProps) {
           {/* User Profile */}
           <div className="flex items-center gap-2.5 pl-2.5 border-l border-slate-200">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#0000FF] to-blue-600 text-white flex items-center justify-center font-black text-xs shadow-md shadow-blue-500/20 ring-1 ring-cyan-400/50">
-              {getInitials(activeUser.fullName)}
+              {activeUser ? getInitials(activeUser.fullName) : "—"}
             </div>
             <div className="text-xs hidden xl:block">
-              <p className="font-bold text-slate-900 leading-tight truncate max-w-[140px]">{activeUser.fullName}</p>
-              <p className="text-slate-500 text-[10px] font-mono font-medium">{activeUser.staffId}</p>
+              <p className="font-bold text-slate-900 leading-tight truncate max-w-[140px]">
+                {activeUser?.fullName || "Signing in…"}
+              </p>
+              <p className="text-slate-500 text-[10px] font-mono font-medium">{activeUser?.staffId || "—"}</p>
             </div>
           </div>
 
@@ -147,7 +152,13 @@ export function Navbar({ onMenuClick }: NavbarProps) {
             <div>
               <h3 className="text-base font-extrabold text-slate-900">Sign Out of RCA Portal?</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Are you sure you want to end active session for <strong>{activeUser.fullName}</strong> ({activeUser.role})?
+                {activeUser ? (
+                  <>
+                    Are you sure you want to end active session for <strong>{activeUser.fullName}</strong> ({activeUser.role})?
+                  </>
+                ) : (
+                  "The server has not named the signed-in user yet, so this would end an unidentified session."
+                )}
               </p>
             </div>
             <div className="flex gap-2 justify-center pt-2">

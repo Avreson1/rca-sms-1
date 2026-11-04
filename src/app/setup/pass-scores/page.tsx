@@ -3,11 +3,9 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { SCHOOL_INFO } from "@/lib/constants";
 import {
   Target,
   ArrowLeft,
-  CheckCircle2,
   AlertCircle,
   Save,
   ShieldCheck,
@@ -18,19 +16,12 @@ import {
 
 export default function SetupPassScoresPage() {
   const [passScores, setPassScores] = useState({
-    universalPassMark: 45, // 45% (Grade D) Approved Universal Pass Mark
-    creditPassMark: 50,    // 50% (Grade C)
-    distinctionMark: 70,   // 70% (Grade A)
+    universalPassMark: 45,
+    creditPassMark: 50,
+    distinctionMark: 70,
     minCompulsoryCreditsForPromotion: 5,
     mathEnglishRequired: true,
   });
-
-  const [saved, setSaved] = useState(false);
-
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
-  };
 
   return (
     <DashboardShell>
@@ -51,49 +42,51 @@ export default function SetupPassScoresPage() {
             </div>
             <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
               <span>Minimum Pass Score &amp; Promotion Benchmarks</span>
-              <span className="text-xs bg-blue-100 text-[#0000FF] font-black px-2.5 py-0.5 rounded-full border border-blue-300 uppercase">
-                45% Pass Mark
+              <span className="text-xs bg-slate-100 text-slate-600 font-black px-2.5 py-0.5 rounded-full border border-slate-200 uppercase">
+                Set per tier in Grading Scales
               </span>
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Approved universal pass benchmark is strictly <strong>45% (Grade D)</strong> across all academic levels for {SCHOOL_INFO.name}.
+              The pass mark this portal actually applies to a pupil&apos;s result is the one configured per tier in
+              Setup &rarr; Grading Scales. No universal figure is approved or stored on this screen.
             </p>
           </div>
 
           <button
-            onClick={handleSave}
-            className="px-5 py-2.5 text-xs font-black bg-[#0000FF] hover:bg-blue-700 text-white rounded-xl transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5 self-start md:self-auto cursor-pointer"
+            type="button"
+            disabled
+            title="Nothing on this screen is saved to the school database"
+            className="px-5 py-2.5 text-xs font-black bg-slate-200 text-slate-500 rounded-xl flex items-center gap-1.5 self-start md:self-auto cursor-not-allowed"
           >
-            <Save className="w-4 h-4 text-cyan-300" />
-            {saved ? "Saved Configuration!" : "Save Benchmarks"}
+            <Save className="w-4 h-4" />
+            Save Benchmarks
           </button>
         </div>
 
-        {/* Success Alert */}
-        {saved && (
-          <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl p-4 text-xs font-bold flex items-center gap-2 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-            Promotion thresholds updated successfully!
-          </div>
-        )}
+        {/* No store hook backs these fields, so a save would claim a change that never lands. */}
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[11px] text-amber-900 max-w-2xl">
+          These benchmarks are not connected to the school database, so editing them changes nothing and saving is
+          disabled. Use Setup &rarr; Grading Scales, where the marks the portal computes from are configured per tier.
+        </div>
 
         {/* Universal Pass Policy Banner */}
         <div className="p-5 rounded-3xl bg-gradient-to-r from-blue-950 via-[#0a1128] to-blue-950 text-white border border-cyan-400/30 flex items-center justify-between shadow-xl">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="text-[10px] bg-cyan-500/20 text-cyan-300 font-bold px-2 py-0.5 rounded border border-cyan-400/40 uppercase tracking-wider">
-                Approved Universal Pass Score
+                Not an approved universal score
               </span>
-              <span className="text-xs text-blue-200 font-semibold">National Educational Baseline</span>
+              <span className="text-xs text-blue-200 font-semibold">Per-tier configuration</span>
             </div>
-            <h2 className="text-xl font-black text-white">Minimum Pass Score: 45% (Grade D)</h2>
+            <h2 className="text-xl font-black text-white">Pass marks are set per tier, not on this page</h2>
             <p className="text-xs text-blue-200/80 max-w-xl">
-              Any student score below 45% is designated as Fail (Grade F). Scores from 45% to 49% receive a Pass mark.
+              The tier scales in Setup &rarr; Grading Scales decide where a pass begins for each class band. The
+              numbers below are this browser&apos;s draft values only and are not used to grade any pupil.
             </p>
           </div>
           <div className="bg-blue-900/80 border border-cyan-400/40 px-5 py-3 rounded-2xl text-center hidden sm:block">
-            <span className="text-[10px] font-bold text-cyan-300 uppercase block">Pass Grade</span>
-            <span className="text-2xl font-black text-white">D (45 - 49%)</span>
+            <span className="text-[10px] font-bold text-cyan-300 uppercase block">Where it is set</span>
+            <span className="text-sm font-black text-white leading-snug">Setup<br />Grading Scales</span>
           </div>
         </div>
 
@@ -103,7 +96,7 @@ export default function SetupPassScoresPage() {
             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-200">
               <div>
                 <p className="font-extrabold text-sm text-slate-900">Minimum Universal Pass Mark (Grade D)</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">Approved baseline mark required to avoid failing a subject</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Draft value only; the mark a result is judged against comes from Setup &rarr; Grading Scales</p>
               </div>
               <div className="flex items-center gap-1.5">
                 <input

@@ -264,7 +264,6 @@ export default function SetupClassesPage() {
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                   >
                     <option value="Unassigned">-- Select or Assign Teacher --</option>
-                    <option value="Dominic Mark">Dominic Mark (Super Admin)</option>
                     {staff.map((st) => (
                       <option key={st.id} value={st.fullName}>
                         {st.fullName} ({st.role})

@@ -173,7 +173,13 @@ export default function CAStructurePage() {
                 </span>
               </div>
               <p className="text-xs text-blue-200/80 mt-0.5">
-                Logged in as <strong>{currentUser?.fullName || "Dr. Dominic Mark"}</strong> ({currentUser?.role || "SUPER_ADMIN"}).
+                {currentUser ? (
+                  <>
+                    Logged in as <strong>{currentUser.fullName}</strong> ({currentUser.role}).
+                  </>
+                ) : (
+                  "Signing in… the server has not named this session yet."
+                )}
               </p>
             </div>
           </div>
@@ -331,7 +337,8 @@ export default function CAStructurePage() {
             <div className="pt-4 border-t border-slate-100 flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 <Info className="w-4 h-4 text-cyan-600 flex-shrink-0" />
-                <span>Changes will take effect instantly in the Live Gradebook and Student Report Cards.</span>
+                <span>The change applies to this browser&apos;s copy of the CA structure until the CA structure is
+                saved to the school database.</span>
               </div>
 
               <div className="flex items-center gap-2">

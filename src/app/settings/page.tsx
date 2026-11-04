@@ -61,7 +61,7 @@ export default function SettingsPage() {
   // Newsletter settings local state
   const [newsletterTitle, setNewsletterTitle] = useState(newsletter.title || "Royal Crown Academy End-of-Term Bulletin");
   const [resumptionDate, setResumptionDate] = useState(newsletter.nextTermResumption || newsletter.resumptionDate || "Monday, 12th January 2026");
-  const [principalName, setPrincipalName] = useState(newsletter.principalName || "Dr. Dominic Mark (Principal / Director)");
+  const [principalName, setPrincipalName] = useState(newsletter.principalName || "");
 
   // CBT Configuration local state
   const [cbtExamMode, setCBTExamMode] = useState(cbtConfig.activeExamMode || "Terminal Examination");
@@ -448,6 +448,7 @@ export default function SettingsPage() {
                           type="text"
                           value={principalName}
                           onChange={(e) => setPrincipalName(e.target.value)}
+                          placeholder="Name of the principal who signs the report card"
                           className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-bold outline-none focus:border-[#0000FF]"
                         />
                       </div>
@@ -549,18 +550,18 @@ export default function SettingsPage() {
             <div className="bg-[#0a1128] border border-blue-950 rounded-3xl p-5 text-white shadow-xl space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-[#0000FF] text-white flex items-center justify-center font-black text-lg shadow-md shadow-blue-700/40 ring-1 ring-cyan-400/50">
-                  {currentUser?.fullName ? currentUser.fullName.slice(0, 2).toUpperCase() : "DM"}
+                  {currentUser?.fullName ? currentUser.fullName.slice(0, 2).toUpperCase() : "—"}
                 </div>
                 <div>
-                  <h4 className="font-extrabold text-sm text-white">{currentUser?.fullName || "Dr. Dominic Mark"}</h4>
-                  <p className="text-xs text-cyan-400 font-mono">@{currentUser?.username || "dominic370"}</p>
+                  <h4 className="font-extrabold text-sm text-white">{currentUser?.fullName || "Signing in…"}</h4>
+                  <p className="text-xs text-cyan-400 font-mono">{currentUser ? `@${currentUser.username}` : "—"}</p>
                 </div>
               </div>
 
               <div className="text-xs text-slate-300 space-y-1.5 pt-2 border-t border-blue-900/60 font-mono">
-                <p>Staff ID: <strong className="text-white">{currentUser?.staffId || "RCA/PERS/025"}</strong></p>
-                <p>Role: <strong className="text-cyan-300">{currentUser?.role || "SUPER_ADMIN"}</strong></p>
-                <p>Subject: <strong className="text-white">{currentUser?.assignedSubject || "ICT"}</strong></p>
+                <p>Staff ID: <strong className="text-white">{currentUser?.staffId || "—"}</strong></p>
+                <p>Role: <strong className="text-cyan-300">{currentUser?.role || "—"}</strong></p>
+                <p>Subject: <strong className="text-white">{currentUser?.assignedSubject || "—"}</strong></p>
               </div>
 
               <div className="p-3 bg-[#060b19]/80 rounded-2xl border border-cyan-500/20 text-[11px] text-slate-400 space-y-1">

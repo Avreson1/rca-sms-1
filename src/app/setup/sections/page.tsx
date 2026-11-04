@@ -85,11 +85,11 @@ export default function SetupSectionsPage() {
       }
     }
     return {
-      "sec-creche-play": "Unassigned",
-      "sec-nursery": "Unassigned",
-      "sec-primary": "Unassigned",
-      "sec-jss": "Unassigned",
-      "sec-sss": "Dominic Mark",
+      "sec-creche-play": "",
+      "sec-nursery": "",
+      "sec-primary": "",
+      "sec-jss": "",
+      "sec-sss": "",
     };
   });
 
@@ -145,7 +145,9 @@ export default function SetupSectionsPage() {
             const sectionClasses = classes.filter((c) => c.section === sec.sectionKey);
             const classNames = sectionClasses.map((c) => c.name);
             const studentCount = students.filter((s) => classNames.includes(s.className)).length;
-            const currentHead = sectionHeads[sec.id] || "Unassigned";
+            const storedHead = sectionHeads[sec.id];
+            // Older browser copies stored the word "Unassigned" as if it were a head's name.
+            const currentHead = !storedHead || storedHead === "Unassigned" ? "" : storedHead;
 
             return (
               <div
@@ -207,8 +209,7 @@ export default function SetupSectionsPage() {
                             onChange={(e) => handleUpdateSectionHead(sec.id, e.target.value)}
                             className="text-xs p-1 bg-white border border-blue-400 rounded font-bold text-slate-800"
                           >
-                            <option value="Unassigned">Unassigned</option>
-                            <option value="Dominic Mark">Dominic Mark (Super Admin)</option>
+                            <option value="">Unassigned</option>
                             {staff.map((st) => (
                               <option key={st.id} value={st.fullName}>
                                 {st.fullName} ({st.role})
@@ -224,8 +225,8 @@ export default function SetupSectionsPage() {
                         </div>
                       ) : (
                         <div className="flex items-center gap-1.5">
-                          <strong className={currentHead === "Unassigned" ? "text-slate-400 italic" : "text-slate-800"}>
-                            {currentHead}
+                          <strong className={currentHead ? "text-slate-800" : "text-slate-400 italic"}>
+                            {currentHead || "Unassigned"}
                           </strong>
                           <button
                             onClick={() => setEditingSectionId(sec.id)}

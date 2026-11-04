@@ -100,6 +100,11 @@ export default function TraitsAssessmentsPage() {
   }, [students, selectedClass, searchQuery]);
 
   // Helper to fetch or get default assessment record for a student
+  //
+  // A pupil nobody has assessed now opens as a blank form. It used to open already
+  // rated 4 on every trait, with 112 days present out of 115 and the first preset
+  // remark chosen — and the class-wide "batch fill" then wrote those invented figures
+  // for every child in the arm.
   const getStudentAssessment = (studentId: string, admissionNo: string): PsychomotorRecord => {
     const existing = psychomotorList.find(
       (p) => p.studentId === studentId && p.session === selectedSession && p.term === selectedTerm
@@ -107,11 +112,11 @@ export default function TraitsAssessmentsPage() {
 
     if (existing) return existing;
 
-    const defaultAffective: Record<string, number> = {};
-    affectiveTraits.forEach((t) => (defaultAffective[t.id] = 4));
+    const blankAffective: Record<string, number> = {};
+    affectiveTraits.forEach((t) => (blankAffective[t.id] = 0));
 
-    const defaultPsychomotor: Record<string, number> = {};
-    psychomotorTraits.forEach((t) => (defaultPsychomotor[t.id] = 4));
+    const blankPsychomotor: Record<string, number> = {};
+    psychomotorTraits.forEach((t) => (blankPsychomotor[t.id] = 0));
 
     return {
       id: `psy-${studentId}-${selectedSession}-${selectedTerm}`,
@@ -120,18 +125,23 @@ export default function TraitsAssessmentsPage() {
       className: selectedClass,
       session: selectedSession,
       term: selectedTerm,
-      affectiveRatings: defaultAffective,
-      psychomotorRatings: defaultPsychomotor,
+      affectiveRatings: blankAffective,
+      psychomotorRatings: blankPsychomotor,
       attendance: {
-        daysOpened: 115,
-        daysPresent: 112,
-        daysAbsent: 3,
+        daysOpened: 0,
+        daysPresent: 0,
+        daysAbsent: 0,
       },
-      formTeacherRemark: FORM_TEACHER_REMARKS_PRESETS[0],
-      principalRemark: PRINCIPAL_REMARKS_PRESETS[0],
-      nextTermBegins: "2026-01-12",
+      formTeacherRemark: "",
+      principalRemark: "",
+      nextTermBegins: "",
     };
   };
+
+  const isAssessed = (studentId: string) =>
+    psychomotorList.some(
+      (p) => p.studentId === studentId && p.session === selectedSession && p.term === selectedTerm
+    );
 
   // Handle single trait change
   const handleTraitScoreChange = (
@@ -196,6 +206,15 @@ export default function TraitsAssessmentsPage() {
   // Quick Batch Fill for All Students in Selected Class
   const handleBatchPreset = (ratingValue: number) => {
     if (classStudents.length === 0) return;
+
+    if (
+      !window.confirm(
+        `Set every one of the ${classStudents.length} pupils in ${selectedClass} to rating ${ratingValue}? ` +
+          "Identical scores for every child is a form teacher's decision, not a default."
+      )
+    ) {
+      return;
+    }
 
     classStudents.forEach((student) => {
       const current = getStudentAssessment(student.id, student.admissionNo);
@@ -406,6 +425,13 @@ export default function TraitsAssessmentsPage() {
           </div>
         ) : (
           <div className="space-y-4">
+            {classStudents.some((s) => !isAssessed(s.id)) && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[11px] text-amber-900">
+                The attendance figures and trait ratings below are this term&apos;s working form, not a record of what
+                has been signed off. Only pupils shown as assessed will appear on a printed report card.
+              </div>
+            )}
+
             <div className="flex items-center justify-between text-xs text-slate-500 px-1">
               <span>Showing {classStudents.length} Students in <strong>{selectedClass}</strong></span>
               <button
@@ -421,13 +447,15 @@ export default function TraitsAssessmentsPage() {
               const assessment = getStudentAssessment(student.id, student.admissionNo);
               const isExpanded = expandedStudentId === student.id || (!expandedStudentId && idx === 0);
 
-              // Calculate average affective score
-              const affValues = Object.values(assessment.affectiveRatings);
-              const affAvg = affValues.length ? (affValues.reduce((a, b) => a + b, 0) / affValues.length).toFixed(1) : "4.0";
-
-              // Calculate average psychomotor score
-              const psyValues = Object.values(assessment.psychomotorRatings);
-              const psyAvg = psyValues.length ? (psyValues.reduce((a, b) => a + b, 0) / psyValues.length).toFixed(1) : "4.0";
+              // An unassessed child has no average, and counting the unset zeros as scores
+              // would print "0 / 5" — which is a mark, and a wrong one.
+              const meanOfRated = (ratings: Record<string, number>) => {
+                const scored = Object.values(ratings).filter((v) => v > 0);
+                return scored.length === 0 ? null : (scored.reduce((a, b) => a + b, 0) / scored.length).toFixed(1);
+              };
+              const affAvg = meanOfRated(assessment.affectiveRatings);
+              const psyAvg = meanOfRated(assessment.psychomotorRatings);
+              const assessed = isAssessed(student.id);
 
               return (
                 <div
@@ -451,6 +479,11 @@ export default function TraitsAssessmentsPage() {
                           <span className="text-[10px] font-mono font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100">
                             {student.admissionNo}
                           </span>
+                          {!assessed && (
+                            <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200">
+                              Not assessed
+                            </span>
+                          )}
                         </div>
                         <p className="text-[11px] text-slate-500">
                           {student.gender} • House: <strong className="text-slate-700">{student.house}</strong>
@@ -461,10 +494,10 @@ export default function TraitsAssessmentsPage() {
                     <div className="flex items-center gap-3 flex-wrap">
                       <div className="flex flex-wrap items-center gap-2 text-xs">
                         <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                          Affective: {affAvg} / 5
+                          Affective: {affAvg === null ? "not rated" : `${affAvg} / 5`}
                         </span>
                         <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                          Psychomotor: {psyAvg} / 5
+                          Psychomotor: {psyAvg === null ? "not rated" : `${psyAvg} / 5`}
                         </span>
                         <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                           Att: {assessment.attendance.daysPresent}/{assessment.attendance.daysOpened}
@@ -491,13 +524,13 @@ export default function TraitsAssessmentsPage() {
                               Affective (Behavioral &amp; Character Domain)
                             </h4>
                             <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded">
-                              Avg: {affAvg} / 5
+                              Avg: {affAvg === null ? "not rated" : `${affAvg} / 5`}
                             </span>
                           </div>
 
                           <div className="space-y-2.5 divide-y divide-slate-100 text-xs">
                             {affectiveTraits.map((t) => {
-                              const score = assessment.affectiveRatings[t.id] ?? 4;
+                              const score = assessment.affectiveRatings[t.id] ?? 0;
                               return (
                                 <div key={t.id} className="pt-2 first:pt-0 flex items-center justify-between gap-2">
                                   <div className="min-w-0">
@@ -544,13 +577,13 @@ export default function TraitsAssessmentsPage() {
                               Psychomotor (Skills &amp; Dexterity Domain)
                             </h4>
                             <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
-                              Avg: {psyAvg} / 5
+                              Avg: {psyAvg === null ? "not rated" : `${psyAvg} / 5`}
                             </span>
                           </div>
 
                           <div className="space-y-2.5 divide-y divide-slate-100 text-xs">
                             {psychomotorTraits.map((t) => {
-                              const score = assessment.psychomotorRatings[t.id] ?? 4;
+                              const score = assessment.psychomotorRatings[t.id] ?? 0;
                               return (
                                 <div key={t.id} className="pt-2 first:pt-0 flex items-center justify-between gap-2">
                                   <div className="min-w-0">
@@ -636,7 +669,7 @@ export default function TraitsAssessmentsPage() {
                           </label>
                           <input
                             type="date"
-                            value={assessment.nextTermBegins || "2026-01-12"}
+                            value={assessment.nextTermBegins}
                             onChange={(e) => handleRemarkChange(student.id, student.admissionNo, "nextTermBegins", e.target.value)}
                             className="w-full text-xs font-semibold bg-white border border-slate-200 rounded-lg p-2 text-slate-900"
                           />
