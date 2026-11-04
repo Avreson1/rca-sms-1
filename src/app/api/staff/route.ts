@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/auth/guard";
+import { requireRole, requireRoleSession } from "@/lib/auth/guard";
+import { ASSIGNABLE_ROLES, createAppAccount } from "@/lib/auth/app-accounts";
+import type { UserRole } from "@/lib/rbac";
 import { databaseUnavailable, getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -60,7 +62,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const denied = await requireRole(WRITE_STAFF);
+  const { session, denied } = await requireRoleSession(WRITE_STAFF);
   if (denied) return denied;
 
   const supabase = getSupabaseServerClient();
@@ -80,5 +82,45 @@ export async function POST(request: Request) {
 
   const { error } = await supabase.from("staff").upsert(row, { onConflict: "id" });
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 502 });
-  return NextResponse.json({ success: true });
+
+  // Registering a person and giving them a way to sign in is one act of
+  // onboarding, not two. Before this the form invented a passcode in the
+  // browser and printed it on a memo, so the office handed out a password that
+  // existed nowhere; only the server can issue one that actually works.
+  const loginRole = ASSIGNABLE_ROLES.includes(row.role as UserRole) ? (row.role as UserRole) : null;
+  if (!loginRole) {
+    return NextResponse.json({
+      success: true,
+      login: null,
+      loginError: `"${row.role}" is not a role the portal issues logins for, so the staff record was saved on its own.`,
+    });
+  }
+
+  const { account, error: loginError } = await createAppAccount({
+    username: row.username,
+    displayName: row.full_name,
+    role: loginRole,
+    staffId: row.staff_id,
+    email: row.email,
+    createdBy: session.username,
+  });
+
+  if (account) {
+    return NextResponse.json({
+      success: true,
+      login: { username: account.username, password: account.password },
+      loginError: null,
+    });
+  }
+
+  // The staff record is already saved and stays saved; say plainly what is
+  // missing and where to finish the job, rather than failing the whole request.
+  const taken = /duplicate key|already exists/i.test(loginError ?? "");
+  return NextResponse.json({
+    success: true,
+    login: null,
+    loginError: taken
+      ? `A login for ${row.username} already exists, so no new one was issued. Reset it in Settings → User Access if it is not in use.`
+      : (loginError ?? "The login could not be created."),
+  });
 }

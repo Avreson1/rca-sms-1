@@ -8,7 +8,8 @@ import {
   UserCheck,
   Sparkles,
   ArrowRight,
-  Lock,
+  Eye,
+  EyeOff,
   CheckCircle2,
   AlertCircle,
   Loader2,
@@ -22,6 +23,10 @@ export default function LoginPage() {
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  // Reveals only what this person is typing at this moment. Nothing here can
+  // show a stored password: the database keeps a salted hash, which is not a
+  // password, and no route hands one back.
+  const [showPasscode, setShowPasscode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -145,15 +150,23 @@ export default function LoginPage() {
               </label>
               <div className="relative">
                 <input
-                  type="password"
+                  type={showPasscode ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••••••"
-                  className="w-full bg-[#060b19]/90 border border-blue-900 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition-all font-mono"
+                  className="w-full bg-[#060b19]/90 border border-blue-900 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 rounded-xl px-4 py-3 pr-11 text-sm text-white placeholder-slate-500 outline-none transition-all font-mono"
                   required
                   autoComplete="current-password"
                 />
-                <Lock className="w-4 h-4 text-cyan-400/70 absolute right-3.5 top-3.5" />
+                <button
+                  type="button"
+                  onClick={() => setShowPasscode((visible) => !visible)}
+                  aria-label={showPasscode ? "Hide the passcode" : "Show the passcode you typed"}
+                  aria-pressed={showPasscode}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-cyan-400/70 hover:text-cyan-300 transition-colors"
+                >
+                  {showPasscode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 

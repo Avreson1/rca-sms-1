@@ -58,9 +58,17 @@ ever runs more than one instance.
 
 ## Managing people from the app
 
-Settings → **User Access** (super admin only). For each account you can:
+Staff logins are issued where the person is hired: **Operations → Staff → Register Staff** saves
+the staff record and, in the same request, creates their login. The private access slip then shows
+the password the server actually generated — it used to print a passcode invented in the browser
+with `Math.random()`, which was stored nowhere and signed nobody in. If the login cannot be created
+the slip stays closed and an amber notice says why; the staff record is still saved, and the login
+can be made here afterwards.
 
-- **Create Login** — pick the role, optional username (auto-generated from the name if left
+Settings → **User Access** (super admin only) keeps everything else. For each account you can:
+
+- **Create Login** — for pupils' parents, testers and anyone not onboarded through the staff
+  register. Pick the role, optional username (auto-generated from the name if left
   blank), staff/admission ID and email. The password is generated for you and shown **once**;
   copy it before closing the panel. Only a salted scrypt hash is stored, never the password.
 - **Link children** — when the role is *Student / Parent*, the form also asks for admission
@@ -133,6 +141,12 @@ Inside that, each data route also checks the role:
 | `/api/ca` | — | Super admin, exam officer, teacher |
 | `/api/accounts` | Super admin | Super admin |
 | `/api/presence` | any signed-in role | any signed-in role |
+
+`POST /api/staff` does two things in one request: it saves the staff row and asks
+`createAppAccount` for that person's login, returning the generated password in the same response
+so the access slip can show it once. A failed login never rolls the staff record back — the route
+answers `success: true` with `login: null` and a plain-language `loginError`, which the page
+displays instead of opening the slip.
 
 **What a parent may read.** `/api/students` and `/api/invoices` take the username from the signed
 cookie, look it up in `guardian_students` (`guardianScope` in `src/lib/auth/guardian-links.ts`) and
@@ -246,9 +260,12 @@ Be aware of what this system does **not** do today:
 - **Grading maths still runs in the browser.** `/api/ca` records the `grade` the caller sends
   instead of deriving it from `total_score`, so a crafted request can file any letter grade under
   a passing or failing total. Server-side grading is the next change.
-- **No password reset by email.** Only a super admin can set a password, by generating a new
-  one from User Access. Self-service reset needs Supabase Auth (`auth.users`), which is the
-  deliberate next step.
+- **No password reset by email, and deliberately no "forgot password" link on the sign-in page.**
+  A forgotten passcode is reset by a super admin: Settings → User Access → **New Password** on that
+  person's row, which issues a replacement and signs out every device already holding the old one.
+  There is no archive of issued passwords to look one up in — the row stores a salted scrypt hash,
+  which is not a password — so the reset is the recovery path, not a fallback for it. Self-service
+  reset by email needs Supabase Auth (`auth.users`) plus SMTP, which is the deliberate next step.
 - **No email or SMS sending** — staff activation and notifications are manual.
 - **No online payments** — invoices are tracked, not paid through the portal.
 - **"Realtime" sync is per-browser** (`BroadcastChannel`), not server push across users.

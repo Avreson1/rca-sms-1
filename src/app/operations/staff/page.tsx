@@ -128,6 +128,11 @@ export default function StaffManagementPage() {
   } | null>(null);
   const [copiedSlip, setCopiedSlip] = useState(false);
 
+  // Shown when the staff record saved but the login did not, which is a job the
+  // office has to finish; it stays on screen until dismissed, because a toast
+  // that fades in four seconds would be forgotten before anyone acted on it.
+  const [credentialProblem, setCredentialProblem] = useState<string | null>(null);
+
   const handleRoleChange = (newRole: StaffRecord["role"]) => {
     setRole(newRole);
     if (newRole === "SUPER_ADMIN") setPermissions(DEFAULT_SUPER_ADMIN_PERMISSIONS);
@@ -136,7 +141,7 @@ export default function StaffManagementPage() {
     else setPermissions(DEFAULT_TEACHER_PERMISSIONS);
   };
 
-  const handleRegisterStaff = (e: React.FormEvent) => {
+  const handleRegisterStaff = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName.trim()) return;
 
@@ -145,9 +150,8 @@ export default function StaffManagementPage() {
     const email = `${username}@royalcrownacademy.edu.ng`;
     const nextSeq = (staff.length + 1).toString().padStart(3, "0");
     const staffId = `RCA/PERS/${nextSeq}`;
-    const tempPasscode = `Rca@${Math.floor(1000 + Math.random() * 9000)}`;
 
-    addStaff({
+    const { login, loginError } = await addStaff({
       staffId,
       fullName: fullName.trim(),
       username,
@@ -162,17 +166,27 @@ export default function StaffManagementPage() {
       permissions,
     });
 
-    setCredentialSlip({
-      fullName: fullName.trim(),
-      staffId,
-      username,
-      tempPasscode,
-      role,
-      email,
-    });
-
-    setNotificationMsg(`Staff ${fullName} registered with ID: ${staffId}`);
-    setTimeout(() => setNotificationMsg(null), 4000);
+    // The passcode used to be invented here with Math.random(), printed on the
+    // memo and handed out — but it was never sent anywhere, so nobody could
+    // sign in with it. The slip now opens only on a password the server made.
+    if (login) {
+      setCredentialSlip({
+        fullName: fullName.trim(),
+        staffId,
+        username: login.username,
+        tempPasscode: login.password,
+        role,
+        email,
+      });
+      setNotificationMsg(`Staff ${fullName} registered with ID: ${staffId}`);
+      setTimeout(() => setNotificationMsg(null), 4000);
+    } else {
+      setCredentialProblem(
+        `${fullName.trim()} is on the staff register, but no login was created: ${
+          loginError ?? "the portal did not say why"
+        }`
+      );
+    }
 
     setIsModalOpen(false);
     setFullName("");
@@ -376,6 +390,19 @@ export default function StaffManagementPage() {
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl p-4 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
             {notificationMsg}
+          </div>
+        )}
+
+        {credentialProblem && (
+          <div className="bg-amber-50 border border-amber-300 text-amber-950 rounded-xl p-4 text-xs font-semibold flex items-start gap-3 animate-in fade-in">
+            <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <span className="flex-1">{credentialProblem}</span>
+            <button
+              onClick={() => setCredentialProblem(null)}
+              className="text-amber-800 hover:text-amber-950 font-bold underline underline-offset-2 flex-shrink-0"
+            >
+              Dismiss
+            </button>
           </div>
         )}
 

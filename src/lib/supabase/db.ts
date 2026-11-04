@@ -91,6 +91,57 @@ async function requestOk(path: string, body: unknown, label: string): Promise<bo
   return true;
 }
 
+/**
+ * Onboarding a staff member is the one write whose answer has to reach the
+ * screen: the server generates the password, shows it in that single response
+ * and never stores it again. A helper that reports only success or failure
+ * would leave the form to invent a passcode of its own, which is what it used
+ * to do — and the memo it printed then let nobody sign in.
+ */
+async function postStaffForLogin(
+  body: unknown,
+  label: string
+): Promise<{ login: StaffLogin | null; loginError: string | null }> {
+  let reason: string | null = null;
+  let login: StaffLogin | null = null;
+  let loginError: string | null = null;
+
+  try {
+    const response = await fetch("/api/staff", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (response.ok) {
+      const payload = (await response.json().catch(() => null)) as {
+        login?: StaffLogin | null;
+        loginError?: string | null;
+      } | null;
+      login = payload?.login ?? null;
+      loginError = payload?.loginError ?? null;
+    } else {
+      reason = await serverReason(response);
+    }
+  } catch (error) {
+    console.warn("API /api/staff write failed", error);
+    reason = "the portal server did not answer";
+  }
+
+  if (reason) {
+    reportSyncFailure(`${label} was NOT saved to the school records: ${reason}.`);
+    return { login: null, loginError: reason };
+  }
+
+  reportSyncSaved(
+    login
+      ? `${label} saved, and a portal login was created for ${login.username}.`
+      : `${label} saved to the school records.`
+  );
+  return { login, loginError };
+}
+
 interface StudentRow {
   id: string;
   admission_no: string;
@@ -256,8 +307,16 @@ export async function fetchStaffFromSupabase(): Promise<StaffRecord[] | null> {
   })) as StaffRecord[];
 }
 
-export async function insertStaffToSupabase(staff: StaffRecord): Promise<boolean> {
-  return requestOk("/api/staff", {
+/** The one-time credentials the server hands back when it creates a login. */
+export interface StaffLogin {
+  username: string;
+  password: string;
+}
+
+export async function insertStaffToSupabase(
+  staff: StaffRecord
+): Promise<{ login: StaffLogin | null; loginError: string | null }> {
+  return postStaffForLogin({
     staff_id: staff.staffId,
     full_name: staff.fullName,
     username: staff.username,

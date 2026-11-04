@@ -1495,9 +1495,16 @@ export function useRealtimeStaff() {
     localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(updated));
     broadcast("STAFF_UPDATED");
 
-    if (isSupabaseConfigured) {
-      insertStaffToSupabase(newMember);
+    if (!isSupabaseConfigured) {
+      return Promise.resolve({
+        login: null,
+        loginError: "this device is not connected to the school database",
+      });
     }
+
+    // Resolved by the caller: the generated password is shown once on the
+    // credential slip and is not kept anywhere else.
+    return insertStaffToSupabase(newMember);
   };
 
   const bulkAddStaff = (newStaffList: Omit<StaffRecord, "id">[]) => {
