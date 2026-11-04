@@ -16,6 +16,7 @@ import {
   bulkSaveInvoicesToSupabase,
   saveCaScoresToSupabase,
   fetchCaScoresFromSupabase,
+  saveGradingTiersToSupabase,
 } from "./supabase/db";
 
 // Channel for instant multi-tab & multi-window event synchronization
@@ -840,6 +841,13 @@ export function useRealtimeGradingScales() {
       localStorage.setItem(STORAGE_KEYS.GRADING_SCALES, JSON.stringify(updated));
       broadcast("GRADING_SCALES_UPDATED");
     }
+    // The scale decides the letter printed on every card, so it belongs on the
+    // school's tables and not in this browser's storage — a reload used to put
+    // the seeded numbers back while the marks filed in between stayed graded
+    // against the scale the office had typed.
+    if (isSupabaseConfigured) {
+      void saveGradingTiersToSupabase(updated, `the ${updated[tierKey]?.tierTitle ?? tierKey} grading scale`);
+    }
   };
 
   const resetGradingScalesToDefault = () => {
@@ -847,6 +855,9 @@ export function useRealtimeGradingScales() {
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEYS.GRADING_SCALES, JSON.stringify(DEFAULT_GRADING_TIERS));
       broadcast("GRADING_SCALES_UPDATED");
+    }
+    if (isSupabaseConfigured) {
+      void saveGradingTiersToSupabase(DEFAULT_GRADING_TIERS, "the restored grading scales");
     }
   };
 

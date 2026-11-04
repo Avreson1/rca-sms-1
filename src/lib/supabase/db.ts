@@ -1,4 +1,3 @@
-import { getSupabaseBrowserClient } from "./client";
 import { SCHOOL_INFO } from "../constants";
 import {
   StudentRecord,
@@ -6,7 +5,6 @@ import {
   InvoiceRecord,
   SubjectScoreRecord,
   TierGradingConfig,
-  GradeBracket,
 } from "../realtime-store";
 
 // All reads and writes go through the authenticated API routes. The browser no
@@ -182,14 +180,6 @@ interface InvoiceRow {
   last_payment_date: string | null;
   session: string | null;
   term: string | null;
-}
-
-interface GradingTierRow {
-  id: string;
-  tier_title: string;
-  applicable_classes: string[] | null;
-  description: string | null;
-  brackets: GradeBracket[] | null;
 }
 
 function toStudentRow(student: StudentRecord) {
@@ -502,25 +492,25 @@ export async function saveCaScoresToSupabase(
 }
 
 // ============================================================================
-// 6. GRADING TIERS SERVICE (reference data — public read allowed by RLS)
+// 6. GRADING TIERS SERVICE
 // ============================================================================
+
+/**
+ * The scales come from /api/grading-tiers like everything else. Reading the
+ * table with the browser's anon key meant a school whose live tiers had drifted
+ * from the seeded ones was graded one way on screen and another way on the
+ * server that filed the mark.
+ */
 export async function fetchGradingTiersFromSupabase(): Promise<Record<string, TierGradingConfig> | null> {
-  const supabase = getSupabaseBrowserClient();
-  if (!supabase) return null;
+  const tiers = await requestJson<Record<string, TierGradingConfig>>("/api/grading-tiers", "The grading scales");
+  if (!tiers || Object.keys(tiers).length === 0) return null;
+  return tiers;
+}
 
-  const { data, error } = await supabase.from("grading_tiers").select("*");
-  if (error || !data || data.length === 0) return null;
-
-  const map: Record<string, TierGradingConfig> = {};
-  for (const row of data as GradingTierRow[]) {
-    map[row.id] = {
-      tierKey: row.id as TierGradingConfig["tierKey"],
-      tierTitle: row.tier_title,
-      applicableClasses: row.applicable_classes || [],
-      description: row.description || "",
-      brackets: row.brackets || [],
-    };
-  }
-
-  return map;
+/** Saves the scales the office edited, so they are still there after a reload. */
+export async function saveGradingTiersToSupabase(
+  tiers: Record<string, TierGradingConfig>,
+  summary: string
+): Promise<boolean> {
+  return requestOk("/api/grading-tiers", { tiers }, summary);
 }

@@ -64,6 +64,63 @@ function bounded(value: unknown, max: number): number | null {
   return Math.round(value * 100) / 100;
 }
 
+interface BracketRow {
+  grade: string;
+  minScore: number;
+  maxScore: number;
+  remark: string;
+}
+
+interface TierRow {
+  id: string;
+  applicable_classes: string[] | null;
+  brackets: BracketRow[] | null;
+}
+
+/**
+ * The scale a pupil is graded against, from the school's own `grading_tiers`
+ * table. The class arms listed in `applicable_classes` win; the name heuristic
+ * is only the fallback for a class the office has not listed anywhere.
+ */
+function tierForClass(className: string, tiers: TierRow[]): TierRow | null {
+  const lower = (className || "").toLowerCase();
+  const listed = tiers.find(
+    (tier) => Array.isArray(tier.applicable_classes) && tier.applicable_classes.some((arm) => String(arm).toLowerCase() === lower)
+  );
+  if (listed) return listed;
+
+  const wanted =
+    lower.includes("pre-play") || (lower.includes("play") && !lower.includes("display"))
+      ? "PRE_PLAY_PLAY"
+      : lower.includes("nursery")
+        ? "NURSERY"
+        : lower.includes("primary") || lower.includes("basic")
+          ? "PRIMARY"
+          : lower.includes("jss") || lower.includes("junior")
+            ? "JUNIOR_SECONDARY"
+            : "SECONDARY";
+
+  return tiers.find((tier) => tier.id === wanted) ?? tiers.find((tier) => tier.id === "PRIMARY") ?? tiers.find((tier) => tier.id === "SECONDARY") ?? null;
+}
+
+/**
+ * The bracket a total falls into.
+ *
+ * The bracket with the highest floor that the total clears wins, because a
+ * scale written in whole numbers (70-84) has no bracket for 84.5, and a mark of
+ * 84.5 is nearer an A than a B than it is anything else. null means the total
+ * is below every bracket on the scale, which is a scale the office must fix.
+ */
+function bracketForTotal(total: number, tier: TierRow | null) {
+  if (!tier || !Array.isArray(tier.brackets)) return null;
+  let best: BracketRow | null = null;
+  for (const bracket of tier.brackets) {
+    const floor = Number(bracket.minScore);
+    if (Number.isFinite(floor) && total >= floor && (!best || floor > Number(best.minScore))) best = bracket;
+  }
+  return best;
+}
+
 /**
  * Reads the marks the school has actually filed, for one session and term.
  *
@@ -182,10 +239,11 @@ export async function GET(request: Request) {
 /**
  * Writes one student's continuous-assessment scores for a session/term.
  *
- * `total_score` is a generated column and is never sent. `tier_grade` is
- * required from the caller rather than defaulted: the database would happily
- * accept the schema default of 'F', which would silently book a failed grade
- * against a child who was never graded.
+ * `total_score` is a generated column and is never sent. `tier_grade` and
+ * `remark` are worked out here from the school's `grading_tiers`, because the
+ * letter on a printed card has to follow from the marks rather than from
+ * whatever the browser sent — and the schema default of 'F' would otherwise
+ * book a failed grade against a child who was never graded.
  */
 export async function POST(request: Request) {
   const denied = await requireRole(ENTER_CA);
@@ -244,13 +302,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: `${subject}: exam must be a number between 0 and ${EXAM_MAX}.` }, { status: 400 });
     }
 
-    const grade = (entry.grade || "").trim();
-    if (!grade || grade.length > 10) {
-      return NextResponse.json(
-        { success: false, error: `${subject}: grade is required so a score is never filed under the schema default.` },
-        { status: 400 }
-      );
-    }
+    // The grade is not taken from the request. A browser that had a different
+    // scale, a stale tab or a tampered body could file an 'A' against 32/100,
+    // and that letter is what prints on the paper card the family collects.
+    const total = (components.test1 ?? 0) + (components.test2 ?? 0) + (components.project ?? 0) + (components.midTerm ?? 0) + exam;
 
     rows.push({
       subject,
@@ -261,8 +316,7 @@ export async function POST(request: Request) {
       project: components.project,
       mid_term: components.midTerm,
       exam,
-      tier_grade: grade,
-      remark: (entry.remark || "").trim().slice(0, 100) || "Fair",
+      total,
       updated_at: new Date().toISOString(),
     });
   }
@@ -281,11 +335,59 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: `No student found with admission number ${admissionNo}.` }, { status: 404 });
   }
 
-  for (const row of rows) row.student_id = student.id;
+  // The grade is worked out here, from the school's own scale, and the pupil's
+  // class decides which scale applies.
+  const { data: tierRows, error: tierError } = await supabase
+    .from("grading_tiers")
+    .select("id, applicable_classes, brackets");
+
+  if (tierError) {
+    return NextResponse.json(
+      { success: false, error: `The grading scale could not be read: ${tierError.message}.`, reason: tierError.message },
+      { status: 502 }
+    );
+  }
+
+  const tiers = (tierRows as unknown as TierRow[]) ?? [];
+  const tier = tierForClass(student.class_name, tiers);
+  if (!tier) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: `There is no grading scale on file to grade ${student.class_name} with, so nothing was saved. Set one up under Settings → Grading Scales.`,
+      },
+      { status: 409 }
+    );
+  }
+
+  const graded: Record<string, unknown>[] = [];
+  for (const row of rows) {
+    const total = Number(row.total);
+    const bracket = bracketForTotal(total, tier);
+    if (!bracket) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `${String(row.subject)}: a total of ${total} falls outside every bracket in the ${tier.id} scale, so it cannot be graded. Nothing was saved.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // `total` is not a column; the database computes total_score from the five
+    // marks that were sent.
+    const { total: _derivedOnly, ...columns } = row;
+    graded.push({
+      ...columns,
+      student_id: student.id,
+      tier_grade: String(bracket.grade).slice(0, 10),
+      remark: String(bracket.remark).slice(0, 100),
+    });
+  }
 
   const { data: saved, error: saveError } = await supabase
     .from("ca_scores")
-    .upsert(rows, { onConflict: "student_id,subject,session,term" })
+    .upsert(graded, { onConflict: "student_id,subject,session,term" })
     .select("subject, session, term, test1, test2, project, mid_term, exam, total_score, tier_grade, remark, updated_at");
 
   if (saveError) return NextResponse.json({ success: false, error: saveError.message }, { status: 502 });
