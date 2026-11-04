@@ -65,6 +65,12 @@ with `Math.random()`, which was stored nowhere and signed nobody in. If the logi
 the slip stays closed and an amber notice says why; the staff record is still saved, and the login
 can be made here afterwards.
 
+The **Access Slip** button on each row of the staff table does the same job for someone already
+registered: `POST /api/accounts/issue` replaces that person's passcode if they have one — signing
+out every device holding the old one — or creates the login if they never had one. It refuses an
+username that the server's own `AUTH_*` variables answer for, because a portal password issued under
+such a name would be stored, printed, and then never consulted at sign-in.
+
 Settings → **User Access** (super admin only) keeps everything else. For each account you can:
 
 - **Create Login** — for pupils' parents, testers and anyone not onboarded through the staff
@@ -140,6 +146,7 @@ Inside that, each data route also checks the role:
 | `/api/invoices` | Super admin, bursar, QA tester, parent (**own children only**) | Super admin, bursar (one invoice or a batch) |
 | `/api/ca` | — | Super admin, exam officer, teacher |
 | `/api/accounts` | Super admin | Super admin |
+| `/api/accounts/issue` | — | Super admin (issues or replaces one login by username) |
 | `/api/presence` | any signed-in role | any signed-in role |
 
 `POST /api/staff` does two things in one request: it saves the staff row and asks

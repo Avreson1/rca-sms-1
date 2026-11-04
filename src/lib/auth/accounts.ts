@@ -109,3 +109,16 @@ export async function verifyCredentials(username: string, password: string): Pro
   // first, so a misconfigured or empty database can never lock out the admin.
   return verifyAppAccountCredentials(normalized, password);
 }
+
+/**
+ * True when a username is answered by the server's own configuration rather
+ * than by a database row. Sign-in tries these first, so a login created for one
+ * of them would be stored, displayed on a slip, and then never consulted — the
+ * person would be handed a password that cannot work. The office has to be told
+ * that instead of being shown a confident-looking credential.
+ */
+export function isEnvironmentUsername(username: string): boolean {
+  const normalized = username.trim().toLowerCase();
+  if (!normalized) return false;
+  return readAccounts().some((account) => account.username.toLowerCase() === normalized);
+}

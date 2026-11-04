@@ -125,13 +125,59 @@ export default function StaffManagementPage() {
     tempPasscode: string;
     role: string;
     email: string;
+    action: "created" | "reset";
   } | null>(null);
   const [copiedSlip, setCopiedSlip] = useState(false);
+  const [slipBusy, setSlipBusy] = useState<string | null>(null);
 
   // Shown when the staff record saved but the login did not, which is a job the
   // office has to finish; it stays on screen until dismissed, because a toast
   // that fades in four seconds would be forgotten before anyone acted on it.
   const [credentialProblem, setCredentialProblem] = useState<string | null>(null);
+
+  /**
+   * Ask the server for a credential that actually signs this person in. The
+   * slip used to be filled by a passcode invented here with Math.random(),
+   * which was stored nowhere — and for an existing member it printed a second
+   * password while their real one still worked.
+   */
+  const issueAccessSlip = async (member: StaffRecord) => {
+    setSlipBusy(member.staffId);
+    setCredentialProblem(null);
+
+    try {
+      const response = await fetch("/api/accounts/issue", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: member.username }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        login?: { username: string; password: string; action: "created" | "reset" };
+        error?: string;
+      } | null;
+
+      if (!response.ok || !payload?.login) {
+        setCredentialSlip(null);
+        setCredentialProblem(payload?.error ?? `The portal could not issue a login for ${member.username}.`);
+        return;
+      }
+
+      setCredentialSlip({
+        fullName: member.fullName,
+        staffId: member.staffId,
+        username: payload.login.username,
+        tempPasscode: payload.login.password,
+        role: member.role,
+        email: member.email,
+        action: payload.login.action,
+      });
+    } catch {
+      setCredentialProblem(`The portal server did not answer, so no login was issued for ${member.username}.`);
+    } finally {
+      setSlipBusy(null);
+    }
+  };
 
   const handleRoleChange = (newRole: StaffRecord["role"]) => {
     setRole(newRole);
@@ -177,6 +223,7 @@ export default function StaffManagementPage() {
         tempPasscode: login.password,
         role,
         email,
+        action: "created",
       });
       setNotificationMsg(`Staff ${fullName} registered with ID: ${staffId}`);
       setTimeout(() => setNotificationMsg(null), 4000);
@@ -554,22 +601,13 @@ export default function StaffManagementPage() {
                         <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
-                              onClick={() => {
-                                const tempPasscode = `Rca@${Math.floor(1000 + Math.random() * 9000)}`;
-                                setCredentialSlip({
-                                  fullName: s.fullName,
-                                  staffId: s.staffId,
-                                  username: s.username,
-                                  tempPasscode,
-                                  role: s.role,
-                                  email: s.email,
-                                });
-                              }}
-                              className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-[#0000FF] text-[10px] font-bold rounded flex items-center gap-1 cursor-pointer border border-blue-200 shadow-2xs"
+                              onClick={() => void issueAccessSlip(s)}
+                              disabled={slipBusy === s.staffId}
+                              className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-[#0000FF] text-[10px] font-bold rounded flex items-center gap-1 cursor-pointer border border-blue-200 shadow-2xs disabled:opacity-60 disabled:cursor-wait"
                               title="Issue Private Access Slip"
                             >
                               <KeyRound className="w-3 h-3 text-[#0000FF]" />
-                              Access Slip
+                              {slipBusy === s.staffId ? "Issuing…" : "Access Slip"}
                             </button>
                             <button
                               onClick={() => setEditingStaff(s)}
@@ -1069,6 +1107,11 @@ export default function StaffManagementPage() {
                       <span className="text-slate-400 text-[10px] uppercase tracking-wider">Temporary Passcode:</span>
                       <span className="font-bold text-amber-300 text-sm">{credentialSlip.tempPasscode}</span>
                     </div>
+                    <p className="text-[10px] text-slate-400 italic">
+                      {credentialSlip.action === "reset"
+                        ? "This replaces the passcode they were using — every device signed in with the old one is now signed out."
+                        : "This login did not exist until now; it was created and hashed on the server."}
+                    </p>
                     <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800">
                       <span>Portal URL:</span>
                       <span className="text-slate-200 underline">https://sms.royalcrownacademy.edu.ng/login</span>
@@ -1082,7 +1125,9 @@ export default function StaffManagementPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    const slipText = `*ROYAL CROWN ACADEMY - STAFF ACCESS MEMO*\n\nDear ${credentialSlip.fullName},\nYour staff account has been provisioned.\n\n*Staff ID:* ${credentialSlip.staffId}\n*Role:* ${credentialSlip.role}\n*Portal URL:* https://sms.royalcrownacademy.edu.ng/login\n*Username:* ${credentialSlip.username}\n*Temporary Passcode:* ${credentialSlip.tempPasscode}\n\n_Please log in and update your passcode immediately. Do not share these credentials._`;
+                    const slipText = `*ROYAL CROWN ACADEMY - STAFF ACCESS MEMO*\n\nDear ${credentialSlip.fullName},\n${credentialSlip.action === "reset"
+                      ? "Your portal passcode has been replaced by the school office. The one you used before no longer works."
+                      : "Your staff account has been provisioned."}\n\n*Staff ID:* ${credentialSlip.staffId}\n*Role:* ${credentialSlip.role}\n*Portal URL:* https://sms.royalcrownacademy.edu.ng/login\n*Username:* ${credentialSlip.username}\n*Temporary Passcode:* ${credentialSlip.tempPasscode}\n\n_Please log in and update your passcode immediately. Do not share these credentials._`;
                     navigator.clipboard.writeText(slipText);
                     setCopiedSlip(true);
                     setTimeout(() => setCopiedSlip(false), 3000);

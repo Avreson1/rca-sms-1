@@ -150,6 +150,34 @@ export interface NewAppAccount {
   createdBy: string;
 }
 
+/**
+ * Finds a login by the username a person types or the office reads off a slip.
+ * Case is matched without a LIKE pattern: `_` is ordinary in this school's
+ * usernames (`amina_bello`), and `ilike` would treat it as a single-character
+ * wildcard and hand back `aminaXbello` instead.
+ */
+export async function getAppAccountByUsername(username: string): Promise<{
+  account: AppAccountRow | null;
+  error: string | null;
+}> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return { account: null, error: "Database not configured" };
+
+  const trimmed = username.trim();
+  const candidates = Array.from(new Set([trimmed, trimmed.toLowerCase(), trimmed.toUpperCase()]));
+
+  const { data, error } = await supabase
+    .from("app_accounts")
+    .select(ACCOUNT_COLUMNS)
+    .in("username", candidates)
+    .limit(1)
+    .maybeSingle<AppAccountRow>();
+
+  if (error) return { account: null, error: error.message };
+  if (!data) return { account: null, error: null };
+  return { account: data as AppAccountRow, error: null };
+}
+
 export async function createAppAccount(input: NewAppAccount): Promise<{
   account: CreatedAppAccount | null;
   error: string | null;
