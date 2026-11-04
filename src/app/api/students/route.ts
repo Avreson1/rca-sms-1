@@ -1,7 +1,18 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { requireRole, requireRoleSession } from "@/lib/auth/guard";
+import { guardianScope } from "@/lib/auth/guardian-links";
+import { databaseUnavailable, getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+// Teachers and the bursary need the roll; enrolling a student is an admissions
+// action. A parent is on the read list but never sees the whole school: the row
+// set is narrowed to the pupils linked to their login in guardian_students,
+// which the server looks up from the signed session cookie.
+const READ_STUDENTS = ["SUPER_ADMIN", "EXAM_OFFICER", "TEACHER", "ACCOUNTANT", "TESTERS", "STUDENT_PARENT"] as const;
+const WRITE_STUDENTS = ["SUPER_ADMIN", "EXAM_OFFICER"] as const;
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type StudentPayload = {
   id?: string;
@@ -21,7 +32,9 @@ function sanitizeStudent(raw: StudentPayload) {
   const fullName = typeof raw.full_name === "string" ? raw.full_name.trim() : "";
   if (!admissionNo || !fullName) return null;
   return {
-    id: typeof raw.id === "string" && raw.id.trim() ? raw.id.trim() : undefined,
+    // The browser invents its own ids (`s-1730…`); only a real database id may
+    // update a row, otherwise the upsert targets a UUID column with garbage.
+    id: typeof raw.id === "string" && UUID_PATTERN.test(raw.id.trim()) ? raw.id.trim() : undefined,
     admission_no: admissionNo,
     full_name: fullName,
     gender: raw.gender === "Female" ? "Female" : "Male",
@@ -34,20 +47,51 @@ function sanitizeStudent(raw: StudentPayload) {
 }
 
 export async function GET() {
-  const supabase = getSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
+  const access = await requireRoleSession(READ_STUDENTS);
+  if (access.denied) return access.denied;
 
-  const { data, error } = await supabase
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return databaseUnavailable();
+
+  const scope = await guardianScope(access.session);
+  if (scope.error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: `The guardian link table could not be read: ${scope.error}.`,
+        reason: scope.error,
+      },
+      { status: 502 }
+    );
+  }
+  if (scope.admissionNos !== null && scope.admissionNos.length === 0) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "No pupil is linked to this login yet, so there is nothing to show. The school office links a parent login to its children in Settings → User Access.",
+      },
+      { status: 403 }
+    );
+  }
+
+  let query = supabase
     .from("students")
     .select("*, ca_scores(test1, test2, project, mid_term, exam)")
     .order("created_at", { ascending: false });
+  if (scope.admissionNos) query = query.in("admission_no", scope.admissionNos);
+
+  const { data, error } = await query;
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 502 });
   return NextResponse.json({ success: true, data: data ?? [] });
 }
 
 export async function POST(request: Request) {
+  const denied = await requireRole(WRITE_STUDENTS);
+  if (denied) return denied;
+
   const supabase = getSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ success: false, error: "Database not configured" }, { status: 503 });
+  if (!supabase) return databaseUnavailable();
 
   let body: unknown;
   try {
@@ -65,4 +109,43 @@ export async function POST(request: Request) {
   const { error } = await supabase.from("students").upsert(rows, { onConflict: "id" });
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 502 });
   return NextResponse.json({ success: true });
+}
+
+/**
+ * Removes one student, addressed by admission number. Their CA scores and
+ * invoices go with them: both tables reference students(id) ON DELETE CASCADE,
+ * which is why this route takes the admission number the school actually uses
+ * rather than a client-generated id.
+ */
+export async function DELETE(request: Request) {
+  const denied = await requireRole(WRITE_STUDENTS);
+  if (denied) return denied;
+
+  let body: { admissionNo?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const admissionNo = typeof body.admissionNo === "string" ? body.admissionNo.trim() : "";
+  if (!admissionNo) {
+    return NextResponse.json({ success: false, error: "Provide the admission number of the student to remove." }, { status: 400 });
+  }
+
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return databaseUnavailable();
+
+  const { data: removed, error } = await supabase
+    .from("students")
+    .delete()
+    .eq("admission_no", admissionNo)
+    .select("id");
+
+  if (error) return NextResponse.json({ success: false, error: error.message }, { status: 502 });
+  if (!removed || removed.length === 0) {
+    return NextResponse.json({ success: false, error: `No student on file with admission number ${admissionNo}.` }, { status: 404 });
+  }
+
+  return NextResponse.json({ success: true, data: { admissionNo } });
 }

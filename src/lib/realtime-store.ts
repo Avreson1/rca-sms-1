@@ -10,7 +10,11 @@ import {
   fetchGradingTiersFromSupabase,
   insertStudentToSupabase,
   bulkInsertStudentsToSupabase,
+  deleteStudentFromSupabase,
   insertStaffToSupabase,
+  saveInvoiceToSupabase,
+  bulkSaveInvoicesToSupabase,
+  saveCaScoresToSupabase,
 } from "./supabase/db";
 
 // Channel for instant multi-tab & multi-window event synchronization
@@ -34,6 +38,7 @@ const STORAGE_KEYS = {
   NEWSLETTER: "rca_newsletter_store_v6",
   GRADING_SCALES: "rca_grading_scales_store_v6",
   ACTIVE_RBAC_ROLE: "rca_active_rbac_role_v6",
+  BROWSER_OWNER: "rca_portal_browser_owner_v1",
   CA_STRUCTURES: "rca_ca_structures_store_v7",
   ACTIVITY_TEMPLATES: "rca_activity_templates_store_v7",
   AUTH_SESSION: "rca_auth_session_store_v7",
@@ -185,6 +190,10 @@ export interface InvoiceRecord {
   amountPaid: number;
   paymentStatus: "Paid" | "Partial" | "Unpaid";
   lastPaymentDate: string;
+  // Without these, saving a payment on an older invoice would re-date it to the
+  // current session and term.
+  session?: string;
+  term?: string;
 }
 
 export interface FeeComponentRecord {
@@ -286,7 +295,7 @@ export interface AuthUserSession {
   id: string;
   username: string;
   fullName: string;
-  role: "SUPER_ADMIN" | "EXAM_OFFICER" | "TEACHER" | "ACCOUNTANT" | "STUDENT_PARENT";
+  role: "SUPER_ADMIN" | "EXAM_OFFICER" | "TEACHER" | "ACCOUNTANT" | "STUDENT_PARENT" | "TESTERS";
   staffId: string;
   email?: string;
   assignedSubject?: string;
@@ -622,6 +631,48 @@ function broadcast(eventType: string, payload?: any) {
   }
 }
 
+// Screens fill themselves from this browser's own copy of the data before the
+// server has answered, so whoever signed in here last leaves their cached roster
+// on the machine. When a different person signs in — a parent on a staff laptop —
+// that copy must go, or the new person sees it on screen until the server's
+// filtered answer replaces it. Emptying the keys and broadcasting makes
+// already-mounted screens drop it at once, without a page reload.
+//
+// The wipe waits for a sign-in rather than firing at logout: if the server
+// cannot reach the database, this browser's copy is the only one that exists, so
+// an anonymous browser is left holding it.
+const PUPIL_DATA_KEYS: [storageKey: string, eventType: string][] = [
+  [STORAGE_KEYS.STUDENTS, "STUDENTS_UPDATED"],
+  [STORAGE_KEYS.INVOICES, "INVOICES_UPDATED"],
+  [STORAGE_KEYS.SUBJECT_SCORES, "SUBJECT_SCORES_UPDATED"],
+  [STORAGE_KEYS.PSYCHOMOTOR, "PSYCHOMOTOR_UPDATED"],
+  [STORAGE_KEYS.TRAITS, "TRAITS_UPDATED"],
+];
+
+function clearPupilDataFromThisBrowser() {
+  if (typeof window === "undefined") return;
+  for (const [storageKey, eventType] of PUPIL_DATA_KEYS) {
+    localStorage.setItem(storageKey, JSON.stringify([]));
+    broadcast(eventType);
+  }
+}
+
+/** Wipes the cached pupil data when the browser changes hands. */
+function handOverBrowser(nextUsername: string) {
+  if (typeof window === "undefined" || !nextUsername) return;
+  const previousOwner = localStorage.getItem(STORAGE_KEYS.BROWSER_OWNER) ?? storedSessionUsername();
+  if (previousOwner && previousOwner !== nextUsername) clearPupilDataFromThisBrowser();
+  localStorage.setItem(STORAGE_KEYS.BROWSER_OWNER, nextUsername);
+}
+
+function storedSessionUsername(): string | undefined {
+  try {
+    return (JSON.parse(localStorage.getItem(STORAGE_KEYS.AUTH_SESSION) || "null") as AuthUserSession | null)?.username;
+  } catch {
+    return undefined;
+  }
+}
+
 // -------------------------------------------------------------
 // Grade Calculation Engine
 // -------------------------------------------------------------
@@ -798,6 +849,46 @@ export function useRealtimeGradingScales() {
   return { gradingTiers, updateGradingTierBrackets, resetGradingScalesToDefault };
 }
 
+/**
+ * On screen a pupil has one set of CA scores; in the database the `ca_scores`
+ * row is keyed by subject, session and term as well. Without the subject a
+ * typed score has nowhere to be filed, so only screens that know it can push
+ * scores to the server. Returns how many pupils were sent.
+ */
+function fileCaScoresOnServer(students: StudentRecord[], subject: string) {
+  const scored = students.filter((s) => {
+    const { test1, test2, project, midTerm, exam } = s.caScores;
+    return test1 + test2 + project + midTerm + exam > 0;
+  });
+  if (!isSupabaseConfigured || scored.length === 0) return 0;
+
+  const records = scored.map((student) => {
+    const { test1, test2, project, midTerm, exam } = student.caScores;
+    const total = test1 + test2 + project + midTerm + exam;
+    const { grade, remark } = calculateGradeForClass(total, student.className);
+    return {
+      admissionNo: student.admissionNo,
+      subject,
+      session: SCHOOL_INFO.currentSession,
+      term: SCHOOL_INFO.currentTerm,
+      test1,
+      test2,
+      project,
+      midTerm,
+      exam,
+      total,
+      grade,
+      remark,
+    };
+  });
+
+  void saveCaScoresToSupabase(
+    records,
+    `${subject} scores for ${scored.length} pupil${scored.length === 1 ? "" : "s"} (${SCHOOL_INFO.currentSession}, ${SCHOOL_INFO.currentTerm})`
+  );
+  return scored.length;
+}
+
 // -------------------------------------------------------------
 // Hook: Real-Time Students Store (Connected to Supabase & Live Sync)
 // -------------------------------------------------------------
@@ -955,7 +1046,8 @@ export function useRealtimeStudents() {
       project?: number;
       midTerm?: number;
       exam?: number;
-    }[]
+    }[],
+    subject?: string
   ) => {
     const scoreMap = new Map(scoresList.map((item) => [item.admissionNo.trim().toUpperCase(), item]));
     const updated = students.map((s) => {
@@ -978,13 +1070,24 @@ export function useRealtimeStudents() {
     setStudents(updated);
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updated));
     broadcast("STUDENTS_UPDATED");
+
+    if (subject) {
+      const imported = updated.filter((s) => scoreMap.has(s.admissionNo.trim().toUpperCase()));
+      return fileCaScoresOnServer(imported, subject);
+    }
+    return 0;
   };
 
   const deleteStudent = (studentId: string) => {
+    const removed = students.find((s) => s.id === studentId);
     const updated = students.filter((s) => s.id !== studentId);
     setStudents(updated);
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updated));
     broadcast("STUDENTS_UPDATED");
+
+    if (removed && isSupabaseConfigured) {
+      void deleteStudentFromSupabase(removed.admissionNo);
+    }
   };
 
   const clearAllStudents = () => {
@@ -993,7 +1096,14 @@ export function useRealtimeStudents() {
     broadcast("STUDENTS_UPDATED");
   };
 
-  return { students, updateStudentScore, addStudent, bulkAddStudents, bulkUpdateScores, deleteStudent, clearAllStudents };
+  /**
+   * The score grid edits this device's copy as you type, so the Save button is
+   * where the class on screen is filed against the subject chosen above it.
+   */
+  const saveCaScores = (subject: string, roster?: StudentRecord[]) =>
+    fileCaScoresOnServer(roster ?? students, subject);
+
+  return { students, updateStudentScore, addStudent, bulkAddStudents, bulkUpdateScores, deleteStudent, clearAllStudents, saveCaScores };
 }
 
 // -------------------------------------------------------------
@@ -1545,9 +1655,33 @@ export function useRealtimeInvoices() {
       localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(updated));
       broadcast("INVOICES_UPDATED");
     }
+
+    const paid = updated.find((inv) => inv.id === invoiceId);
+    if (paid && isSupabaseConfigured) {
+      void saveInvoiceToSupabase(paid);
+    }
   };
 
-  return { invoices, recordPayment };
+  /**
+   * Generated invoices only exist on this device until they reach the server,
+   * so the list is filed in one bulk request instead of waiting for a page
+   * reload to read the browser's own copy back again.
+   */
+  const addInvoices = (generated: InvoiceRecord[]) => {
+    if (generated.length === 0) return;
+    const updated = [...generated, ...invoices];
+    setInvoices(updated);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(updated));
+      broadcast("INVOICES_UPDATED");
+    }
+
+    if (isSupabaseConfigured) {
+      void bulkSaveInvoicesToSupabase(generated);
+    }
+  };
+
+  return { invoices, recordPayment, addInvoices };
 }
 
 // -------------------------------------------------------------
@@ -2287,6 +2421,7 @@ export function useRealtimeAuth() {
               email: payload.user.email,
               loginTime: new Date().toISOString(),
             };
+            handOverBrowser(session.username);
             localStorage.setItem(STORAGE_KEYS.AUTH_SESSION, JSON.stringify(session));
             localStorage.setItem(STORAGE_KEYS.ACTIVE_RBAC_ROLE, session.role);
             setCurrentUser(session);
@@ -2316,7 +2451,7 @@ export function useRealtimeAuth() {
   }, []);
 
   const loginWithRole = (
-    role: "SUPER_ADMIN" | "EXAM_OFFICER" | "TEACHER" | "ACCOUNTANT" | "STUDENT_PARENT",
+    role: "SUPER_ADMIN" | "EXAM_OFFICER" | "TEACHER" | "ACCOUNTANT" | "STUDENT_PARENT" | "TESTERS",
     profile?: { username?: string; fullName?: string; staffId?: string; email?: string }
   ) => {
     const roleProfiles: Record<string, AuthUserSession> = {
@@ -2373,6 +2508,15 @@ export function useRealtimeAuth() {
         email: "parent.oladipo@gmail.com",
         loginTime: new Date().toISOString(),
       },
+      TESTERS: {
+        id: "u-tst",
+        username: "tester",
+        fullName: "QA Tester",
+        role: "TESTERS",
+        staffId: "RCA/TST/001",
+        email: "",
+        loginTime: new Date().toISOString(),
+      },
     };
 
     const targetUser: AuthUserSession = profile
@@ -2388,6 +2532,7 @@ export function useRealtimeAuth() {
       : roleProfiles[role] || roleProfiles.SUPER_ADMIN;
     setCurrentUser(targetUser);
     if (typeof window !== "undefined") {
+      handOverBrowser(targetUser.username);
       localStorage.setItem(STORAGE_KEYS.AUTH_SESSION, JSON.stringify(targetUser));
       localStorage.setItem(STORAGE_KEYS.ACTIVE_RBAC_ROLE, targetUser.role);
       broadcast("AUTH_SESSION_UPDATED");

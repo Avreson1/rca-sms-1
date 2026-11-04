@@ -1,4 +1,5 @@
 import { getSupabaseBrowserClient } from "./client";
+import { SCHOOL_INFO } from "../constants";
 import {
   StudentRecord,
   StaffRecord,
@@ -10,13 +11,84 @@ import {
 // All reads and writes go through the authenticated API routes. The browser no
 // longer touches student/staff/invoice tables directly, so the anon key cannot
 // be used to read or modify personal data.
+//
+// A refused or failed request is reported to the on-screen sync notice. Before
+// this, every non-2xx became a silent `null` and the dashboard carried on
+// showing the browser's own copy as if it were the school's record.
 
-interface CaScoresRow {
-  test1: number | null;
-  test2: number | null;
-  project: number | null;
-  mid_term: number | null;
-  exam: number | null;
+import { reportSyncFailure, reportSyncSaved } from "../sync-status";
+
+async function serverReason(response: Response): Promise<string> {
+  const statusText = response.status === 403
+    ? "your role is not allowed to do this"
+    : response.status === 401
+      ? "your session is no longer valid — sign in again"
+      : response.status === 503
+        ? "the server could not reach the database"
+        : `the server replied ${response.status}`;
+  try {
+    const payload = (await response.json()) as { error?: string; reason?: string };
+    // `reason` names the setting that is missing, which is the part an operator
+    // can act on; the status text alone only says the database was unreachable.
+    const detail = [payload?.error, payload?.reason].filter(Boolean).join(" — ");
+    // When the server explained itself, its sentence is the whole message.
+    // Appending "your role is not allowed to do this" underneath a parent's
+    // "no pupil is linked to this login yet" reads like an accusation.
+    return detail || statusText;
+  } catch {
+    return statusText;
+  }
+}
+
+async function requestJson<T>(path: string, label: string, init?: RequestInit): Promise<T | null> {
+  try {
+    const response = await fetch(path, {
+      ...init,
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    });
+
+    if (!response.ok) {
+      reportSyncFailure(`${label} could not be loaded: ${await serverReason(response)}. Showing this device's copy.`);
+      return null;
+    }
+
+    const payload = (await response.json()) as { data?: T };
+    return payload?.data ?? null;
+  } catch (error) {
+    console.warn(`API ${path} request failed`, error);
+    reportSyncFailure(`${label} could not be loaded: the portal server did not answer. Showing this device's copy.`);
+    return null;
+  }
+}
+
+/** Posts one write and returns why it failed, or null when it landed. */
+async function postQuiet(path: string, body: unknown): Promise<string | null> {
+  try {
+    const response = await fetch(path, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) return await serverReason(response);
+    return null;
+  } catch (error) {
+    console.warn(`API ${path} write failed`, error);
+    return "the portal server did not answer";
+  }
+}
+
+async function requestOk(path: string, body: unknown, label: string): Promise<boolean> {
+  const reason = await postQuiet(path, body);
+  if (reason) {
+    reportSyncFailure(`${label} was NOT saved to the school records: ${reason}.`);
+    return false;
+  }
+
+  reportSyncSaved(`${label} saved to the school records.`);
+  return true;
 }
 
 interface StudentRow {
@@ -57,6 +129,8 @@ interface InvoiceRow {
   amount_paid: number | string | null;
   payment_status: string;
   last_payment_date: string | null;
+  session: string | null;
+  term: string | null;
 }
 
 interface GradingTierRow {
@@ -67,40 +141,12 @@ interface GradingTierRow {
   brackets: GradeBracket[] | null;
 }
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T | null> {
-  try {
-    const response = await fetch(path, {
-      ...init,
-      cache: "no-store",
-      headers: { "Content-Type": "application/json", ...init?.headers },
-    });
-
-    if (!response.ok) {
-      console.warn(`API ${path} responded with ${response.status}`);
-      return null;
-    }
-
-    const payload = (await response.json()) as { data?: T };
-    return payload?.data ?? null;
-  } catch (error) {
-    console.warn(`API ${path} request failed`, error);
-    return null;
-  }
-}
-
-async function requestOk(path: string, body: unknown): Promise<boolean> {
-  try {
-    const response = await fetch(path, {
-      method: "POST",
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    return response.ok;
-  } catch (error) {
-    console.warn(`API ${path} write failed`, error);
-    return false;
-  }
+interface CaScoresRow {
+  test1: number | null;
+  test2: number | null;
+  project: number | null;
+  mid_term: number | null;
+  exam: number | null;
 }
 
 function toStudentRow(student: StudentRecord) {
@@ -120,7 +166,7 @@ function toStudentRow(student: StudentRecord) {
 // 1. STUDENTS SERVICE
 // ============================================================================
 export async function fetchStudentsFromSupabase(): Promise<StudentRecord[] | null> {
-  const rows = await requestJson<StudentRow[]>("/api/students");
+  const rows = await requestJson<StudentRow[]>("/api/students", "The student list");
   if (!rows) return null;
 
   return rows.map((item) => {
@@ -151,19 +197,47 @@ export async function fetchStudentsFromSupabase(): Promise<StudentRecord[] | nul
 }
 
 export async function insertStudentToSupabase(student: StudentRecord): Promise<boolean> {
-  return requestOk("/api/students", toStudentRow(student));
+  return requestOk("/api/students", toStudentRow(student), `${student.fullName}'s enrolment`);
 }
 
 export async function bulkInsertStudentsToSupabase(students: StudentRecord[]): Promise<boolean> {
   if (students.length === 0) return false;
-  return requestOk("/api/students", students.map(toStudentRow));
+  return requestOk("/api/students", students.map(toStudentRow), `${students.length} enrolled students`);
+}
+
+/**
+ * The browser's copy drops a student locally without asking the server, so this
+ * is what makes the removal real. Deleting a student also removes their CA
+ * scores and invoices in the database (ON DELETE CASCADE).
+ */
+export async function deleteStudentFromSupabase(admissionNo: string): Promise<boolean> {
+  try {
+    const response = await fetch("/api/students", {
+      method: "DELETE",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ admissionNo }),
+    });
+
+    if (!response.ok) {
+      reportSyncFailure(`${admissionNo} is still on the school records: ${await serverReason(response)}.`);
+      return false;
+    }
+
+    reportSyncSaved(`${admissionNo} removed from the school records.`);
+    return true;
+  } catch (error) {
+    console.warn("API /api/students delete failed", error);
+    reportSyncFailure(`${admissionNo} was NOT removed from the school records: the portal server did not answer.`);
+    return false;
+  }
 }
 
 // ============================================================================
 // 2. STAFF SERVICE
 // ============================================================================
 export async function fetchStaffFromSupabase(): Promise<StaffRecord[] | null> {
-  const rows = await requestJson<StaffRow[]>("/api/staff");
+  const rows = await requestJson<StaffRow[]>("/api/staff", "The staff list");
   if (!rows) return null;
 
   return rows.map((item) => ({
@@ -195,14 +269,14 @@ export async function insertStaffToSupabase(staff: StaffRecord): Promise<boolean
     is_form_master: staff.isFormMaster,
     email_verified: staff.emailVerified,
     status: staff.status,
-  });
+  }, `${staff.fullName}'s staff record`);
 }
 
 // ============================================================================
 // 3. INVOICES SERVICE
 // ============================================================================
 export async function fetchInvoicesFromSupabase(): Promise<InvoiceRecord[] | null> {
-  const rows = await requestJson<InvoiceRow[]>("/api/invoices");
+  const rows = await requestJson<InvoiceRow[]>("/api/invoices", "The fees and invoices list");
   if (!rows) return null;
 
   return rows.map((inv) => ({
@@ -215,11 +289,111 @@ export async function fetchInvoicesFromSupabase(): Promise<InvoiceRecord[] | nul
     amountPaid: Number(inv.amount_paid) || 0,
     paymentStatus: inv.payment_status as "Paid" | "Partial" | "Unpaid",
     lastPaymentDate: inv.last_payment_date || new Date().toISOString().split("T")[0],
+    session: inv.session || undefined,
+    term: inv.term || undefined,
   }));
 }
 
+function toInvoiceRow(invoice: InvoiceRecord) {
+  return {
+    invoice_no: invoice.invoiceNo,
+    admission_no: invoice.admissionNo,
+    student_name: invoice.studentName,
+    class_name: invoice.className,
+    session: invoice.session || SCHOOL_INFO.currentSession,
+    term: invoice.term || SCHOOL_INFO.currentTerm,
+    amount_billed: invoice.amountBilled,
+    amount_paid: invoice.amountPaid,
+    payment_status: invoice.paymentStatus,
+    last_payment_date: invoice.lastPaymentDate || null,
+  };
+}
+
+/**
+ * Saves one invoice, or the payment recorded against it. The server resolves
+ * the student from the admission number, so a fee recorded here is the school's
+ * record of that fee and not just this device's.
+ */
+export async function saveInvoiceToSupabase(invoice: InvoiceRecord): Promise<boolean> {
+  return requestOk("/api/invoices", toInvoiceRow(invoice), `the invoice for ${invoice.studentName}`);
+}
+
+export async function bulkSaveInvoicesToSupabase(invoices: InvoiceRecord[]): Promise<boolean> {
+  if (invoices.length === 0) return false;
+  return requestOk("/api/invoices", invoices.map(toInvoiceRow), `${invoices.length} invoices`);
+}
+
 // ============================================================================
-// 4. GRADING TIERS SERVICE (reference data — public read allowed by RLS)
+// 5. CONTINUOUS ASSESSMENT SCORES
+// ============================================================================
+
+/**
+ * `/api/ca` files one student's scores for a session and term, so records for
+ * different pupils are sent as separate requests. The subject name is required
+ * by the database; a score entered without picking a subject cannot be saved.
+ */
+export async function saveCaScoresToSupabase(
+  records: {
+    admissionNo: string;
+    subject: string;
+    session: string;
+    term: string;
+    test1: number;
+    test2: number;
+    project: number;
+    midTerm: number;
+    exam: number;
+    total: number;
+    grade: string;
+    remark?: string;
+  }[],
+  summary: string
+): Promise<boolean> {
+  const grouped = new Map<string, typeof records>();
+  for (const record of records) {
+    const key = `${record.admissionNo}|${record.session}|${record.term}`;
+    const bucket = grouped.get(key);
+    if (bucket) bucket.push(record);
+    else grouped.set(key, [record]);
+  }
+
+  // One request per pupil because /api/ca files a pupil's subjects for one
+  // session and term, so the notice reports the whole batch rather than the
+  // last pupil in it.
+  const failures: string[] = [];
+  for (const [, entries] of grouped) {
+    const first = entries[0];
+    const reason = await postQuiet("/api/ca", {
+      admissionNo: first.admissionNo,
+      session: first.session,
+      term: first.term,
+      scores: entries.map((entry) => ({
+        subject: entry.subject,
+        test1: entry.test1,
+        test2: entry.test2,
+        project: entry.project,
+        midTerm: entry.midTerm,
+        exam: entry.exam,
+        grade: entry.grade,
+        remark: entry.remark,
+      })),
+    });
+    if (reason) failures.push(`${first.admissionNo}: ${reason}`);
+  }
+
+  if (failures.length > 0) {
+    reportSyncFailure(
+      `${summary} were NOT saved to the school records — ${failures.length} of ${grouped.size} pupils refused (${failures[0]}).`
+    );
+    return false;
+  }
+
+  reportSyncSaved(`${summary} saved to the school records.`);
+  return true;
+}
+
+// ============================================================================
+// 6. GRADING TIERS SERVICE (reference data — public read allowed by RLS)
 // ============================================================================
 export async function fetchGradingTiersFromSupabase(): Promise<Record<string, TierGradingConfig> | null> {
   const supabase = getSupabaseBrowserClient();

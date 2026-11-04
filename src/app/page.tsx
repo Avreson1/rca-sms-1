@@ -7,7 +7,7 @@ import { EmailBanner } from "@/components/dashboard/email-banner";
 import { SubjectsCard } from "@/components/dashboard/subjects-card";
 import { UsersOnlineWidget } from "@/components/dashboard/users-online";
 import { SCHOOL_INFO } from "@/lib/constants";
-import { useRealtimeAuth, useRealtimeStudents, useRealtimeStaff } from "@/lib/realtime-store";
+import { useRealtimeAuth, useRealtimeStudents } from "@/lib/realtime-store";
 import {
   FileText,
   Laptop,
@@ -29,7 +29,6 @@ import {
 export default function DashboardHome() {
   const { currentUser } = useRealtimeAuth();
   const { students } = useRealtimeStudents();
-  const { staff } = useRealtimeStaff();
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {

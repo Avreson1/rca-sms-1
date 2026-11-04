@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 
 export default function InvoicingAccountsPage() {
-  const { invoices, recordPayment } = useRealtimeInvoices();
+  const { invoices, recordPayment, addInvoices } = useRealtimeInvoices();
   const { students } = useRealtimeStudents();
   const { fees } = useRealtimeFees();
 
@@ -79,6 +79,8 @@ export default function InvoicingAccountsPage() {
           amountPaid: std.feeStatus === "Fully Cleared" ? standardTermFee : 0,
           paymentStatus: std.feeStatus === "Fully Cleared" ? "Paid" : "Unpaid",
           lastPaymentDate: std.feeStatus === "Fully Cleared" ? new Date().toISOString().split("T")[0] : "",
+          session: SCHOOL_INFO.currentSession,
+          term: SCHOOL_INFO.currentTerm,
         });
       }
     });
@@ -86,11 +88,7 @@ export default function InvoicingAccountsPage() {
     if (newInvoices.length === 0) {
       setNotificationMsg("All registered students already have active invoices for this term.");
     } else {
-      const updated = [...newInvoices, ...invoices];
-      if (typeof window !== "undefined") {
-        localStorage.setItem("rca_invoices_store_v6", JSON.stringify(updated));
-        window.location.reload();
-      }
+      addInvoices(newInvoices);
       setNotificationMsg(`Generated ${newInvoices.length} new student invoices!`);
     }
     setTimeout(() => setNotificationMsg(null), 4000);

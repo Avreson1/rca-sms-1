@@ -14,6 +14,7 @@ import {
   StudentRecord,
 } from "@/lib/realtime-store";
 import { ALL_CLASSES } from "@/lib/constants";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { exportToCSV, parseCSV, downloadSampleTemplate } from "@/lib/csv-utils";
 import {
   BookOpen,
@@ -35,7 +36,7 @@ import {
 } from "lucide-react";
 
 export default function UpdateCAPage() {
-  const { students, updateStudentScore, bulkUpdateScores } = useRealtimeStudents();
+  const { students, updateStudentScore, bulkUpdateScores, saveCaScores } = useRealtimeStudents();
   const { classes } = useRealtimeClasses();
   const { templates } = useRealtimeSubjectTemplates();
   const { gradingTiers } = useRealtimeGradingScales();
@@ -72,6 +73,7 @@ export default function UpdateCAPage() {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [isSaved, setIsSaved] = useState(false);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
 
   // CSV Score Upload Modal
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
@@ -86,6 +88,7 @@ export default function UpdateCAPage() {
     value: string
   ) => {
     setIsSaved(false);
+    setSaveNote(null);
     const num = Math.max(0, parseInt(value, 10) || 0);
     const maxLimits = { test1: 10, test2: 10, project: 10, midTerm: 10, exam: 60 };
     const clamped = Math.min(num, maxLimits[field]);
@@ -99,7 +102,21 @@ export default function UpdateCAPage() {
   };
 
   const handleSave = () => {
-    setIsSaved(true);
+    if (!isSupabaseConfigured) {
+      setIsSaved(false);
+      setSaveNote(
+        `This device is not connected to the school records, so ${selectedSubject} scores are kept in this browser only.`
+      );
+      return;
+    }
+
+    const filed = saveCaScores(selectedSubject, filteredStudents);
+    setIsSaved(filed > 0);
+    setSaveNote(
+      filed === 0
+        ? `No scores are filled in for ${selectedSubject} yet, so there was nothing to send.`
+        : `Sending ${filed} ${selectedSubject} score${filed === 1 ? "" : "s"} for ${SCHOOL_INFO.currentSession}, ${SCHOOL_INFO.currentTerm}.`
+    );
     setTimeout(() => setIsSaved(false), 4000);
   };
 
@@ -138,14 +155,23 @@ export default function UpdateCAPage() {
 
   const handleConfirmScoreUpload = () => {
     if (csvPreview.length === 0) return;
-    bulkUpdateScores(csvPreview);
-    setUploadStatus(`Successfully updated ${csvPreview.length} student score records!`);
+    const filed = bulkUpdateScores(csvPreview, selectedSubject);
+    setSaveNote(
+      !isSupabaseConfigured
+        ? "This device is not connected to the school records, so the uploaded scores stay in this browser only."
+        : filed === 0
+          ? `Every row in the file scored zero for ${selectedSubject}, so there was nothing to send.`
+          : `Filing ${filed} uploaded ${selectedSubject} score${filed === 1 ? "" : "s"} to the school records.`
+    );
+    setUploadStatus(
+      `Updated ${csvPreview.length} student score records. ${filed} sent to the school records.`
+    );
     setTimeout(() => {
       setIsCsvModalOpen(false);
       setCsvFile(null);
       setCsvPreview([]);
       setUploadStatus(null);
-      setIsSaved(true);
+      setIsSaved(filed > 0);
     }, 1500);
   };
 
@@ -284,9 +310,15 @@ export default function UpdateCAPage() {
               className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Save className="w-4 h-4" />
-              {isSaved ? "Saved & Synced!" : "Save & Sync Scores"}
+              {isSaved ? "Sent to the school records" : "Save & Sync Scores"}
             </button>
           </div>
+          {saveNote && (
+            <p className="text-[11px] text-slate-600 mt-2 flex items-start gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 mt-0.5 text-blue-600 shrink-0" />
+              {saveNote}
+            </p>
+          )}
         </div>
 
         {/* Filter & Selection Bar */}

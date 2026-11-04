@@ -45,6 +45,14 @@ export const RBAC_STEPS = [
     description: "View published report cards, take CBT examinations, inspect fee invoices, and download receipts.",
     permissions: ["VIEW_RESULTS", "TAKE_CBT", "VIEW_INVOICES", "MAKE_PAYMENT", "INMAIL_SEND"],
   },
+  {
+    step: 5,
+    role: "TESTERS",
+    title: "Tier 5: QA Testers",
+    badgeColor: "bg-slate-100 text-slate-800 border-slate-300",
+    description: "Quality-assurance access: navigate and exercise every module read-only, with no access to settings or destructive actions.",
+    permissions: ["MODULE_PREVIEW", "CBT_TAKE", "REPORT_VIEW", "INMAIL_SEND"],
+  },
 ] as const;
 
 export const ROLES = {
@@ -53,6 +61,7 @@ export const ROLES = {
   TEACHER: "TEACHER",
   STUDENT_PARENT: "STUDENT_PARENT",
   ACCOUNTANT: "ACCOUNTANT",
+  TESTERS: "TESTERS",
   ADMIN: "SUPER_ADMIN",
 } as const;
 

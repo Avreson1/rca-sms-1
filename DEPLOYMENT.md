@@ -92,7 +92,7 @@ graph TD
 
 ## 🛠️ Step 3: Initial Live Verification & Enrollment
 
-Once your Render deployment is live at `https://rca-sms.onrender.com`:
+Once your Render deployment is live at `https://rca-sms-1.onrender.com`:
 
 1. **Verify Login & Role Access**:
    - Sign in at `/login` with the super-admin credentials you set (`AUTH_SUPER_ADMIN_USERNAME` / `AUTH_SUPER_ADMIN_PASSWORD`).
