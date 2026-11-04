@@ -37,17 +37,53 @@ graph TD
    - Open a new query in the **SQL Editor**.
    - Run [`supabase/harden-rls.sql`](supabase/harden-rls.sql). This removes the permissive "public read/write" policies that the old app relied on. Student, staff, and invoice data is then only reachable through the app's authenticated API routes.
 
-4. **(Optional) Seed Official Baseline School Configuration**:
+4. **Give the service role its table privileges (do not skip this)**:
+   - Open a new query in the **SQL Editor** and run:
+
+     ```sql
+     -- Every API route reads and writes Postgres as `service_role`. On this project those
+     -- privileges had been revoked project-wide, so all four routes returned
+     -- `permission denied for table …` while the RLS policies looked perfectly healthy.
+     GRANT USAGE ON SCHEMA public TO service_role;
+     GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+     GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+     -- Default privileges apply only to tables created AFTER this runs, so re-run the
+     -- three lines above whenever a migration adds a table. `anon` and `authenticated`
+     -- are deliberately left with nothing: the browser never reads tables directly.
+     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO service_role;
+     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO service_role;
+     NOTIFY pgrst, 'reload schema';
+     ```
+
+   - *Verification*, and the diagnostic that tells you whether a future fault is privileges or RLS:
+
+     ```sql
+     SELECT r.rolname, r.rolbypassrls,
+            has_table_privilege(r.rolname, 'public.students', 'SELECT')      AS can_read_students,
+            has_table_privilege(r.rolname, 'public.app_accounts', 'INSERT')  AS can_write_app_accounts
+     FROM pg_roles r WHERE r.rolname IN ('anon','authenticated','service_role');
+     ```
+
+     `service_role` should read `true / true / true`. An RLS-blocked `SELECT` returns an empty list;
+     only a missing **GRANT** produces `42501 permission denied` — that distinction is what tells you
+     not to go editing code. Note that privileges belong to the role, not to the key string, so
+     **rotating an API key never requires re-running this step.**
+
+5. **(Optional) Seed Official Baseline School Configuration**:
    - Open a new query in the **SQL Editor**.
    - Copy the contents of [`supabase/seed.sql`](supabase/seed.sql) and run it.
    - This sets up the 4 educational grading scales (*Pre-Play/Play*, *Nursery 1-2*, *Primary 1-5*, and *Secondary*). Login accounts are **not** stored in the database — they are provisioned with environment variables (see Step 2).
 
-5. **Retrieve API Credentials**:
-   - Navigate to **Project Settings** (gear icon) → **API**.
+6. **Retrieve API Credentials**:
+   - Navigate to **Project Settings** (gear icon) → **API Keys** → **Publishable / Secret keys**.
    - Copy:
      - **Project URL** (`https://<project-ref>.supabase.co`)
-     - **anon / public key** (`eyJhbGciOi...`)
-     - **service_role key** (secret key for server operations)
+     - **Publishable key** — starts `sb_publishable_…` → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+     - **Secret key** — starts `sb_secret_…` → `SUPABASE_SERVICE_ROLE_KEY`
+   - The older `eyJhbGciOi…` JWTs (labelled *anon* and *service_role*) are a retired key generation.
+     This project's legacy pair is **disabled**; a disabled legacy key makes every route answer `502`
+     with `Legacy API keys are disabled`, which is the correct failure — it is loud, rather than
+     quietly reading nothing.
 
 ---
 
@@ -97,15 +133,46 @@ Once your Render deployment is live at `https://rca-sms-1.onrender.com`:
 1. **Verify Login & Role Access**:
    - Sign in at `/login` with the super-admin credentials you set (`AUTH_SUPER_ADMIN_USERNAME` / `AUTH_SUPER_ADMIN_PASSWORD`).
    - Confirm you land on the dashboard, then log out and confirm you are redirected back to `/login` when trying to visit any page directly.
-   - Each role (exam officer, teacher, accountant, parent) has its own username/password pair — log in with each to verify the correct menus appear.
+   - Open **Settings → User Access** and create one login per remaining role (exam officer, teacher,
+     accountant, parent, tester). Log in as each and confirm the menus differ. Environment accounts and
+     database accounts both work; the environment account is the break-glass one and cannot be suspended
+     from the app.
 2. **Bulk Student Enrollment via CSV**:
    - Navigate to **Operations** → **Student Enrollment** ([`/operations/students`](http://localhost:3000/operations/students)).
    - Click **"Bulk Upload CSV"** and import your student roster across Pre-Play to Primary 5 & Secondary.
-3. **Faculty Onboarding via CSV**:
+   - *This reaches the database* (`POST /api/students`, one upsert per pupil). Confirm it landed by
+     reloading the page — a pupil that disappears on reload was never saved.
+3. **Faculty Onboarding**:
    - Navigate to **Operations** → **Staff Management** ([`/operations/staff`](http://localhost:3000/operations/staff)).
-   - Click **"Bulk Upload CSV"** to onboard teachers and form masters.
+   - Register one teacher with **Register Staff**. The portal creates the staff record and issues that
+     person's login in the same request, then prints an access slip with the passcode — copy it before
+     closing the slip, because it is shown once and stored nowhere in recoverable form.
+   - **Do not use "Bulk Upload CSV" here yet.** `bulkAddStaff` still writes this browser's copy only;
+     those teachers will not exist on another machine.
 4. **Broadsheets & Reporting**:
    - Check the **Reports Hub** ([`/reports`](http://localhost:3000/reports)) to generate real-time broadsheet exports.
+   - With `students` and `invoices` empty the hub is genuinely empty, and several figures on
+     report cards are still placeholders invented in the browser. Confirm the source of every number
+     before a report card is printed for a parent.
+
+---
+
+## 🎯 What is left before this is cloned for live
+
+This deployment is the **test environment**. The order below is the order the work is done in, and it
+is the order to re-verify after a clone. Each step's acceptance test is written so that it can be run
+by someone who did not write the code.
+
+| | Work | Acceptance test |
+| --- | --- | --- |
+| **P0** | Backup job running green, keep-warm, branch protection, push approved fixes | A nightly dump exists in the bucket and `pg_restore --list` opens it. |
+| **P1** | No screen may print a figure nobody entered; no button may claim an action it did not perform | Open a report card for a pupil with no stored marks and confirm it says *not entered* rather than showing numbers. |
+| **P2** | School configuration gets a server: classes, subjects, templates, CA structures, traits, fees, calendar, report template, publish flags; per-subject CA reads back; staff and invoice deletes persist; cross-tab sync fixed | Enter a setting on machine A, see it on machine B. |
+| **P3** | Real roster enrolled, one real parent link, one mock term run end-to-end on the deployed site | Two browsers, same data, no fabricated numbers on the printed report. |
+| **P4** | Features not yet built (parent scorecard view, real SMS/email delivery) | Planned after P2, not before. |
+
+The full state of every screen — which ones reach Postgres and which ones are browser-only — is listed
+under *Current limitations* in [README.md](README.md).
 
 ---
 
@@ -115,3 +182,15 @@ Once your Render deployment is live at `https://rca-sms-1.onrender.com`:
 - **Service Role Key**: Keep `SUPABASE_SERVICE_ROLE_KEY` strictly in Render server-side environment variables; never prefix it with `NEXT_PUBLIC_`.
 - **Session Secret**: `AUTH_SESSION_SECRET` must be a long random string. Anyone who knows it can forge login cookies.
 - **Automatic HTTPS**: Render automatically provisions and renews SSL/TLS certificates for your custom domain (e.g., `portal.royalcrownacademy.edu.ng`).
+- **Backups are yours to run.** A free Supabase project keeps no copy of anything, so
+  `nightly-backup.yml` is the only thing between a bad afternoon and a lost term. It fails rather than
+  skipping, and a dump is a full copy of every child's record: private bucket, never the repository.
+- **Keep-warm and the pinger are two different problems.** `keep-warm.yml` every six hours stops the
+  *database* pausing (7 quiet days). Only a 4–5 minute ping stops the *web service* sleeping
+  (15 idle minutes). Decide which of the three options in README.md you want before the term opens.
+- **No plaintext passwords, anywhere.** `app_accounts` stores a salted scrypt hash; the generated
+  passcode exists only on the access slip shown once. A "permanent record of login details" — in
+  InMail, a table, or a spreadsheet — is the same leak as the one already closed, so it is
+  deliberately not implemented.
+- **Never commit `.env.local`**, and never paste a key into a chat, an issue, or a workflow file.
+  Keys belong in Render environment variables and GitHub Actions secrets.

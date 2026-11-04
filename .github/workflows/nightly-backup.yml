@@ -1,0 +1,92 @@
+name: Nightly database backup
+
+# A free Supabase project has no backups at all — not paused, not deleted, just
+# absent. Until this runs every night, the school's entire record history exists in
+# one place. Dumps go to a private bucket the school owns, never into this
+# repository and never into workflow artifacts, because a dump holds children's
+# data and artifacts stay downloadable for 90 days by anyone with repository access.
+#
+# Needs the six secrets named in README.md -> "Before go-live". Until they exist
+# this job fails on purpose: a backup that quietly skipped is worse than a red
+# cross you can see.
+
+on:
+  schedule:
+    - cron: "35 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: none
+
+jobs:
+  dump:
+    # postgres:17 carries a pg_dump new enough for Supabase's server; the
+    # ubuntu runner's own client is older and would refuse to dump a 17 database.
+    runs-on: ubuntu-latest
+    container:
+      image: postgres:17
+    steps:
+      - name: Install rclone
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends curl unzip ca-certificates
+          curl -fsSL https://downloads.rclone.org/rclone-current-linux-amd64.zip -o /tmp/rclone.zip
+          unzip -q /tmp/rclone.zip -d /tmp
+          mv /tmp/rclone-*-linux-amd64/rclone /usr/local/bin/rclone
+          rclone version | head -2
+
+      - name: Check the bucket settings exist
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          missing=""
+          for name in SUPABASE_DB_URL R2_ENDPOINT R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
+            [ -z "${!name}" ] && missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Backup secrets not set yet:$missing — see README.md, 'Before go-live'"
+            exit 1
+          fi
+
+      - name: Dump the school database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          stamp=$(date -u +%Y%m%d-%H%M)
+          export PGSSLMODE=require PGCONNECT_TIMEOUT=30
+          pg_dump "$SUPABASE_DB_URL" --format=custom --compress=6 --file="/tmp/rca-$stamp.dump"
+          # A dump that was never readable is the kind of backup you find out about
+          # too late, so prove the archive opens before uploading a copy of it.
+          pg_restore --list "/tmp/rca-$stamp.dump" > /dev/null
+          echo "dump=/tmp/rca-$stamp.dump" >> "$GITHUB_ENV"
+          echo "stamp=$stamp" >> "$GITHUB_ENV"
+          ls -lh "/tmp/rca-$stamp.dump"
+          sha256sum "/tmp/rca-$stamp.dump" | tee /tmp/checksum.txt
+
+      - name: Upload to the private bucket
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_BACKUP_TYPE: s3
+          RCLONE_CONFIG_BACKUP_PROVIDER: cloudflare
+          RCLONE_CONFIG_BACKUP_ENV_AUTH: "true"
+        run: |
+          set -euo pipefail
+          rclone copy "$dump" "backup:$R2_BUCKET/daily/" --include "$(basename "$dump")"
+          # One copy per month is kept a year, so a mistake found in March is still
+          # recoverable from January.
+          if [ "$(date -u +%d)" = "01" ]; then
+            rclone copy "$dump" "backup:$R2_BUCKET/monthly/" --include "$(basename "$dump")"
+          fi
+          rclone delete "backup:$R2_BUCKET/daily/" --min-age 15d
+          rclone delete "backup:$R2_BUCKET/monthly/" --min-age 400d
+          echo "### Backup $stamp" >> "$GITHUB_STEP_SUMMARY"
+          rclone ls "backup:$R2_BUCKET/daily/" >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/checksum.txt >> "$GITHUB_STEP_SUMMARY"

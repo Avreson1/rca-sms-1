@@ -1,0 +1,33 @@
+name: Keep warm
+
+# Supabase pauses a free project after 7 quiet days and Render spins a free
+# service down after 15 idle minutes. This visits the one route that touches the
+# database, so the school never opens the portal to a sleeping backend. Four runs
+# a day: for the database to pause, seven consecutive days would have to be missed.
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: none
+
+jobs:
+  visit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask the portal whether its database is awake
+        env:
+          WARM_URL: ${{ vars.KEEP_WARM_URL || 'https://rca-sms-1.onrender.com/api/keep-warm' }}
+        run: |
+          # --retry covers a cold Render instance: the first attempt times out while
+          # it spins up, the second succeeds. A genuine outage still fails the run,
+          # which is the only way this job is worth having.
+          response=$(curl --silent --show-error --max-time 75 --retry 3 --retry-delay 20 \
+            --retry-all-errors --fail "$WARM_URL" || echo "CURL_FAILED")
+          echo "reply: $response"
+          case "$response" in
+            *reachable*) echo "Database answered." ;;
+            *) echo "::error::The portal did not confirm its database is reachable at $WARM_URL"; exit 1 ;;
+          esac

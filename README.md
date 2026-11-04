@@ -15,6 +15,93 @@ without signing in.
 - Server-side login with a signed, HttpOnly session cookie, enforced by `src/proxy.ts`
   on every non-public route
 
+## Before go-live — read this first
+
+**This repository is the test environment.** Nothing here is the live school system yet.
+The plan is to make every flow provably correct on this instance, then clone the repository
+and stand up a separate live project. The four items below are blockers on that clone, not
+optional polish, and they are the reason a green screen in the browser is not yet proof of
+anything.
+
+### 1. Nightly database backup — blocked until five secrets exist
+
+A free Supabase project has **no backups of any kind**. Until `.github/workflows/nightly-backup.yml`
+runs green, the school's entire record history exists in exactly one place. It is written and it
+fails loudly on purpose until someone adds, in GitHub → *Settings → Secrets and variables → Actions*:
+
+| Secret name | Where it comes from |
+| --- | --- |
+| `SUPABASE_DB_URL` | Supabase → Project Settings → Database → Connection string → **URI**, switched to **Direct connection** (port `5432`, not the `6543` pooler — `pg_dump` needs a session). Set `PGSSLMODE=require`. |
+| `R2_ENDPOINT` | Cloudflare → R2 Object Storage → *Manage Bucket Keys* → the endpoint ending in `r2.cloudflarestorage.com` |
+| `R2_BUCKET` | the bucket name, e.g. `rca-sms-backups` (10 GB free, no download fees) |
+| `R2_ACCESS_KEY_ID` | same R2 key page |
+| `R2_SECRET_ACCESS_KEY` | same R2 key page |
+
+A dump is a copy of every child's record. It goes to the bucket only — never committed to this
+repository, never uploaded as a workflow artifact, never into a repository that could later be
+made public. Retention is 15 daily copies plus one copy per month kept a year.
+
+**A backup you have not restored is a rumour.** Restore drill, and repeat it after any clone:
+
+```bash
+export SUPABASE_DB_URL="postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres"
+rclone copy "backup:$R2_BUCKET/daily/" ./restored --include "rca-*.dump"
+pg_restore --list ./restored/rca-<stamp>.dump | head        # proves the archive opens
+pg_restore --clean --if-exists --no-owner -d "$SUPABASE_DB_URL" ./restored/rca-<stamp>.dump
+```
+
+Do this against a *spare* project first. Pointing `--clean` at the live database restores over it.
+
+### 2. The five-minute pinger — still undecided
+
+`.github/workflows/keep-warm.yml` visits `/api/keep-warm` every six hours, and that route asks the
+database one question that returns no records. Six hours is plenty to stop Supabase pausing after
+seven quiet days, but it is **not** enough to stop Render spinning a free web service down after
+fifteen idle minutes: the first teacher of the morning still waits about a minute for a cold start.
+
+Pick one before the term opens, because it is a decision about money and about who gets paged:
+
+- a free uptime pinger (cron-job.org, UptimeRobot) at a **4–5 minute** interval against
+  `https://rca-sms-1.onrender.com/api/keep-warm` — no cost, no cold starts, depends on a third party;
+- Render **Starter** at roughly $7 a month — no sleeping, no third party, no cold start;
+- nothing, and everyone accepts a slow first page each school morning.
+
+`/api/keep-warm` is public by design and answers only `reachable` / `unreachable`: the probe is a
+count with no rows and the number is never sent back, so the URL cannot be used to learn how many
+pupils or staff the school has.
+
+### 3. Branch protection — one click, and it is the one that matters most
+
+`main` deploys itself the moment it is pushed to, and more than one agent has been given write
+access to this repository. GitHub → `Avreson1/rca-sms-1` → *Settings → Branches → Add branch
+protection rule*: branch name pattern `main`, then tick **Require a pull request before merging**
+and **Require status checks to pass** → choose `CI / build`. Until that is set, a broken build can
+be live without anyone deciding it should be.
+
+### 4. The portal is not yet multi-machine
+
+Most setup screens and several operations screens still save to the browser that typed them in, and
+some screens print figures nobody entered. That is the work in
+*Current limitations* and it must be finished before this repository is cloned for live — see the
+`P0`–`P4` order in [DEPLOYMENT.md](DEPLOYMENT.md).
+
+### Cloning this repository for the live school
+
+Everything that must change, in the order that avoids surprises:
+
+1. New Supabase project → run `supabase/schema.sql`, then `supabase/harden-rls.sql`, then the
+   `GRANT` block in [DEPLOYMENT.md](DEPLOYMENT.md) (privileges belong to the `service_role`, so a
+   new project needs them again).
+2. New Render service from the cloned repository; set `NEXT_PUBLIC_SUPABASE_URL`,
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (the `sb_secret_…` form), a fresh
+   `AUTH_SESSION_SECRET`, and the `AUTH_SUPER_ADMIN_*` bootstrap account.
+3. New bucket and new `SUPABASE_DB_URL` in the clone's secrets; verify a backup run and a restore.
+4. Repo variable `KEEP_WARM_URL` pointing at the new host, or edit the fallback in
+   `keep-warm.yml` — that variable is why the workflow survives a clone unedited.
+5. Update the hostname in `render.yaml`, this file, and `DEPLOYMENT.md`.
+6. Enrol real pupils before inviting staff: the live `students` and `invoices` tables being empty
+   is otherwise mistaken for a wiped system.
+
 ## Getting started
 
 ```bash

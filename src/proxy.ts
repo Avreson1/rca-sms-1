@@ -48,5 +48,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api/auth|login|welcome|blog|gallery|_next/static|_next/image|favicon.ico|.*\\..*).*)"],
+  // api/keep-warm is public for the same reason api/auth is: the scheduler that
+  // visits it has no session to present.
+  matcher: ["/((?!api/auth|api/keep-warm|login|welcome|blog|gallery|_next/static|_next/image|favicon.ico|.*\\..*).*)"],
 };
