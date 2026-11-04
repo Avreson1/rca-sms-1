@@ -8,7 +8,6 @@ import {
   useRealtimeStudents,
   useRealtimeClasses,
   useRealtimeGradingScales,
-  useRealtimeSubjects,
   useRealtimeSubjectScores,
   useRealtimePsychomotor,
   useRealtimeNewsletter,
@@ -16,36 +15,23 @@ import {
   calculateGradeForClass,
   formatOrdinal,
   StudentRecord,
-  PsychomotorRecord,
 } from "@/lib/realtime-store";
 import { fetchPublicationsFromSupabase } from "@/lib/supabase/db";
 import { useSchoolConfig, sessionOptions, REPORT_TERMS, type ReportTerm } from "@/lib/school-config";
 import {
   GraduationCap,
   Printer,
-  Download,
   ArrowLeft,
-  School,
-  CheckCircle2,
-  Award,
-  Sparkles,
-  Sliders,
   ChevronLeft,
   ChevronRight,
   Heart,
   Activity,
-  Layers,
-  FileSpreadsheet,
-  Check,
-  Eye,
   Calendar,
   Users,
   Palette,
-  Mail,
   CreditCard,
   ShieldCheck,
   Lock,
-  AlertCircle,
   UserCheck,
 } from "lucide-react";
 
@@ -187,7 +173,12 @@ export default function ScoreCardPage() {
   const { newsletter } = useRealtimeNewsletter();
   const { currentUser } = useRealtimeAuth();
 
-  const currentRole = currentUser?.role || "SUPER_ADMIN";
+  // The role, or nothing. This used to default to SUPER_ADMIN, so a browser that
+  // had not read a login yet opened the whole dossier engine — class pickers, the
+  // batch print run and every pupil in the register — while believing it was
+  // someone it was not. `DashboardShell` already refuses an unknown role; the
+  // flags below are the second door on the same room.
+  const currentRole = currentUser?.role ?? null;
   const isParentOrStudent = currentRole === "STUDENT_PARENT";
   const isTeacher = currentRole === "TEACHER";
   const isSuperOrExam = currentRole === "SUPER_ADMIN" || currentRole === "EXAM_OFFICER";
@@ -439,15 +430,6 @@ export default function ScoreCardPage() {
   // defaults used to be praise ("exceptionally diligent"), 112 days present out of
   // 115, and top ratings on every trait for every child — printed on cards that go
   // home, for pupils who were never assessed.
-  const currentPsychomotor = useMemo((): PsychomotorRecord | null => {
-    if (!currentStudent) return null;
-    return (
-      psychomotorList.find(
-        (p) => p.studentId === currentStudent.id && p.session === selectedSession && p.term === selectedTerm
-      ) ?? null
-    );
-  }, [currentStudent, psychomotorList, selectedSession, selectedTerm]);
-
   // Student navigation
   const currentStudentIndex = classStudents.findIndex((s) => s.id === currentStudent?.id);
   const handlePrevStudent = () => {
@@ -1175,8 +1157,26 @@ export default function ScoreCardPage() {
               </div>
             )}
 
-            {/* Newsletter and Batch Toggles */}
+            {/* Card section toggles */}
             <div className="flex items-center gap-3 flex-wrap">
+              <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showPsychomotor}
+                  onChange={(e) => setShowPsychomotor(e.target.checked)}
+                  className="rounded text-blue-600"
+                />
+                Print Traits &amp; Psychomotor
+              </label>
+              <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showAttendanceRemarks}
+                  onChange={(e) => setShowAttendanceRemarks(e.target.checked)}
+                  className="rounded text-blue-600"
+                />
+                Print Attendance &amp; Remarks
+              </label>
               <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer select-none">
                 <input
                   type="checkbox"

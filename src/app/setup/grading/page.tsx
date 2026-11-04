@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { SCHOOL_INFO } from "@/lib/constants";
 import {
   useRealtimeGradingScales,
   GradeBracket,
@@ -11,19 +10,13 @@ import {
   UNIVERSAL_GRADING_BRACKETS,
 } from "@/lib/realtime-store";
 import {
-  Award,
   ArrowLeft,
   Save,
   CheckCircle2,
   TriangleAlert,
   RotateCcw,
-  Sliders,
   Plus,
   Trash2,
-  Layers,
-  Sparkles,
-  HelpCircle,
-  ShieldCheck,
   Info,
 } from "lucide-react";
 

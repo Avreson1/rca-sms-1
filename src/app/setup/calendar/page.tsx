@@ -16,23 +16,17 @@ import {
   Calendar,
   Plus,
   ArrowLeft,
-  Clock,
   CheckCircle2,
-  AlertCircle,
   Sparkles,
   Trash2,
-  Edit2,
-  Layers,
   Filter,
   Activity,
-  FileText,
   Send,
   MapPin,
   DollarSign,
   Users,
   Target,
   BookmarkPlus,
-  Check,
 } from "lucide-react";
 
 export default function AcademicCalendarPage() {

@@ -4,14 +4,8 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import {
-  Target,
   ArrowLeft,
-  AlertCircle,
   Save,
-  ShieldCheck,
-  Award,
-  Sparkles,
-  Info,
 } from "lucide-react";
 
 export default function SetupPassScoresPage() {

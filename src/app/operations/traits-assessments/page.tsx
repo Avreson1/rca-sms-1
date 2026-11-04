@@ -18,19 +18,14 @@ import {
   Heart,
   Activity,
   ArrowLeft,
-  Save,
   CheckCircle2,
   Users,
   Sparkles,
-  Calendar,
-  Award,
   Search,
   Sliders,
   Printer,
   ChevronDown,
   ChevronRight,
-  HelpCircle,
-  FileCheck,
 } from "lucide-react";
 
 // Standard teacher and principal remark templates for rapid auto-selection
@@ -61,7 +56,10 @@ export default function TraitsAssessmentsPage() {
   const { currentUser } = useRealtimeAuth();
   const { config: school } = useSchoolConfig();
 
-  const currentRole = currentUser?.role || "SUPER_ADMIN";
+  // No assumed administrator: an unread login grants nothing here, the same way
+  // `DashboardShell` grants nothing. `isTeacher` scopes the class to the form
+  // master's own arm, so a null role narrows rather than widens.
+  const currentRole = currentUser?.role ?? null;
   const isTeacher = currentRole === "TEACHER";
 
   // The endorsement prints on the child's card under the Head of School's name.

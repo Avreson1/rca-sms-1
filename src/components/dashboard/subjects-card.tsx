@@ -1,6 +1,6 @@
 import React from "react";
 import Link from "next/link";
-import { BookOpen, ArrowRight, Users, Sparkles } from "lucide-react";
+import { BookOpen, ArrowRight, Users } from "lucide-react";
 
 interface SubjectItem {
   id: string;

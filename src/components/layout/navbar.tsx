@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, MapPin, Menu, ShieldCheck, User, LogOut, CheckCircle2 } from "lucide-react";
+import { MapPin, Menu, ShieldCheck, LogOut, CheckCircle2 } from "lucide-react";
 import { SCHOOL_INFO } from "@/lib/constants";
 import { useSchoolConfig } from "@/lib/school-config";
 import { useRealtimeAuth } from "@/lib/realtime-store";

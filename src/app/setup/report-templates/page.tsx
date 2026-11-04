@@ -7,14 +7,11 @@ import { SCHOOL_INFO } from "@/lib/constants";
 import { useRealtimeNewsletter, NewsletterRecord } from "@/lib/realtime-store";
 import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
-  FileText,
   ArrowLeft,
   CheckCircle2,
   Printer,
-  Sparkles,
   Palette,
   Mail,
-  Calendar,
   CreditCard,
   Save,
   RotateCcw,

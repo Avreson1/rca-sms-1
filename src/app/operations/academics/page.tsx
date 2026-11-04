@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { SCHOOL_INFO, ROLES } from "@/lib/constants";
+import { SCHOOL_INFO } from "@/lib/constants";
 import {
   useRealtimeStaff,
   useRealtimeClasses,
@@ -13,22 +13,12 @@ import {
 } from "@/lib/realtime-store";
 import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
-  GraduationCap,
   ArrowLeft,
-  BookOpen,
-  Calendar,
   Clock,
-  CheckCircle2,
   Users,
-  Layers,
-  ArrowUpRight,
   Printer,
-  FileSpreadsheet,
-  Building2,
   Plus,
   Trash2,
-  AlertCircle,
-  Sparkles,
 } from "lucide-react";
 
 export default function OperationsAcademicsPage() {

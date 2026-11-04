@@ -3,18 +3,11 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { SCHOOL_INFO, ALL_SCHOOL_SECTIONS } from "@/lib/constants";
+import { SCHOOL_INFO } from "@/lib/constants";
 import { useRealtimeStudents, useRealtimeClasses, useRealtimeStaff } from "@/lib/realtime-store";
 import {
-  GraduationCap,
-  Plus,
   ArrowLeft,
-  Users,
-  Layers,
-  CheckCircle2,
   Sliders,
-  UserCheck,
-  Building2,
 } from "lucide-react";
 
 interface SectionConfig {
@@ -81,7 +74,7 @@ export default function SetupSectionsPage() {
       if (saved) {
         try {
           return JSON.parse(saved);
-        } catch (e) {}
+        } catch {}
       }
     }
     return {

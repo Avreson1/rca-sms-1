@@ -10,9 +10,6 @@ import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   Mail,
   Send,
-  Inbox,
-  Star,
-  Trash2,
   ArrowLeft,
   Search,
   CheckCircle2,

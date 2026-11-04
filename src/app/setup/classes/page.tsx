@@ -14,18 +14,13 @@ import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   School,
   Plus,
-  Users,
-  BookOpen,
   ArrowLeft,
   Search,
-  CheckCircle2,
   Trash2,
-  Filter,
-  Edit2,
 } from "lucide-react";
 
 export default function SetupClassesPage() {
-  const { classes, addClass, deleteClass, updateClass } = useRealtimeClasses();
+  const { classes, addClass, deleteClass } = useRealtimeClasses();
   const { students } = useRealtimeStudents();
   const { staff } = useRealtimeStaff();
 

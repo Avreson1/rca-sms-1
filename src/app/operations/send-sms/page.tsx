@@ -3,14 +3,10 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { SCHOOL_INFO } from "@/lib/constants";
 import {
-  MessageSquare,
   ArrowLeft,
   Send,
   Copy,
-  Phone,
-  Sparkles,
 } from "lucide-react";
 
 export default function SendSMSBroadcastPage() {

@@ -3,7 +3,7 @@
 import React, { useState, useRef } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { SCHOOL_INFO, ROLES } from "@/lib/constants";
+import { SCHOOL_INFO } from "@/lib/constants";
 import {
   useRealtimeStaff,
   StaffRecord,
@@ -19,18 +19,14 @@ import {
   Trash2,
   CheckCircle2,
   Mail,
-  Phone,
   ShieldCheck,
-  Send,
   ArrowLeft,
-  Filter,
   Download,
   Upload,
   FileSpreadsheet,
   FileDown,
   AlertCircle,
   KeyRound,
-  Sliders,
   Copy,
   Check,
   Printer,
@@ -113,7 +109,6 @@ export default function StaffManagementPage() {
 
   // CSV Modal
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
-  const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvPreview, setCsvPreview] = useState<any[]>([]);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -280,7 +275,6 @@ export default function StaffManagementPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setCsvFile(file);
     const reader = new FileReader();
     reader.onload = (evt) => {
       const text = evt.target?.result as string;
@@ -354,7 +348,6 @@ export default function StaffManagementPage() {
       const result = await bulkAddStaff(csvPreview);
       setBulkResult(result);
       setCsvPreview([]);
-      setCsvFile(null);
       setUploadStatus(null);
       if (result.saved > 0) {
         setNotificationMsg(`${result.saved} staff ${result.saved === 1 ? "record is" : "records are"} on the school's register`);

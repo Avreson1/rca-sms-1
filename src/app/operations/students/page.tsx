@@ -3,17 +3,14 @@
 import React, { useState, useRef } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { SCHOOL_INFO } from "@/lib/constants";
 import { useRealtimeStudents, useRealtimeClasses, StudentRecord } from "@/lib/realtime-store";
 import { ALL_CLASSES } from "@/lib/constants";
 import { exportToCSV, parseCSV, downloadSampleTemplate } from "@/lib/csv-utils";
 import {
   Users,
   Search,
-  Filter,
   Plus,
   Trash2,
-  CheckCircle2,
   FileSpreadsheet,
   Download,
   Upload,
@@ -56,7 +53,6 @@ export default function StudentsPage() {
 
   // CSV Bulk Upload Modal
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
-  const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvPreview, setCsvPreview] = useState<CsvStudentRow[]>([]);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [csvBusy, setCsvBusy] = useState(false);
@@ -113,7 +109,6 @@ export default function StudentsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setCsvFile(file);
     const reader = new FileReader();
     reader.onload = (evt) => {
       const text = evt.target?.result as string;
@@ -211,7 +206,6 @@ export default function StudentsPage() {
           }
     );
     setIsCsvModalOpen(false);
-    setCsvFile(null);
     setCsvPreview([]);
     setUploadStatus(null);
   };

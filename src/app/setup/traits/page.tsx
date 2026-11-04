@@ -4,12 +4,10 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
-import { useRealtimeTraits, TraitConfigItem } from "@/lib/realtime-store";
+import { useRealtimeTraits } from "@/lib/realtime-store";
 import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
-  Sparkles,
   ArrowLeft,
-  CheckCircle2,
   Plus,
   Heart,
   Activity,

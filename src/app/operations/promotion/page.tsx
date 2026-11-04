@@ -19,7 +19,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Users,
-  Sparkles,
   ArrowRight,
 } from "lucide-react";
 

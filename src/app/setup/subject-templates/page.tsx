@@ -14,18 +14,12 @@ import {
   Plus,
   Search,
   ArrowLeft,
-  BookOpen,
-  CheckCircle2,
-  Copy,
   Sparkles,
   Trash2,
-  Baby,
-  GraduationCap,
 } from "lucide-react";
 
 export default function SubjectTemplatesPage() {
-  const { templates, addTemplate, deleteTemplate, clearAllTemplates } =
-    useRealtimeSubjectTemplates();
+  const { templates, addTemplate, deleteTemplate } = useRealtimeSubjectTemplates();
 
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("all");

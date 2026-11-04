@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
@@ -11,15 +11,12 @@ import {
   useRealtimeCBTConfig,
   useRealtimeAuth,
   syncCBTScoreToCA,
-  StudentRecord,
   type CBTQuestionRecord,
 } from "@/lib/realtime-store";
-import { exportToCSV, parseCSV, downloadSampleTemplate } from "@/lib/csv-utils";
+import { exportToCSV, downloadSampleTemplate } from "@/lib/csv-utils";
 import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
-  Laptop,
   Play,
-  Clock,
   CheckCircle2,
   AlertCircle,
   ArrowLeft,
@@ -29,12 +26,9 @@ import {
   RotateCcw,
   ShieldAlert,
   AlertTriangle,
-  FileWarning,
   Lock,
   Unlock,
   Download,
-  Upload,
-  FileSpreadsheet,
   FileDown,
   Printer,
   ArrowUpRight,
@@ -138,7 +132,11 @@ export default function ProctoredCBTPage() {
   const { cbtConfig, toggleCBTAccess } = useRealtimeCBTConfig();
   const { currentUser } = useRealtimeAuth();
   const { config: school } = useSchoolConfig();
-  const currentRole = currentUser?.role || "SUPER_ADMIN";
+  // Only decides whether the closed-window screen also covers this visitor. It
+  // used to default an unread login to SUPER_ADMIN, which is the one role the
+  // window never closes on — so a browser that had not read a login was handed
+  // the staff side of an exam portal that was shut.
+  const currentRole = currentUser?.role ?? null;
   const isCandidate = currentRole === "STUDENT_PARENT";
 
   // The school's own name and session, from its records. This heading used to
@@ -196,10 +194,12 @@ export default function ProctoredCBTPage() {
   const candidateNo = currentStudent?.admissionNo ?? "not enrolled";
   const candidateClass = currentStudent?.className ?? "no class";
 
-  const getCorrectOptionIndex = (q: any): number => {
-    if (typeof q?.correctAnswerIndex === "number") return q.correctAnswerIndex;
-    if (typeof q?.correctOptionIndex === "number") return q.correctOptionIndex;
-    return 0;
+  // A stored question names the field `correctOptionIndex`, the sample ones
+  // `correctAnswerIndex`; the engine reads whichever the paper happens to carry.
+  const getCorrectOptionIndex = (q: CBTQuestionRecord | Question): number => {
+    const stored = (q as Partial<CBTQuestionRecord>).correctOptionIndex;
+    if (typeof stored === "number") return stored;
+    return typeof q.correctAnswerIndex === "number" ? q.correctAnswerIndex : 0;
   };
 
   const calculateFinalScore = () => {
@@ -268,13 +268,24 @@ export default function ProctoredCBTPage() {
     });
   };
 
+  // The lockdown listeners and the countdown are attached once per phase of a
+  // sitting, but the two handlers they call close over the answers as they stood
+  // when the effect last ran. Without this, a candidate who answered anything
+  // after starting the clock would have had the third strike, or the clock itself,
+  // score the sitting against a stale paper. The effects read through the ref, so
+  // they always run the current handler.
+  const currentHandlers = useRef({ logMalpractice, handleFinalSubmit });
+  useEffect(() => {
+    currentHandlers.current = { logMalpractice, handleFinalSubmit };
+  });
+
   // Visibility Change / Tab Switching Detection
   useEffect(() => {
     if (!isTestStarted || isSubmitted || isExpelled) return;
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        logMalpractice(
+        currentHandlers.current.logMalpractice(
           "TAB_SWITCH",
           "CRITICAL",
           "Unauthorized window blur / Tab switch detected away from exam portal"
@@ -283,7 +294,7 @@ export default function ProctoredCBTPage() {
     };
 
     const handleWindowBlur = () => {
-      logMalpractice(
+      currentHandlers.current.logMalpractice(
         "TAB_SWITCH",
         "CRITICAL",
         "Application window lost focus (Potential split-screen or external tool usage)"
@@ -294,7 +305,7 @@ export default function ProctoredCBTPage() {
       const isFull = !!document.fullscreenElement;
       setIsFullscreen(isFull);
       if (!isFull && isTestStarted && !isSubmitted && !isExpelled) {
-        logMalpractice(
+        currentHandlers.current.logMalpractice(
           "FULLSCREEN_EXIT",
           "MEDIUM",
           "Candidate exited mandatory full-screen security lockdown"
@@ -309,7 +320,7 @@ export default function ProctoredCBTPage() {
         e.key === "PrintScreen"
       ) {
         e.preventDefault();
-        logMalpractice(
+        currentHandlers.current.logMalpractice(
           "SHORTCUT_BLOCKED",
           "LOW",
           `Restricted keyboard shortcut (${e.key}) intercepted and blocked`
@@ -319,7 +330,7 @@ export default function ProctoredCBTPage() {
 
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
-      logMalpractice(
+      currentHandlers.current.logMalpractice(
         "SHORTCUT_BLOCKED",
         "LOW",
         "Right-click context menu intercepted and disabled"
@@ -347,7 +358,7 @@ export default function ProctoredCBTPage() {
     const interval = setInterval(() => {
       setTimeLeft((t) => {
         if (t <= 1) {
-          handleFinalSubmit(false);
+          currentHandlers.current.handleFinalSubmit(false);
           return 0;
         }
         return t - 1;
@@ -364,7 +375,7 @@ export default function ProctoredCBTPage() {
       if (document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
       }
-    } catch (e) {
+    } catch {
       console.log("Fullscreen request bypassed");
     }
 

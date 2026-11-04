@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { SCHOOL_INFO } from "@/lib/constants";
 import {
   useRealtimeCAStructure,
   useRealtimeAuth,
@@ -12,20 +11,15 @@ import {
 } from "@/lib/realtime-store";
 import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
-  PieChart,
   ArrowLeft,
   CheckCircle2,
-  Sliders,
-  Database,
   ArrowUpRight,
   ShieldCheck,
   Plus,
   Trash2,
   Sparkles,
-  Layers,
   Save,
   RotateCcw,
-  AlertTriangle,
   Info,
 } from "lucide-react";
 

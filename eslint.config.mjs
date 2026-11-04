@@ -20,6 +20,10 @@ const eslintConfig = defineConfig([
       // Legacy store/types code uses `any` in places; migrating the whole
       // store to strict types is tracked separately. New code should avoid it.
       "@typescript-eslint/no-explicit-any": "warn",
+      // `const { password: _password, ...safe } = account` is how this codebase
+      // keeps a secret out of what it returns. The discarded name is the point,
+      // so it is not an unused variable.
+      "@typescript-eslint/no-unused-vars": ["warn", { ignoreRestSiblings: true }],
     },
   },
   // Override default ignores of eslint-config-next.

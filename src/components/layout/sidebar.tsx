@@ -18,7 +18,6 @@ import {
   School,
   Sparkles,
   LogOut,
-  ShieldAlert,
   UserCheck,
   Lock,
   X,

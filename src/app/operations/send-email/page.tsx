@@ -3,15 +3,10 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { SCHOOL_INFO } from "@/lib/constants";
 import {
-  Mail,
   ArrowLeft,
   Send,
   Copy,
-  Users,
-  Paperclip,
-  Sparkles,
 } from "lucide-react";
 
 export default function SendEmailBroadcastPage() {

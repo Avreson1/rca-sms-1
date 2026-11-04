@@ -5,6 +5,7 @@ import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
 import { useRealtimeAuth } from "@/lib/realtime-store";
+import type { UserRole } from "@/lib/rbac";
 import {
   BookOpen,
   ArrowLeft,
@@ -12,22 +13,12 @@ import {
   Search,
   ShieldCheck,
   CheckCircle2,
-  GraduationCap,
-  Users,
-  Receipt,
-  FileSpreadsheet,
   AlertTriangle,
   ChevronDown,
   ChevronRight,
-  School,
-  Lock,
-  Download,
   FileText,
-  Sliders,
   Sparkles,
-  ShieldAlert,
   UserCheck,
-  Laptop,
 } from "lucide-react";
 
 export interface SOPItem {
@@ -465,14 +456,24 @@ const ROLE_ALLOWED_SOP_CATEGORIES: Record<string, string[]> = {
   TEACHER: ["all", "Faculty / Teacher", "Exam Officer", "Parent / Student"],
   ACCOUNTANT: ["all", "Accounts / Bursary", "Administrative", "Parent / Student"],
   STUDENT_PARENT: ["all", "Parent / Student"],
+  // A QA login walks every workflow to prove the portal, so it reads every
+  // procedure — including the head office's, which it cannot act on.
+  TESTERS: ["all", "Super Admin", "Exam Officer", "Faculty / Teacher", "Accounts / Bursary", "Administrative", "Parent / Student"],
 };
+
+/**
+ * A role this file has not been told about reads the family's procedures only.
+ * It used to read the head office's whole manual, because an unmapped role fell
+ * through to `SUPER_ADMIN` — the one branch that grants the most.
+ */
+const RESTRICTED_SOP_CATEGORIES = ["all", "Parent / Student"];
 
 export default function SOPManualPage() {
   const { currentUser } = useRealtimeAuth();
-  const currentRole = currentUser?.role || "SUPER_ADMIN";
+  const currentRole = currentUser?.role ?? null;
 
   const allowedCategories = useMemo(() => {
-    return ROLE_ALLOWED_SOP_CATEGORIES[currentRole] || ROLE_ALLOWED_SOP_CATEGORIES.SUPER_ADMIN;
+    return currentRole ? ROLE_ALLOWED_SOP_CATEGORIES[currentRole] ?? RESTRICTED_SOP_CATEGORIES : [];
   }, [currentRole]);
 
   // Default initial category based on user's role
@@ -535,20 +536,25 @@ export default function SOPManualPage() {
     }, 300);
   };
 
-  const getRoleBadge = (role: string) => {
+  // The labels used to read "Tier 1: Master Executive … Clearance" down to
+  // "Tier 5", a clearance ladder this portal does not run. What a login may read
+  // here is the category list above, so the badge names the role and nothing else.
+  const getRoleBadge = (role: UserRole | null) => {
     switch (role) {
       case "SUPER_ADMIN":
-        return { label: "Tier 1: Master Executive SOP Clearance", color: "bg-purple-100 text-purple-800 border-purple-300" };
+        return { label: "Head office", color: "bg-purple-100 text-purple-800 border-purple-300" };
       case "EXAM_OFFICER":
-        return { label: "Tier 2: Academic & Exam Moderation SOP Clearance", color: "bg-blue-100 text-blue-800 border-blue-300" };
+        return { label: "Exam office", color: "bg-blue-100 text-blue-800 border-blue-300" };
       case "TEACHER":
-        return { label: "Tier 3: Faculty & Teaching Staff SOP Clearance", color: "bg-emerald-100 text-emerald-800 border-emerald-300" };
+        return { label: "Teaching staff", color: "bg-emerald-100 text-emerald-800 border-emerald-300" };
       case "ACCOUNTANT":
-        return { label: "Tier 4: Bursary & Financial Ledgers SOP Clearance", color: "bg-amber-100 text-amber-800 border-amber-300" };
+        return { label: "Bursary", color: "bg-amber-100 text-amber-800 border-amber-300" };
       case "STUDENT_PARENT":
-        return { label: "Tier 5: Student & Parent Guardian Helpdesk", color: "bg-sky-100 text-sky-800 border-sky-200" };
+        return { label: "Parent / Student desk", color: "bg-sky-100 text-sky-800 border-sky-200" };
+      case "TESTERS":
+        return { label: "QA test login", color: "bg-slate-100 text-slate-800 border-slate-300" };
       default:
-        return { label: "Standard Staff Clearance", color: "bg-slate-100 text-slate-800 border-slate-300" };
+        return { label: "No login read on this browser", color: "bg-slate-100 text-slate-800 border-slate-300" };
     }
   };
 
@@ -617,7 +623,7 @@ export default function SOPManualPage() {
             </div>
             <div>
               <p className="text-xs font-bold text-slate-900">
-                Active Role Workspace: <strong className="text-[#0000FF]">{currentUser?.fullName || "Authorized User"}</strong> ({currentRole})
+                Active Role Workspace: <strong className="text-[#0000FF]">{currentUser?.fullName || "No name on this login"}</strong> ({currentRole ?? "no role read on this browser"})
               </p>
               <p className="text-[11px] text-slate-600">
                 Displaying {filteredSOPs.length} standard operating procedure(s) authorized for your security clearance level.

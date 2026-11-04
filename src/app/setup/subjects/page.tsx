@@ -3,14 +3,13 @@
 import React, { useState, useRef } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { SCHOOL_INFO, ALL_SCHOOL_SECTIONS, ALL_CLASSES } from "@/lib/constants";
+import { ALL_CLASSES } from "@/lib/constants";
 import { useRealtimeSubjects, SubjectRecord } from "@/lib/realtime-store";
 import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   BookOpen,
   Plus,
   Search,
-  Filter,
   ArrowLeft,
   CheckCircle2,
   Trash2,
@@ -20,9 +19,6 @@ import {
   Download,
   CheckSquare,
   Square,
-  FileText,
-  AlertCircle,
-  Tag,
 } from "lucide-react";
 
 const CATEGORIES = [
@@ -55,7 +51,6 @@ export default function SetupSubjectsPage() {
   const [batchNamesText, setBatchNamesText] = useState("");
   const [subjectCode, setSubjectCode] = useState(""); // Optional!
   const [category, setCategory] = useState("General / Core");
-  const [creditUnits, setCreditUnits] = useState(3);
   const [isCompulsory, setIsCompulsory] = useState(true);
   const [selectedClasses, setSelectedClasses] = useState<string[]>([...ALL_CLASSES]); // Default: All classes!
 
@@ -109,7 +104,6 @@ export default function SetupSubjectsPage() {
         code: undefined, // Code is optional in batch mode
         category,
         applicableClasses: selectedClasses,
-        creditUnits,
         isCompulsory,
         assignedTeachersCount: 0,
       }));
@@ -127,7 +121,6 @@ export default function SetupSubjectsPage() {
         code: subjectCode.trim() || undefined,
         category,
         applicableClasses: selectedClasses,
-        creditUnits,
         isCompulsory,
         assignedTeachersCount: 0,
       });
@@ -199,7 +192,6 @@ export default function SetupSubjectsPage() {
             category: cat,
             isCompulsory: comp,
             applicableClasses: parsedClasses.length > 0 ? parsedClasses : [...ALL_CLASSES],
-            creditUnits: 3,
             assignedTeachersCount: 0,
           });
         }

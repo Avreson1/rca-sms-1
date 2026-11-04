@@ -644,7 +644,7 @@ function broadcast(eventType: string, payload?: any) {
       const channel = new BroadcastChannel(CHANNEL_NAME);
       channel.postMessage({ type: eventType, payload });
       channel.close();
-    } catch (e) {}
+    } catch {}
   }
 }
 
@@ -810,7 +810,7 @@ export function useRealtimeGradingScales() {
       if (stored) {
         try {
           setGradingTiers(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.GRADING_SCALES, JSON.stringify(DEFAULT_GRADING_TIERS));
       }
@@ -964,7 +964,7 @@ export function useRealtimeStudents() {
       if (stored) {
         try {
           setStudents(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(INITIAL_STUDENTS));
       }
@@ -1249,7 +1249,7 @@ export function useRealtimeSubjectScores(scope?: { session?: string; terms?: str
       if (stored) {
         try {
           setSubjectScores(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.SUBJECT_SCORES, JSON.stringify(INITIAL_SUBJECT_SCORES));
       }
@@ -1399,7 +1399,7 @@ export function useRealtimePsychomotor() {
       if (stored) {
         try {
           setPsychomotorList(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.PSYCHOMOTOR, JSON.stringify(INITIAL_PSYCHOMOTOR));
       }
@@ -1473,7 +1473,7 @@ export function useRealtimeTraits() {
       if (stored) {
         try {
           setTraits(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.TRAITS, JSON.stringify(DEFAULT_TRAITS));
       }
@@ -1539,7 +1539,7 @@ export function useRealtimeClasses() {
       if (stored) {
         try {
           setClasses(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(DEFAULT_CLASSES));
       }
@@ -1606,7 +1606,7 @@ export function useRealtimeStaff() {
       if (stored) {
         try {
           setStaff(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(INITIAL_STAFF));
       }
@@ -1732,7 +1732,7 @@ export function useRealtimeCBTQuestions() {
       if (stored) {
         try {
           setQuestions(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.CBT_QUESTIONS, JSON.stringify(INITIAL_CBT_QUESTIONS));
       }
@@ -1796,7 +1796,7 @@ export function useRealtimeInvoices() {
       if (stored) {
         try {
           setInvoices(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(INITIAL_INVOICES));
       }
@@ -1988,7 +1988,7 @@ export function useRealtimeInmail() {
       if (stored) {
         try {
           setMessages(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.INMAIL, JSON.stringify(INITIAL_INMAIL));
       }
@@ -2049,7 +2049,6 @@ export interface SubjectRecord {
   code?: string;
   category?: string;
   applicableClasses: string[];
-  creditUnits?: number;
   isCompulsory?: boolean;
   assignedTeachersCount?: number;
   createdAt?: string;
@@ -2066,7 +2065,7 @@ export function useRealtimeSubjects() {
       if (stored) {
         try {
           setSubjects(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.SUBJECTS, JSON.stringify(INITIAL_SUBJECTS));
       }
@@ -2078,7 +2077,7 @@ export function useRealtimeSubjects() {
         if (stored) {
           try {
             setSubjects(JSON.parse(stored));
-          } catch (e) {}
+          } catch {}
         }
       }
     };
@@ -2099,7 +2098,6 @@ export function useRealtimeSubjects() {
       ...newSubject,
       id: `sub-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       code: newSubject.code?.trim() || undefined,
-      creditUnits: newSubject.creditUnits || 3,
       isCompulsory: newSubject.isCompulsory ?? true,
       assignedTeachersCount: newSubject.assignedTeachersCount || 0,
       createdAt: new Date().toISOString(),
@@ -2118,7 +2116,6 @@ export function useRealtimeSubjects() {
       ...s,
       id: `sub-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
       code: s.code?.trim() || undefined,
-      creditUnits: s.creditUnits || 3,
       isCompulsory: s.isCompulsory ?? true,
       assignedTeachersCount: s.assignedTeachersCount || 0,
       createdAt: new Date().toISOString(),
@@ -2180,7 +2177,7 @@ export function useRealtimeCalendar() {
       if (stored) {
         try {
           setCalendarEvents(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(INITIAL_CALENDAR));
       }
@@ -2279,7 +2276,7 @@ export function useRealtimeFees() {
       if (stored) {
         try {
           setFees(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.FEES, JSON.stringify(INITIAL_FEES));
       }
@@ -2380,7 +2377,7 @@ export function useRealtimeSubjectTemplates() {
       if (stored) {
         try {
           setTemplates(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.SUBJECT_TEMPLATES, JSON.stringify(INITIAL_SUBJECT_TEMPLATES));
       }
@@ -2462,7 +2459,7 @@ export function useRealtimeNewsletter() {
       if (stored) {
         try {
           setNewsletter(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.NEWSLETTER, JSON.stringify(DEFAULT_NEWSLETTER));
       }
@@ -2523,7 +2520,7 @@ export function useRealtimeCAStructure() {
       if (stored) {
         try {
           setCAStructures(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.CA_STRUCTURES, JSON.stringify(DEFAULT_CA_STRUCTURES));
       }
@@ -2588,7 +2585,7 @@ export function useRealtimeActivityTemplates() {
       if (stored) {
         try {
           setActivityTemplates(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.ACTIVITY_TEMPLATES, JSON.stringify(DEFAULT_ACTIVITY_TEMPLATES));
       }
@@ -2790,7 +2787,7 @@ export function useRealtimeTimetable() {
       if (stored) {
         try {
           setTimetable(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.TIMETABLE, JSON.stringify(INITIAL_TIMETABLE));
       }
@@ -2868,7 +2865,7 @@ export function useRealtimeCBTConfig() {
       if (stored) {
         try {
           setCBTConfig(JSON.parse(stored));
-        } catch (e) {}
+        } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.CBT_CONFIG, JSON.stringify(DEFAULT_CBT_CONFIG));
       }
@@ -2883,7 +2880,7 @@ export function useRealtimeCBTConfig() {
           if (stored) {
             try {
               setCBTConfig(JSON.parse(stored));
-            } catch (e) {}
+            } catch {}
           }
         }
       };

@@ -15,15 +15,12 @@ import {
 import { exportToCSV } from "@/lib/csv-utils";
 import { fetchCaScoresFromSupabase } from "@/lib/supabase/db";
 import {
-  FileText,
   ArrowLeft,
   Download,
   FileSpreadsheet,
   Users,
   Award,
   Receipt,
-  Printer,
-  Sparkles,
   CheckCircle2,
 } from "lucide-react";
 

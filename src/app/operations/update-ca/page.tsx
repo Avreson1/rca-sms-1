@@ -18,22 +18,16 @@ import { ALL_CLASSES } from "@/lib/constants";
 import { useSchoolConfig, effectiveScope } from "@/lib/school-config";
 import { exportToCSV, parseCSV, downloadSampleTemplate } from "@/lib/csv-utils";
 import {
-  BookOpen,
-  Users,
   Save,
-  CheckCircle2,
   Download,
   Upload,
   Search,
   ArrowLeft,
-  Filter,
-  Sparkles,
   AlertCircle,
   FileSpreadsheet,
   Cpu,
   Sliders,
   FileDown,
-  UserCheck,
 } from "lucide-react";
 
 export default function UpdateCAPage() {
@@ -54,7 +48,9 @@ export default function UpdateCAPage() {
     term: SCHOOL_INFO.currentTerm,
   });
 
-  const currentRole = currentUser?.role || "SUPER_ADMIN";
+  // `isTeacher` narrows the gradebook to the form master's own class and subject,
+  // so defaulting an unread login to SUPER_ADMIN widened it to the whole school.
+  const currentRole = currentUser?.role ?? null;
   const isTeacher = currentRole === "TEACHER";
 
   const allClassesList = classes.length > 0 ? classes.map((c) => c.name) : ALL_CLASSES;
@@ -108,7 +104,6 @@ export default function UpdateCAPage() {
 
   // CSV Score Upload Modal
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
-  const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvPreview, setCsvPreview] = useState<any[]>([]);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -155,7 +150,6 @@ export default function UpdateCAPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setCsvFile(file);
     const reader = new FileReader();
     reader.onload = (evt) => {
       const text = evt.target?.result as string;
@@ -243,7 +237,6 @@ export default function UpdateCAPage() {
     setIsSaved(filed > 0);
     setTimeout(() => {
       setIsCsvModalOpen(false);
-      setCsvFile(null);
       setCsvPreview([]);
       setUploadStatus(null);
     }, 8000);
