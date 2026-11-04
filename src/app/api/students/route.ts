@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { requireRole, requireRoleSession } from "@/lib/auth/guard";
 import { guardianScope } from "@/lib/auth/guardian-links";
 import { databaseUnavailable, getSupabaseServerClient } from "@/lib/supabase/server";
@@ -111,12 +112,36 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: "Provide at least one student with admission_no and full_name." }, { status: 400 });
   }
 
+  // Every row needs an id. The browser is not trusted to supply one (it invents
+  // `s-1730…`, which the UUID column rejects), and the live `students` table has
+  // no working `uuid_generate_v4()` default, so an insert without an id fails
+  // with a not-null violation. A pupil already on file keeps their existing id:
+  // `ca_scores` and `invoices` point at students(id), so handing back a fresh
+  // UUID on re-save would strand every mark and invoice that child already has.
+  const missing = rows.filter((row) => !row.id).map((row) => row.admission_no);
+  const existingById = new Map<string, string>();
+  if (missing.length > 0) {
+    const { data, error: lookupError } = await supabase
+      .from("students")
+      .select("id, admission_no")
+      .in("admission_no", missing);
+    if (lookupError) return NextResponse.json({ success: false, error: lookupError.message }, { status: 502 });
+    for (const found of data ?? []) {
+      if (typeof found.id === "string") existingById.set(found.admission_no, found.id);
+    }
+  }
+
+  const withIds = rows.map((row) => ({
+    ...row,
+    id: row.id ?? existingById.get(row.admission_no) ?? randomUUID(),
+  }));
+
   // Keyed on the admission number, which is the identifier the whole portal
   // uses for a pupil (CA scores, invoices and removal all address it) and the
   // column the schema makes unique. Keyed on `id`, re-saving an enrolled child —
   // the same admission number with a browser-generated id — tried to insert a
   // second row and the database refused with a 502 that looked like a fault.
-  const { error } = await supabase.from("students").upsert(rows, { onConflict: "admission_no" });
+  const { error } = await supabase.from("students").upsert(withIds, { onConflict: "admission_no" });
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 502 });
   return NextResponse.json({ success: true });
 }
