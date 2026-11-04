@@ -122,59 +122,6 @@ export const ALL_CLASSES = [
   "SS 3",
 ];
 
-export const DRAFT_LOGIN_ACCOUNTS = [
-  {
-    role: "SUPER_ADMIN",
-    roleTitle: "Super Administrator / Principal",
-    badgeColor: "bg-blue-600 text-white border-blue-700",
-    username: "dominic370",
-    fullName: "Dr. Dominic Mark",
-    staffId: "RCA/PERS/025",
-    description: "Complete institutional governance, policy configurations, result authorization & database controls.",
-    icon: "ShieldCheck",
-  },
-  {
-    role: "EXAM_OFFICER",
-    roleTitle: "Exam Officer / Dean of Studies",
-    badgeColor: "bg-cyan-500 text-slate-950 border-cyan-400",
-    username: "exam_officer",
-    fullName: "Prof. Jeremiah Alabi",
-    staffId: "RCA/PERS/012",
-    description: "CA weights setup, universal grading rules, broadsheets, CBT management & result locking.",
-    icon: "Sliders",
-  },
-  {
-    role: "TEACHER",
-    roleTitle: "Form Master / Subject Teacher",
-    badgeColor: "bg-emerald-600 text-white border-emerald-700",
-    username: "teacher_grace",
-    fullName: "Mrs. Grace Adams",
-    staffId: "RCA/PERS/048",
-    description: "Continuous assessment mark entry, psychomotor domain scoring, remarks & class gradebooks.",
-    icon: "GraduationCap",
-  },
-  {
-    role: "ACCOUNTANT",
-    roleTitle: "Bursar / Account Officer",
-    badgeColor: "bg-amber-500 text-slate-950 border-amber-600",
-    username: "bursar_accounts",
-    fullName: "Mr. Samuel Danladi",
-    staffId: "RCA/PERS/008",
-    description: "Fee structure configuration, student invoicing, payment reconciliation & receipt issuance.",
-    icon: "Receipt",
-  },
-  {
-    role: "STUDENT_PARENT",
-    roleTitle: "Student & Parent Portal",
-    badgeColor: "bg-purple-600 text-white border-purple-700",
-    username: "parent_rca",
-    fullName: "Chief & Mrs. A. Oladipo (Guardian)",
-    staffId: "RCA/PAR/104",
-    description: "View published terminal scorecards, attendance records, CBT tests & fee clearance receipts.",
-    icon: "Users",
-  },
-] as const;
-
 export const COLOR_THEMES = {
   SCHEME_1: {
     name: "Scheme 1 (Vibrant Royal & Academic Contrast)",
@@ -190,15 +137,4 @@ export const COLOR_THEMES = {
     accent: "#D90429", // 10% Crimson Red
     surface: "#F8F9FA", // 5% Off-White / Cream
   },
-} as const;
-
-export const CURRENT_USER = {
-  id: "u-025",
-  fullName: "Dr. Dominic Mark",
-  username: "dominic370",
-  email: "dominic370@royalcrownacademy.edu.ng",
-  staffId: "RCA/PERS/025",
-  role: "SUPER_ADMIN",
-  assignedSubject: "Information & Communication Technology",
-  assignedClass: "SS 2",
 } as const;

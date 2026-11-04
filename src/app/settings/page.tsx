@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { UserAccess } from "@/components/settings/user-access";
 import { SCHOOL_INFO } from "@/lib/constants";
+import { saveSchoolConfigToSupabase } from "@/lib/supabase/db";
+import { useSchoolConfig } from "@/lib/school-config";
 import {
   purgeAllDemoData,
   restoreDefaultSeedData,
@@ -13,6 +15,7 @@ import {
   useRealtimeAuth,
   useRealtimeCBTConfig,
 } from "@/lib/realtime-store";
+import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   Settings,
   ArrowLeft,
@@ -58,17 +61,36 @@ export default function SettingsPage() {
   const [isCBTSaved, setIsCBTSaved] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // The school's identity, session and term live on its own records now. These
+  // four inputs used to be initialised from a constant compiled into the portal
+  // and `handleSave` threw whatever was typed in them away while still printing
+  // "saved and synchronized across all active modules".
+  const { config: schoolConfig, usingDefaults, reload: reloadSchoolConfig } = useSchoolConfig();
+  const [schoolSaveProblem, setSchoolSaveProblem] = useState<string | null>(null);
+  const [savingSchool, setSavingSchool] = useState(false);
+
+  useEffect(() => {
+    if (!schoolConfig) return;
+    setSchoolName(schoolConfig.school_name);
+    setSchoolAddress(schoolConfig.address);
+    setCurrentSession(schoolConfig.current_session);
+    setCurrentTerm(schoolConfig.current_term);
+  }, [schoolConfig]);
+
   // Newsletter settings local state
-  const [newsletterTitle, setNewsletterTitle] = useState(newsletter.title || "Royal Crown Academy End-of-Term Bulletin");
-  const [resumptionDate, setResumptionDate] = useState(newsletter.nextTermResumption || newsletter.resumptionDate || "Monday, 12th January 2026");
+  const [newsletterTitle, setNewsletterTitle] = useState(newsletter.title || "");
+  // The inputs used to open pre-filled with "Monday, 12th January 2026" and a
+  // house title, so the first Save filed a resumption date the school had never
+  // set — and it printed on every child's bulletin. Blank means "not announced".
+  const [resumptionDate, setResumptionDate] = useState(newsletter.nextTermResumption || newsletter.resumptionDate || "");
   const [principalName, setPrincipalName] = useState(newsletter.principalName || "");
 
   // CBT Configuration local state
-  const [cbtExamMode, setCBTExamMode] = useState(cbtConfig.activeExamMode || "Terminal Examination");
-  const [cbtWindow, setCBTWindow] = useState(cbtConfig.scheduledWindow || "Monday - Friday (8:00 AM - 2:00 PM)");
-  const [cbtMessage, setCBTMessage] = useState(cbtConfig.offlineMessage || "The Computer-Based Testing (CBT) portal is currently closed for the term. Please contact the Examination Office or Dean of Studies for the approved assessment schedule.");
+  const [cbtExamMode, setCBTExamMode] = useState(cbtConfig.activeExamMode || "");
+  const [cbtWindow, setCBTWindow] = useState(cbtConfig.scheduledWindow || "");
+  const [cbtMessage, setCBTMessage] = useState(cbtConfig.offlineMessage || "");
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     updateNewsletter({
       title: newsletterTitle,
@@ -76,8 +98,38 @@ export default function SettingsPage() {
       nextTermResumption: resumptionDate,
       principalName: principalName,
     });
+
+    setSavingSchool(true);
+    setSchoolSaveProblem(null);
+    setIsSaved(false);
+
+    // Only the four fields on screen are edited here; the rest of the row is
+    // sent back as it was read, so saving the term cannot blank the phone number.
+    const payload = {
+      school_name: schoolName,
+      short_name: schoolConfig?.short_name ?? SCHOOL_INFO.shortName,
+      motto: schoolConfig?.motto ?? SCHOOL_INFO.motto,
+      address: schoolAddress,
+      email: schoolConfig?.email ?? SCHOOL_INFO.email,
+      phone: schoolConfig?.phone ?? SCHOOL_INFO.phone,
+      website: schoolConfig?.website ?? SCHOOL_INFO.website,
+      current_session: currentSession,
+      current_term: currentTerm,
+    };
+
+    const { ok, reason } = await saveSchoolConfigToSupabase(payload);
+    setSavingSchool(false);
+
+    if (!ok) {
+      setSchoolSaveProblem(
+        `Nothing above reached the school's records: ${reason ?? "the portal server did not answer"}. The session, term, name and address are still whatever the school has on file. The bulletin wording is on this device only.`
+      );
+      return;
+    }
+
+    reloadSchoolConfig();
     setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 3000);
+    setTimeout(() => setIsSaved(false), 6000);
   };
 
   const handleSaveCBTSettings = (e: React.FormEvent) => {
@@ -88,7 +140,7 @@ export default function SettingsPage() {
       offlineMessage: cbtMessage,
     });
     setIsCBTSaved(true);
-    setToastMessage("CBT Engine configuration updated and broadcast live!");
+    setToastMessage("CBT settings saved on this browser only — other machines keep their own copy.");
     setTimeout(() => {
       setIsCBTSaved(false);
       setToastMessage(null);
@@ -98,23 +150,31 @@ export default function SettingsPage() {
   const handleToggleCBTEngine = (nextState?: boolean) => {
     const updatedState = typeof nextState === "boolean" ? nextState : !cbtConfig.isOpen;
     toggleCBTAccess(updatedState);
-    const statusText = updatedState ? "OPENED for student assessments" : "LOCKED DOWN / CLOSED to candidates";
-    setToastMessage(`CBT Examination Engine is now ${statusText}.`);
+    const statusText = updatedState ? "open on this browser" : "closed on this browser";
+    setToastMessage(`CBT Examination Engine is now ${statusText}. Other machines keep their own setting — it is not stored on the school's records yet.`);
     setTimeout(() => setToastMessage(null), 5000);
   };
 
   const handlePurge = () => {
-    if (confirm("Are you sure you want to PURGE ALL sample demo data? This will clear all mock students, staff, and scores to zero state so you can start 100% fresh with genuine school records.")) {
+    if (
+      confirm(
+        "Clear the demo copies held on this browser (pupils, staff, scores, invoices, calendar, timetable, question bank and inmail)? Only this browser is affected, the lists cannot be brought back, and anything already filed on the school's own records stays on the school's records."
+      )
+    ) {
       purgeAllDemoData();
-      setToastMessage("All demo records purged! Database is now empty and ready for authentic school enrollment.");
+      setToastMessage("This browser's demo copies are cleared. Other machines keep theirs; the school's filed records are untouched.");
       setTimeout(() => setToastMessage(null), 5000);
     }
   };
 
   const handleRestore = () => {
-    if (confirm("Restore standard curriculum defaults?")) {
+    if (
+      confirm(
+        "Put this browser back to the standard defaults? Your own edits to the browser-held lists are dropped and cannot be brought back."
+      )
+    ) {
       restoreDefaultSeedData();
-      setToastMessage("Standard curriculum and baseline configurations restored.");
+      setToastMessage("Defaults restored on this browser only — other machines are unchanged.");
       setTimeout(() => setToastMessage(null), 4000);
     }
   };
@@ -163,6 +223,8 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        <DeviceOnlyNotice what="The CBT lockdown setting" />
+
         {/* Toast Alert */}
         {toastMessage && (
           <div className="bg-[#0a1128] text-white border border-cyan-400 px-5 py-3 rounded-2xl text-xs font-bold flex items-center gap-2.5 z-50 animate-in fade-in shadow-xl">
@@ -172,16 +234,38 @@ export default function SettingsPage() {
         )}
 
         {isSaved && (
-          <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl p-4 text-xs font-bold flex items-center gap-2 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-            Portal settings saved and synchronized across all active modules!
+          <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl p-4 text-xs font-bold flex items-start gap-2 animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+            <span>
+              The school&apos;s name, address, session and term are saved on its records — every device that opens the
+              portal now reads these values. The bulletin wording below is still kept on this device only, so type it on
+              the machine that prints the cards.
+            </span>
+          </div>
+        )}
+
+        {schoolSaveProblem && (
+          <div className="bg-rose-50 border border-rose-200 text-rose-900 rounded-2xl p-4 text-xs font-bold flex items-start gap-2 animate-in fade-in">
+            <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+            <span>{schoolSaveProblem}</span>
+          </div>
+        )}
+
+        {usingDefaults && !schoolSaveProblem && !isSaved && (
+          <div className="bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl p-4 text-xs font-semibold flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-slate-500 flex-shrink-0 mt-0.5" />
+            <span>
+              These four fields are showing the values built into the portal, not the school&apos;s records, because the
+              settings row could not be read. Saving will tell you what the database says.
+            </span>
           </div>
         )}
 
         {isCBTSaved && (
           <div className="bg-cyan-50 border border-cyan-300 text-cyan-950 rounded-2xl p-4 text-xs font-bold flex items-center gap-2 animate-in fade-in">
             <CheckCircle2 className="w-4 h-4 text-cyan-600 flex-shrink-0" />
-            CBT Engine parameters saved and broadcast to all candidate portals!
+            CBT parameters saved on this device. Candidates open their own copy, so set them on the machine the exam room
+            uses until the portal stores CBT settings centrally.
           </div>
         )}
 
@@ -254,7 +338,7 @@ export default function SettingsPage() {
                   </p>
                   <p className="text-[11px] text-slate-600 leading-relaxed">
                     {cbtConfig.isOpen
-                      ? "Enrolled students can log in, launch timed tests, and submit answers to the Continuous Assessment gradebook."
+                      ? "On this browser candidates can start timed tests. The score shows on the exam machine and a teacher files it in CA Entry — it does not enter the gradebook by itself."
                       : "Students visiting the CBT module will see the official institutional closure notice. Admins can still preview tests."}
                   </p>
                 </div>
@@ -295,6 +379,7 @@ export default function SettingsPage() {
                       onChange={(e) => setCBTExamMode(e.target.value)}
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold outline-none focus:border-[#0000FF] cursor-pointer"
                     >
+                      <option value="">Choose the mode this paper is being run as…</option>
                       <option value="Terminal Examination">Terminal Examination (Final Exams)</option>
                       <option value="Continuous Assessment Test (CAT)">Continuous Assessment Test (CAT 1 &amp; 2)</option>
                       <option value="Mid-Term Examination">Mid-Term Assessment Window</option>
@@ -427,7 +512,8 @@ export default function SettingsPage() {
                         type="text"
                         value={newsletterTitle}
                         onChange={(e) => setNewsletterTitle(e.target.value)}
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-[#0000FF]"
+                        placeholder="e.g. End-of-Term Bulletin (not announced yet)"
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-[#0000FF] placeholder:font-normal placeholder:text-slate-400"
                       />
                     </div>
 
@@ -438,7 +524,8 @@ export default function SettingsPage() {
                           type="text"
                           value={resumptionDate}
                           onChange={(e) => setResumptionDate(e.target.value)}
-                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-semibold outline-none focus:border-[#0000FF]"
+                          placeholder="Not announced — cards print &quot;To be announced&quot;"
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-semibold outline-none focus:border-[#0000FF] placeholder:font-normal placeholder:text-slate-400"
                         />
                       </div>
 
@@ -456,14 +543,19 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="pt-2">
+                <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-3">
                   <button
                     type="submit"
-                    className="px-5 py-2.5 bg-[#0000FF] hover:bg-blue-700 text-white font-black text-xs rounded-xl transition-all shadow-md shadow-blue-600/30 flex items-center gap-2 cursor-pointer"
+                    disabled={savingSchool}
+                    className="px-5 py-2.5 bg-[#0000FF] hover:bg-blue-700 disabled:bg-slate-400 text-white font-black text-xs rounded-xl transition-all shadow-md shadow-blue-600/30 flex items-center gap-2 cursor-pointer"
                   >
                     <Save className="w-4 h-4 text-cyan-300" />
-                    <span>Save Portal Preferences</span>
+                    <span>{savingSchool ? "Saving to the school's records…" : "Save Portal Preferences"}</span>
                   </button>
+                  <p className="text-[11px] text-slate-500">
+                    Saved on the school&apos;s records, not in this browser. Only the executive and the exam office can
+                    change them; the portal refuses anyone else.
+                  </p>
                 </div>
               </form>
             </div>

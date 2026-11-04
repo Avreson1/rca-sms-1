@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, MapPin, Menu, ShieldCheck, User, LogOut, CheckCircle2 } from "lucide-react";
 import { SCHOOL_INFO } from "@/lib/constants";
+import { useSchoolConfig } from "@/lib/school-config";
 import { useRealtimeAuth } from "@/lib/realtime-store";
 
 interface NavbarProps {
@@ -13,6 +14,7 @@ interface NavbarProps {
 export function Navbar({ onMenuClick }: NavbarProps) {
   const router = useRouter();
   const { currentUser, logout } = useRealtimeAuth();
+  const { config: school } = useSchoolConfig();
   const [mounted, setMounted] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [loggedOutToast, setLoggedOutToast] = useState(false);
@@ -72,10 +74,12 @@ export function Navbar({ onMenuClick }: NavbarProps) {
             <Menu className="w-5 h-5" />
           </button>
           <MapPin className="w-3.5 h-3.5 text-[#0000FF] flex-shrink-0 hidden sm:block" />
-          <span className="font-extrabold text-slate-900 hidden md:inline tracking-tight truncate">{SCHOOL_INFO.name}</span>
+          <span className="font-extrabold text-slate-900 hidden md:inline tracking-tight truncate">
+            {school?.school_name || SCHOOL_INFO.name}
+          </span>
           <span className="text-slate-300 hidden md:inline">•</span>
           <span className="text-slate-500 text-[11px] truncate hidden sm:inline max-w-[200px] lg:max-w-none">
-            Rayfield Academic Complex, Jos
+            {school?.address?.trim() || "No address on the school's record — set it in Settings"}
           </span>
         </div>
 
@@ -97,15 +101,10 @@ export function Navbar({ onMenuClick }: NavbarProps) {
             )}
           </div>
 
-          {/* Notification Bell */}
-          <button 
-            type="button"
-            aria-label="Notifications"
-            className="relative flex min-h-10 min-w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-blue-50 hover:text-[#0000FF] transition-colors cursor-pointer"
-          >
-            <Bell className="w-4 h-4" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#FF0000] rounded-full ring-2 ring-white" />
-          </button>
+          {/* The bell used to hang a permanent red dot over an icon that opened
+              nothing — an unread notice that was never a notice. The portal sends no
+              email or SMS and holds no notification table, so there is nothing to
+              report as unread yet. */}
 
           {/* User Profile */}
           <div className="flex items-center gap-2.5 pl-2.5 border-l border-slate-200">

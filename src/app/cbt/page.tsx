@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
+import { effectiveScope, useSchoolConfig } from "@/lib/school-config";
 import {
   useRealtimeStudents,
   useRealtimeCBTQuestions,
@@ -11,27 +12,22 @@ import {
   useRealtimeAuth,
   syncCBTScoreToCA,
   StudentRecord,
+  type CBTQuestionRecord,
 } from "@/lib/realtime-store";
 import { exportToCSV, parseCSV, downloadSampleTemplate } from "@/lib/csv-utils";
+import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   Laptop,
-  Plus,
   Play,
   Clock,
   CheckCircle2,
   AlertCircle,
-  Sparkles,
   ArrowLeft,
   Timer,
   ChevronRight,
   ChevronLeft,
   RotateCcw,
   ShieldAlert,
-  ShieldCheck,
-  Video,
-  Mic,
-  Maximize2,
-  Eye,
   AlertTriangle,
   FileWarning,
   Lock,
@@ -41,12 +37,8 @@ import {
   FileSpreadsheet,
   FileDown,
   Printer,
-  Volume2,
   ArrowUpRight,
   Database,
-  Radio,
-  Calendar,
-  School,
   Settings,
 } from "lucide-react";
 
@@ -66,6 +58,11 @@ interface MalpracticeEvent {
   description: string;
 }
 
+// Five ICT questions with their answers, typed into this file so an empty
+// browser bank still renders something. They are not a paper the school set, and
+// `correctAnswerIndex` ships in the client bundle, so a sitting drawn from here is
+// marked on screen but cannot be trusted as an assessment. `isSampleBank` below is
+// what says so, out loud, wherever these questions are counted.
 const DEFAULT_CBT_QUESTIONS: Question[] = [
   {
     id: 1,
@@ -119,24 +116,52 @@ const DEFAULT_CBT_QUESTIONS: Question[] = [
   },
 ];
 
+/** Shown wherever a paper drawn from the sample questions above could be mistaken for one the school set. */
+function SampleBankNotice({ compact = false }: { compact?: boolean }) {
+  return (
+    <div
+      className={`bg-amber-50 border border-amber-300 text-amber-900 rounded-lg ${
+        compact ? "px-2.5 py-1.5 text-[11px]" : "p-3 text-xs"
+      } leading-relaxed font-medium`}
+    >
+      <span className="font-black uppercase tracking-wider">Sample paper — not one the school set.</span>{" "}
+      The bank on this browser is empty, so the engine is serving the {DEFAULT_CBT_QUESTIONS.length} ICT questions
+      written into this page&apos;s source, and their correct answers are in the file the browser downloads. Use it to
+      try the machinery, never to examine a pupil. Import a real bank to end this notice.
+    </div>
+  );
+}
+
 export default function ProctoredCBTPage() {
   const { students } = useRealtimeStudents();
   const { questions: storeQuestions } = useRealtimeCBTQuestions();
   const { cbtConfig, toggleCBTAccess } = useRealtimeCBTConfig();
   const { currentUser } = useRealtimeAuth();
+  const { config: school } = useSchoolConfig();
   const currentRole = currentUser?.role || "SUPER_ADMIN";
   const isCandidate = currentRole === "STUDENT_PARENT";
 
+  // The school's own name and session, from its records. This heading used to
+  // print a name and a session compiled into the portal, so a second campus
+  // cloned from this code announced the first campus and a school that had moved
+  // into the new session in Settings still examined children under the old one.
+  const { session: schoolSession } = effectiveScope(school, {
+    session: SCHOOL_INFO.currentSession,
+    term: SCHOOL_INFO.currentTerm,
+  });
+  const schoolName = school?.school_name?.trim() || SCHOOL_INFO.name;
+  const schoolShortName = school?.short_name?.trim() || SCHOOL_INFO.shortName;
+
   const examQuestions = storeQuestions.length > 0 ? storeQuestions : DEFAULT_CBT_QUESTIONS;
+  const isSampleBank = storeQuestions.length === 0;
   const [activeTab, setActiveTab] = useState<"manage" | "simulate">("manage");
 
   // Selected Candidate
   const [selectedStudentId, setSelectedStudentId] = useState<string>(students[0]?.id || "");
-  const currentStudent = students.find((s) => s.id === selectedStudentId) || students[0] || {
-    fullName: "Enrolled Student",
-    admissionNo: "RCA/STD/2025/001",
-    className: "Primary 1",
-  };
+  // There was a made-up pupil here — "Enrolled Student, RCA/STD/2025/001, Primary 1" —
+  // that stood in whenever this browser's register was empty, so an empty school sat a
+  // phantom candidate through a proctored exam and printed its name on the watermark.
+  const currentStudent = students.find((s) => s.id === selectedStudentId) || students[0] || null;
 
   // Exam Simulation State
   const [currentQIndex, setCurrentQIndex] = useState(0);
@@ -151,10 +176,25 @@ export default function ProctoredCBTPage() {
   const [strikes, setStrikes] = useState<number>(0);
   const [malpracticeLogs, setMalpracticeLogs] = useState<MalpracticeEvent[]>([]);
   const [activeWarningModal, setActiveWarningModal] = useState<string | null>(null);
-  const [noiseLevel, setNoiseLevel] = useState<number>(24);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const totalMaxMarks = examQuestions.reduce((sum, q) => sum + q.marks, 0);
+  // A stored question carries its subject and class; the built-in sample ones do not,
+  // and the paper is titled from what is actually in the bank rather than from a
+  // subject written into this page's source.
+  const questionSubject = (q: CBTQuestionRecord | Question) => String((q as { subject?: string }).subject || "").trim();
+  const questionClass = (q: CBTQuestionRecord | Question) => String((q as { className?: string }).className || "").trim();
+  const subjectCount = new Set(examQuestions.map(questionSubject).filter(Boolean)).size;
+  const classCount = new Set(examQuestions.map(questionClass).filter(Boolean)).size;
+  const bankSubjects = [...new Set(examQuestions.map(questionSubject).filter(Boolean))];
+  const bankSubjectLabel = bankSubjects.length === 0
+    ? "Unlabelled question bank"
+    : bankSubjects.length > 3
+      ? `${bankSubjects.slice(0, 3).join(", ")} and ${bankSubjects.length - 3} more`
+      : bankSubjects.join(", ");
+  const candidateName = currentStudent?.fullName ?? "No candidate on this browser's register";
+  const candidateNo = currentStudent?.admissionNo ?? "not enrolled";
+  const candidateClass = currentStudent?.className ?? "no class";
 
   const getCorrectOptionIndex = (q: any): number => {
     if (typeof q?.correctAnswerIndex === "number") return q.correctAnswerIndex;
@@ -169,19 +209,20 @@ export default function ProctoredCBTPage() {
     }, 0);
   };
 
-  // Submit and Sync Score to CA
+  // End the sitting: grade it here, record the attempt here, file nothing.
   const handleFinalSubmit = (expelled: boolean = false) => {
     const rawScore = expelled ? 0 : calculateFinalScore();
     setIsSubmitted(true);
     setIsExpelled(expelled);
 
-    // Sync to CA Gradebook in real-time
+    // Records this attempt on this browser only. It does not touch the pupil's
+    // CA columns and it is never sent to the school's records.
     const result = syncCBTScoreToCA(
-      currentStudent.admissionNo,
+      candidateNo,
       rawScore,
       totalMaxMarks,
       "exam",
-      "ICT 1st Term CBT Exam",
+      `CBT sitting of ${examQuestions.length} question(s) on ${candidateClass}`,
       expelled
     );
 
@@ -220,7 +261,7 @@ export default function ProctoredCBTPage() {
         handleFinalSubmit(true);
       } else {
         setActiveWarningModal(
-          `STRIKE ${nextStrike}/3: ${description}. Notice: Reaching 3 strikes results in immediate expulsion, 0 gradebook score, and exam disqualification.`
+          `STRIKE ${nextStrike}/3: ${description}. Notice: Reaching 3 strikes ends this sitting here and shows it as 0 of ${totalMaxMarks} on this device. Nothing has been filed to the school: a mark is entered by a teacher or the exam office.`
         );
       }
       return nextStrike;
@@ -300,16 +341,6 @@ export default function ProctoredCBTPage() {
     };
   }, [isTestStarted, isSubmitted, isExpelled]);
 
-  // Audio level simulator
-  useEffect(() => {
-    if (!isTestStarted || isSubmitted || isExpelled) return;
-    const noiseInterval = setInterval(() => {
-      const db = Math.floor(Math.random() * 20) + 20;
-      setNoiseLevel(db);
-    }, 2000);
-    return () => clearInterval(noiseInterval);
-  }, [isTestStarted, isSubmitted, isExpelled]);
-
   // Timer countdown
   useEffect(() => {
     if (!isTestStarted || isSubmitted || isExpelled) return;
@@ -326,6 +357,9 @@ export default function ProctoredCBTPage() {
   }, [isTestStarted, isSubmitted, isExpelled]);
 
   const handleStartExam = async () => {
+    // A sitting has to belong to somebody. With no pupil on this browser's register
+    // there is no candidate, and the launch used to invent one.
+    if (!currentStudent) return;
     try {
       if (document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
@@ -381,7 +415,7 @@ export default function ProctoredCBTPage() {
                 Computer-Based Testing (CBT) Portal
               </h2>
               <p className="text-xs text-slate-500 max-w-md mx-auto">
-                Official Examination Engine for {SCHOOL_INFO.name} ({SCHOOL_INFO.currentSession})
+                Examination Engine for {schoolName} ({schoolSession})
               </p>
             </div>
 
@@ -393,17 +427,17 @@ export default function ProctoredCBTPage() {
               </div>
               <p className="text-slate-700 leading-relaxed font-medium">
                 {cbtConfig.offlineMessage ||
-                  "The Computer-Based Testing (CBT) portal is currently closed for the term. Please contact the Examination Office or Dean of Studies for the approved assessment schedule."}
+                  "No wording has been written for this notice. The office sets it in Settings → CBT Configuration; until then this screen stays closed on this browser and no schedule is being claimed."}
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono text-[11px] text-slate-600">
                 <div className="bg-white/80 p-2.5 rounded-xl border border-slate-200">
                   <span className="text-slate-400 block text-[10px] uppercase font-bold">Scheduled Window:</span>
-                  <strong className="text-slate-800">{cbtConfig.scheduledWindow || "Standard School Hours (8:00 AM - 2:00 PM)"}</strong>
+                  <strong className="text-slate-800">{cbtConfig.scheduledWindow || "Not announced on this browser"}</strong>
                 </div>
                 <div className="bg-white/80 p-2.5 rounded-xl border border-slate-200">
                   <span className="text-slate-400 block text-[10px] uppercase font-bold">Active Assessment Mode:</span>
-                  <strong className="text-blue-700">{cbtConfig.activeExamMode || "Terminal Examination"}</strong>
+                  <strong className="text-blue-700">{cbtConfig.activeExamMode || "Not chosen on this browser"}</strong>
                 </div>
               </div>
             </div>
@@ -457,7 +491,8 @@ export default function ProctoredCBTPage() {
                   </span>
                 </div>
                 <p className="text-slate-600 text-[11px]">
-                  Students and parents visiting this module will see the institutional offline notice. You have administrative access to configure question banks and preview simulations.
+                  This open/closed switch is a setting on this browser — it does not change what any other machine sees.
+                  You can still configure the question bank and preview a simulation here.
                 </p>
               </div>
             </div>
@@ -495,15 +530,16 @@ export default function ProctoredCBTPage() {
             </div>
             <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-                Computer-Based Testing (CBT) & AI Proctor
+                Computer-Based Testing (CBT) &amp; Browser Lockdown
               </h1>
               <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
                 <Database className="w-3.5 h-3.5 text-emerald-600" />
-                Auto CA Score Sync Active
+                Questions and scores kept on this browser
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Automated anti-cheating lockdown, focus tracking, and direct Continuous Assessment gradebook integration.
+              Automated anti-cheating lockdown inside this browser. The mark itself is filed by a
+              teacher or the exam office in CA Entry, never from here.
             </p>
           </div>
 
@@ -523,17 +559,20 @@ export default function ProctoredCBTPage() {
             </button>
             <button
               onClick={handleStartExam}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              disabled={!currentStudent}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                 activeTab === "simulate"
                   ? "bg-blue-600 text-white shadow-xs"
                   : "bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
               }`}
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              Launch Proctored Exam
+              {currentStudent ? "Launch Proctored Exam" : "No candidate to examine"}
             </button>
           </div>
         </div>
+
+        <DeviceOnlyNotice what="The CBT question bank and the exam score" />
 
         {/* Tab 1: Manage Exams & Candidate Selection */}
         {activeTab === "manage" && (
@@ -549,8 +588,12 @@ export default function ProctoredCBTPage() {
                   <select
                     value={selectedStudentId}
                     onChange={(e) => setSelectedStudentId(e.target.value)}
-                    className="flex-1 min-w-0 max-w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                    disabled={students.length === 0}
+                    className="flex-1 min-w-0 max-w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden disabled:opacity-60"
                   >
+                    {students.length === 0 ? (
+                      <option value="">No pupil on this browser&apos;s register</option>
+                    ) : null}
                     {students.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.fullName} ({s.admissionNo} - {s.className})
@@ -558,11 +601,21 @@ export default function ProctoredCBTPage() {
                     ))}
                   </select>
                 </div>
+                {students.length === 0 && (
+                  <p className="text-[11px] text-amber-800 font-semibold pt-1">
+                    Enroll the pupil in Operations → Students first. A sitting needs a real candidate: with no register
+                    on this machine there is nobody to examine, and starting one anyway used to print an invented name
+                    on the paper.
+                  </p>
+                )}
               </div>
 
               <div className="text-xs text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                <span className="font-semibold text-slate-700">CA Integration Target: </span>
-                <span>Scaled to <strong>Exam (60 Marks)</strong> in {currentStudent.className} Gradebook</span>
+                <span className="font-semibold text-slate-700">Score handling: </span>
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800 px-2 py-0.5 rounded border border-blue-200">
+                  This device only
+                </span>{" "}
+                <span>Scaled to <strong>Exam (60 Marks)</strong> for display — a teacher files it in the gradebook.</span>
               </div>
             </div>
 
@@ -571,15 +624,18 @@ export default function ProctoredCBTPage() {
               <div className="space-y-2 max-w-2xl">
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] uppercase font-bold tracking-wider bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded">
-                    RCA Anti-Malpractice Protocol v3.4
+                    What this sitting watches
                   </span>
-                  <span className="text-xs text-slate-400">• Real-Time CA Synchronized</span>
+                  <span className="text-xs text-slate-400">• Score kept on this device only</span>
                 </div>
                 <h2 className="text-xl font-bold text-white">
-                  Automated Invigilation & Direct Gradebook Sync
+                  Automated Invigilation
                 </h2>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  Candidate scores are auto-scaled and pushed directly into the Continuous Assessment (CA) gradebook upon completion. 3 cumulative infractions will trigger immediate expulsion and log a score of 0.
+                  The score is scaled to the exam&apos;s 60-mark weight for display when the candidate finishes. It is
+                  not written into the Continuous Assessment gradebook from this browser: a mark on a child&apos;s card
+                  is filed by a teacher or the exam office from CA Entry, so that the number on paper can be traced to
+                  the person who entered it. 3 cumulative infractions end the attempt and score it 0.
                 </p>
               </div>
 
@@ -589,65 +645,60 @@ export default function ProctoredCBTPage() {
                   <strong className="text-amber-400 text-base font-extrabold">Max 2 Strikes</strong>
                 </div>
                 <div className="bg-slate-800/80 border border-slate-700 p-3 rounded-xl text-center">
-                  <span className="text-xs text-slate-400 block">CA Sync Target</span>
+                  <span className="text-xs text-slate-400 block">Scaled for display as</span>
                   <strong className="text-emerald-400 text-base font-extrabold">Exam / 60 Mks</strong>
                 </div>
               </div>
             </div>
 
-            {/* Active Assessments */}
+            {/* What this browser actually holds */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
-                    Active • CA Sync Ready
+                    On this browser
                   </span>
-                  <span className="text-xs text-slate-400 font-mono">SS 2A</span>
+                  <span className="text-xs text-slate-400 font-mono">{subjectCount} subject(s)</span>
                 </div>
                 <h3 className="font-bold text-sm text-slate-900">
-                  ICT 1st Term Mid-Term Examination
+                  {examQuestions.length} question{examQuestions.length === 1 ? "" : "s"} in the bank
+                  {isSampleBank && " — these are the sample questions in this page\u2019s source"}
                 </h3>
                 <div className="text-xs text-slate-500 space-y-1">
-                  <p>Questions: <strong className="text-slate-800">5 Questions (50 Marks)</strong></p>
-                  <p>Duration: <strong className="text-slate-800">5 Minutes (Timed)</strong></p>
-                  <p>Target Score: <strong className="text-emerald-700">Auto-Scaled to 60 Marks</strong></p>
+                  <p>Marks: <strong className="text-slate-800">{totalMaxMarks} in total</strong></p>
+                  <p>Classes covered: <strong className="text-slate-800">{classCount} listed</strong></p>
+                  <p>Target: <strong className="text-emerald-700">Scaled to 60 marks for display</strong></p>
                 </div>
+                {isSampleBank && <SampleBankNotice />}
                 <button
                   onClick={handleStartExam}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  disabled={!currentStudent}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Play className="w-3 h-3 fill-current" />
-                  Launch Proctored Session
+                  {currentStudent ? "Launch Proctored Session" : "Enroll a pupil before launching"}
                 </button>
               </div>
 
-              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3 opacity-80">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
-                    Scheduled
-                  </span>
-                  <span className="text-xs text-slate-400 font-mono">SS 2A & 2B</span>
-                </div>
-                <h3 className="font-bold text-sm text-slate-900">
-                  Data Processing Practical CBT
-                </h3>
-                <div className="text-xs text-slate-500 space-y-1">
-                  <p>Questions: <strong className="text-slate-800">40 Questions (60 Marks)</strong></p>
-                  <p>Duration: <strong className="text-slate-800">45 Minutes</strong></p>
-                  <p>Status: <strong className="text-amber-600">Awaiting Schedule</strong></p>
-                </div>
-                <button className="w-full bg-slate-100 text-slate-700 font-semibold text-xs py-2 rounded-lg hover:bg-slate-200 transition-colors">
-                  Configure Settings
-                </button>
+              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3">
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 px-2 py-0.5 rounded w-fit">
+                  What launching does
+                </span>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Runs every question this browser holds, in whichever order they were loaded — the engine has no
+                  per-subject or per-class paper, so a mixed bank prints a mixed paper.
+                </p>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  It shows a scaled score at the end and notes the sitting on the pupil&apos;s record here. It does not
+                  file a mark: the exam column changes only when a teacher or the exam office enters it.
+                </p>
               </div>
 
-              <div className="bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl p-5 flex flex-col items-center justify-center text-center space-y-2 hover:border-blue-400 transition-colors cursor-pointer">
-                <div className="p-3 bg-white rounded-full border border-slate-200 text-blue-600 shadow-xs">
-                  <Plus className="w-5 h-5" />
-                </div>
-                <h4 className="font-bold text-xs text-slate-800">Create New Proctored Assessment</h4>
-                <p className="text-[11px] text-slate-500 max-w-[200px]">
-                  Add question pools, randomize options, and configure camera requirements.
+              <div className="bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl p-5 flex flex-col items-center justify-center text-center space-y-2">
+                <h4 className="font-bold text-xs text-slate-800">To set a different paper</h4>
+                <p className="text-[11px] text-slate-500 max-w-[220px]">
+                  Use &apos;CSV Template&apos; below to write questions in the columns the portal reads, then load them
+                  into the bank on this machine.
                 </p>
               </div>
             </div>
@@ -656,10 +707,19 @@ export default function ProctoredCBTPage() {
             <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
               <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50">
                 <div>
-                  <h3 className="font-bold text-sm text-slate-800">Question Bank (ICT SS 2A)</h3>
-                  <p className="text-[11px] text-slate-500">Curated questions with randomized answer positioning</p>
+                  <h3 className="font-bold text-sm text-slate-800">
+                    {isSampleBank
+                      ? "Sample bank — written into this page\u2019s source"
+                      : subjectCount > 1
+                        ? `Question Bank — ${subjectCount} subjects mixed`
+                        : "Question Bank"}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    {isSampleBank
+                      ? "Nothing has been imported on this browser, so this is not the school's bank. It lists the questions the engine will serve until a real paper is loaded."
+                      : `Everything this browser holds. The engine has no per-subject paper: it serves these ${examQuestions.length} question${examQuestions.length === 1 ? "" : "s"} in order.`}
+                  </p>
                 </div>
-                
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={() => downloadSampleTemplate("cbt_questions")}
@@ -681,7 +741,7 @@ export default function ProctoredCBTPage() {
                         getCorrectOptionIndex(q) + 1,
                         q.marks,
                       ]);
-                      exportToCSV("RCA_ICT_CBT_Question_Bank", headers, rows);
+                      exportToCSV(`${schoolShortName}_CBT_Question_Bank`, headers, rows);
                     }}
                     className="px-2.5 py-1.5 text-xs font-semibold bg-white border border-slate-200 text-emerald-700 hover:bg-emerald-50 rounded-lg flex items-center gap-1 shadow-2xs cursor-pointer"
                   >
@@ -690,7 +750,7 @@ export default function ProctoredCBTPage() {
                   </button>
 
                   <span className="text-xs bg-blue-50 text-blue-700 font-bold px-2.5 py-1 rounded-full border border-blue-100">
-                    {examQuestions.length} Questions Loaded
+                    {examQuestions.length} {isSampleBank ? "sample questions" : "Questions Loaded"}
                   </span>
                 </div>
               </div>
@@ -740,7 +800,7 @@ export default function ProctoredCBTPage() {
             <div className="absolute inset-0 pointer-events-none z-20 flex flex-wrap items-center justify-around opacity-[0.04] overflow-hidden select-none">
               {Array.from({ length: 24 }).map((_, i) => (
                 <div key={i} className="text-xs font-mono font-bold uppercase rotate-[-25deg] p-4 text-slate-900">
-                  {currentStudent.fullName} • {currentStudent.admissionNo} • IP: 102.89.44.12 • RCA CBT PROCTORED
+                  {candidateName} • {candidateNo} • {schoolShortName} CBT
                 </div>
               ))}
             </div>
@@ -785,28 +845,31 @@ export default function ProctoredCBTPage() {
                     Examination Session Terminated & Candidate Expelled
                   </h2>
                   <p className="text-xs text-red-200 max-w-lg mx-auto mt-2">
-                    Disqualified from this assessment due to repeated anti-cheat violations. A score of <strong className="text-white">0 / {totalMaxMarks}</strong> has been logged and automatically synchronized to the CA Gradebook.
+                    Disqualified from this assessment due to repeated anti-cheat violations. The attempt is scored{" "}
+                    <strong className="text-white">0 / {totalMaxMarks}</strong> on this screen. Nothing has been written
+                    to the school&apos;s records — hand this result to the teacher or the exam office, who file it from
+                    CA Entry if it is to count.
                   </p>
                 </div>
 
-                {/* CA Sync Alert */}
+                {/* What the office has to do next */}
                 <div className="bg-red-900/60 border border-red-500 rounded-xl p-4 text-xs font-medium text-red-100 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Database className="w-4 h-4 text-red-400" />
-                    <span>CA Gradebook Updated: <strong className="text-white font-bold">Exam Mark = 0 / 60</strong> for {currentStudent.fullName}</span>
+                    <span>Not in the CA gradebook: <strong className="text-white font-bold">0 / 60</strong> for {candidateName} is this device&apos;s record only</span>
                   </div>
                   <Link
                     href="/operations/update-ca"
                     className="underline text-red-200 font-bold hover:text-white flex items-center gap-1"
                   >
-                    View CA Gradebook <ArrowUpRight className="w-3 h-3" />
+                    Open CA Entry <ArrowUpRight className="w-3 h-3" />
                   </Link>
                 </div>
 
                 {/* Forensic Audit Log Preview */}
                 <div className="bg-black/50 border border-red-800 rounded-xl p-4 text-left space-y-2 text-xs font-mono max-h-40 overflow-y-auto">
                   <p className="text-red-400 font-bold border-b border-red-900 pb-1">
-                    Forensic Invigilation Incident Log:
+                    This device&apos;s incident note — not filed to the school:
                   </p>
                   {malpracticeLogs.map((log) => (
                     <div key={log.id} className="text-[11px] text-red-300 flex items-start gap-2">
@@ -842,15 +905,21 @@ export default function ProctoredCBTPage() {
                   <CheckCircle2 className="w-8 h-8" />
                 </div>
                 <div>
-                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase">
-                    Submission Verified • Score Synced to CA Gradebook
+                  <span className="bg-amber-100 text-amber-900 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase">
+                    Submission recorded on this device • not yet in the CA gradebook
                   </span>
                   <h3 className="text-2xl font-extrabold text-slate-900 mt-2">
-                    Examination Completed Successfully
+                    This sitting is over
                   </h3>
                   <p className="text-xs text-slate-500 mt-1">
-                    Candidate: <strong className="text-slate-800">{currentStudent.fullName}</strong> ({currentStudent.admissionNo})
+                    Candidate: <strong className="text-slate-800">{candidateName}</strong> ({candidateNo})
                   </p>
+                  {isSampleBank && (
+                    <p className="text-[11px] font-bold text-amber-800 mt-1">
+                      Scored out of the {DEFAULT_CBT_QUESTIONS.length} sample questions in this page&apos;s source, not
+                      out of a paper {schoolShortName} set.
+                    </p>
+                  )}
                 </div>
 
                 <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl max-w-xs mx-auto space-y-2">
@@ -859,30 +928,36 @@ export default function ProctoredCBTPage() {
                   <p className="text-xs font-bold text-slate-700">
                     Percentage: {((currentScore / totalMaxMarks) * 100).toFixed(0)}%
                   </p>
-                  <span className={`inline-block text-xs font-bold px-3 py-1 rounded-full ${
-                    currentScore >= 30 ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"
-                  }`}>
-                    {currentScore >= 30 ? "PASSED (Distinction)" : "FAILED"}
-                  </span>
+                  {/* The old badge called anything at or above 30 raw marks "PASSED
+                      (Distinction)" and everything below it "FAILED", whatever the paper was
+                      worth and whatever the class's own scale says. A practice run on one
+                      laptop cannot hand a pupil a verdict that belongs to the school's
+                      grading tier, so the number is shown and judged nowhere. */}
+                  <p className="text-[10px] text-slate-500 leading-snug pt-1">
+                    No grade is given here. The letter and remark come from this class&apos;s
+                    grading scale when a teacher files the mark in CA Entry.
+                  </p>
                 </div>
 
-                {/* CA Sync Confirmation Banner */}
+                {/* What became of this score */}
                 {syncFeedback && (
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-xs font-semibold text-emerald-900 flex flex-col sm:flex-row items-center justify-between gap-3 text-left">
+                  <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-xs font-semibold text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-left">
                     <div className="flex items-center gap-2">
-                      <Database className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                      <Database className="w-5 h-5 text-amber-700 flex-shrink-0" />
                       <div>
-                        <p className="font-bold">Continuous Assessment (CA) Updated Live!</p>
-                        <p className="text-[11px] text-emerald-700">
-                          Converted Score: <strong className="text-emerald-950 font-bold">{syncFeedback.scaledScore} / 60</strong> recorded under Exam in {currentStudent.className} gradebook.
+                        <p className="font-bold">This score is not on the school&apos;s records yet</p>
+                        <p className="text-[11px] text-amber-900">
+                          Scaled to <strong>{syncFeedback.scaledScore} / 60</strong> against the {syncFeedback.target}{" "}
+                          weight. A teacher or the exam office files it in CA Entry; reload this page and the number is
+                          gone, so write it down and hand it in.
                         </p>
                       </div>
                     </div>
                     <Link
                       href="/operations/update-ca"
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] whitespace-nowrap shadow-xs flex items-center gap-1"
+                      className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg font-bold text-[11px] whitespace-nowrap shadow-xs flex items-center gap-1"
                     >
-                      View CA Sheet <ArrowUpRight className="w-3.5 h-3.5" />
+                      Open CA Entry <ArrowUpRight className="w-3.5 h-3.5" />
                     </Link>
                   </div>
                 )}
@@ -915,12 +990,17 @@ export default function ProctoredCBTPage() {
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
                     <div>
                       <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
-                        {SCHOOL_INFO.shortName} Live Assessment
+                        {schoolShortName} Live Assessment
                       </span>
                       <h2 className="text-base font-bold text-slate-900 mt-1">
-                        Information & Communication Technology ({currentStudent.className})
+                        {bankSubjectLabel} ({candidateClass})
                       </h2>
-                      <p className="text-xs text-slate-500">Candidate: {currentStudent.fullName} ({currentStudent.admissionNo})</p>
+                      <p className="text-xs text-slate-500">Candidate: {candidateName} ({candidateNo})</p>
+                      {isSampleBank && (
+                        <p className="text-[11px] font-bold text-amber-800 mt-1">
+                          Sample questions from this page&apos;s source — not a paper {schoolShortName} set.
+                        </p>
+                      )}
                     </div>
 
                     {/* Clock */}
@@ -1010,7 +1090,7 @@ export default function ProctoredCBTPage() {
                         className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
                       >
                         <CheckCircle2 className="w-4 h-4" />
-                        Finalize & Sync to CA Gradebook
+                        Submit and Show the Score
                       </button>
                     ) : (
                       <button
@@ -1025,10 +1105,10 @@ export default function ProctoredCBTPage() {
 
                 </div>
 
-                {/* Right 4 Cols: Live AI Proctoring HUD */}
+                {/* Right 4 Cols: Browser Lockdown HUD */}
                 <div className="lg:col-span-4 space-y-4">
                   
-                  {/* Live Proctor Camera Simulator */}
+                  {/* What this screen actually watches */}
                   <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 text-white shadow-md space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -1036,44 +1116,44 @@ export default function ProctoredCBTPage() {
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                           <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                         </span>
-                        <h4 className="text-xs font-bold tracking-wide uppercase">AI Video Proctor</h4>
+                        <h4 className="text-xs font-bold tracking-wide uppercase">Browser Lockdown</h4>
                       </div>
                       <span className="text-[10px] bg-slate-800 text-slate-300 font-mono px-2 py-0.5 rounded">
-                        HD 1080p
+                        {isFullscreen ? "Full-screen" : "Not full-screen"}
                       </span>
                     </div>
 
-                    {/* Camera Viewfinder Screen */}
-                    <div className="relative aspect-4/3 bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 flex flex-col items-center justify-center p-4">
-                      <div className="w-20 h-20 rounded-full border-2 border-dashed border-emerald-500 flex items-center justify-center text-emerald-400 mb-2">
-                        <Eye className="w-8 h-8 animate-pulse" />
-                      </div>
-                      <p className="text-[11px] font-bold text-emerald-400">Face Verified & Centered</p>
-                      <p className="text-[9px] text-slate-400 mt-0.5">Gaze Tracking: Screen Locked</p>
-
-                      {/* Viewfinder Bounding Boxes */}
-                      <div className="absolute top-2 left-2 w-3 h-3 border-t-2 border-l-2 border-emerald-500"></div>
-                      <div className="absolute top-2 right-2 w-3 h-3 border-t-2 border-r-2 border-emerald-500"></div>
-                      <div className="absolute bottom-2 left-2 w-3 h-3 border-b-2 border-l-2 border-emerald-500"></div>
-                      <div className="absolute bottom-2 right-2 w-3 h-3 border-b-2 border-r-2 border-emerald-500"></div>
-                    </div>
-
-                    {/* Noise / Decibel Level Meter */}
-                    <div className="space-y-1.5 pt-1">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="flex items-center gap-1 text-slate-400">
-                          <Volume2 className="w-3.5 h-3.5" />
-                          Ambient Noise Level
-                        </span>
-                        <span className="font-mono font-bold text-emerald-400">{noiseLevel} dB (Silent)</span>
-                      </div>
-                      <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-emerald-500 transition-all duration-300"
-                          style={{ width: `${Math.min(100, (noiseLevel / 60) * 100)}%` }}
-                        ></div>
-                      </div>
-                    </div>
+                    {/* The panel used to show a camera viewfinder stamped "Face Verified &
+                        Centered", "Gaze Tracking: Screen Locked", an "HD 1080p" badge and a
+                        decibel meter fed by Math.random(). No route in this app ever opens a
+                        camera or a microphone, so every one of those readings was invented — and
+                        a pupil sat an exam believing their face was being watched. These are the
+                        four things this page really detects, because they are the four listeners
+                        actually attached. */}
+                    <ul className="space-y-1.5 text-[11px] text-slate-300">
+                      <li className="flex items-start gap-1.5">
+                        <span className="text-emerald-400 mt-0.5">•</span>
+                        Leaving full-screen while the clock is running
+                      </li>
+                      <li className="flex items-start gap-1.5">
+                        <span className="text-emerald-400 mt-0.5">•</span>
+                        Switching tab or losing window focus
+                      </li>
+                      <li className="flex items-start gap-1.5">
+                        <span className="text-emerald-400 mt-0.5">•</span>
+                        Copy, paste, print-screen, right-click and F12 — blocked, and logged
+                      </li>
+                      <li className="flex items-start gap-1.5">
+                        <span className="text-emerald-400 mt-0.5">•</span>
+                        Three of the above ends this sitting and scores it 0 on this device
+                      </li>
+                    </ul>
+                    <p className="text-[10px] text-slate-400 border-t border-slate-800 pt-2">
+                      No camera, microphone, face or gaze check runs here — this portal never asks
+                      the browser for that access. The log below is this device&apos;s own note of
+                      the four events above; it is not filed to the school, so an invigilator
+                      deciding a malpractice case cannot rely on it as evidence.
+                    </p>
                   </div>
 
                   {/* Malpractice Strike Status */}

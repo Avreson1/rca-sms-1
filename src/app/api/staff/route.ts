@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRole, requireRoleSession } from "@/lib/auth/guard";
-import { ASSIGNABLE_ROLES, createAppAccount } from "@/lib/auth/app-accounts";
+import { ASSIGNABLE_ROLES, createAppAccount, getAppAccountByUsername, setAppAccountStatus } from "@/lib/auth/app-accounts";
 import type { UserRole } from "@/lib/rbac";
 import { databaseUnavailable, getSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -123,4 +123,98 @@ export async function POST(request: Request) {
       ? `A login for ${row.username} already exists, so no new one was issued. Reset it in Settings → User Access if it is not in use.`
       : (loginError ?? "The login could not be created."),
   });
+}
+
+/**
+ * Removes a staff record and closes the door that record's login walks through.
+ *
+ * The register screen has always had a delete button, but it only edited this
+ * browser's copy, so the member was back on the list after a reload — and their
+ * login kept working the whole time. Removal now happens on the server, and the
+ * login is suspended with it: a departed member should not keep a credential
+ * that outlives their record. Suspension rather than deletion because the
+ * password was handed out once, on paper, and an office that removes someone by
+ * mistake can put the record back without inventing a new credential nobody was
+ * told about.
+ */
+export async function DELETE(request: Request) {
+  const { session, denied } = await requireRoleSession(WRITE_STAFF);
+  if (denied) return denied;
+
+  let body: { staffId?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const staffId = typeof body.staffId === "string" ? body.staffId.trim() : "";
+  if (!staffId) {
+    return NextResponse.json({ success: false, error: "Provide the staff ID of the member to remove." }, { status: 400 });
+  }
+
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return databaseUnavailable();
+
+  const { data: member, error: lookupError } = await supabase
+    .from("staff")
+    .select("staff_id, full_name, username")
+    .eq("staff_id", staffId)
+    .maybeSingle<{ staff_id: string; full_name: string; username: string }>();
+
+  if (lookupError) return NextResponse.json({ success: false, error: lookupError.message }, { status: 502 });
+  if (!member) {
+    return NextResponse.json({ success: false, error: `No staff record on file with ID ${staffId}.` }, { status: 404 });
+  }
+
+  // Removing yourself would take the register — and the login behind the
+  // session in this browser — with it.
+  if (member.username.toLowerCase() === session.username.toLowerCase()) {
+    return NextResponse.json(
+      { success: false, error: `You are signed in as ${member.username}, so this record cannot be removed from here.` },
+      { status: 400 }
+    );
+  }
+
+  const { error: deleteError } = await supabase.from("staff").delete().eq("staff_id", staffId);
+  if (deleteError) return NextResponse.json({ success: false, error: deleteError.message }, { status: 502 });
+
+  const { account, error: accountError } = await getAppAccountByUsername(member.username);
+  if (accountError) {
+    return NextResponse.json({
+      success: true,
+      data: {
+        staffId,
+        loginSuspended: false,
+        loginWarning: `The staff record was removed, but the portal could not check the login “${member.username}”: ${accountError}.`,
+      },
+    });
+  }
+
+  if (!account) {
+    // Env-configured logins (AUTH_<ROLE>_*) are not rows in app_accounts, so
+    // nothing here can suspend them. Say so instead of claiming the door closed.
+    return NextResponse.json({
+      success: true,
+      data: {
+        staffId,
+        loginSuspended: false,
+        loginWarning: `The staff record was removed. No portal login is filed under “${member.username}”, so there was nothing to suspend — if that person signs in with a login set up outside this screen, remove it where it was created.`,
+      },
+    });
+  }
+
+  const { error: suspendError } = await setAppAccountStatus(account.id, "Suspended");
+  if (suspendError) {
+    return NextResponse.json({
+      success: true,
+      data: {
+        staffId,
+        loginSuspended: false,
+        loginWarning: `The staff record was removed, but its login “${member.username}” is still active — ${suspendError}. Suspend it in Settings → User Access.`,
+      },
+    });
+  }
+
+  return NextResponse.json({ success: true, data: { staffId, loginSuspended: true, loginUsername: account.username } });
 }

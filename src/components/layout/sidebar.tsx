@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SCHOOL_INFO } from "@/lib/constants";
+import { useSchoolConfig } from "@/lib/school-config";
 import { useRealtimeAuth, useRealtimeCBTConfig } from "@/lib/realtime-store";
 import { isRouteAllowed } from "@/lib/rbac";
 
@@ -81,7 +82,7 @@ const navItems: NavItem[] = [
     title: "CBT Portal",
     href: "/cbt",
     icon: Laptop,
-    badge: "Active",
+    badge: "Open here",
   },
   {
     title: "Accounts & Bursary",
@@ -123,6 +124,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { currentUser, logout } = useRealtimeAuth();
+  // The school and term shown to every member of staff, read from the
+  // school's own record rather than the text compiled into the portal.
+  const { config: school } = useSchoolConfig();
   const { cbtConfig } = useRealtimeCBTConfig();
   const [mounted, setMounted] = useState(false);
 
@@ -130,7 +134,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     setMounted(true);
   }, []);
 
-  const currentRole = (mounted ? currentUser?.role : null) || "SUPER_ADMIN";
+  // With no role read from the session yet the menu used to draw the whole
+  // SUPER_ADMIN navigation, so a browser that had just been handed over — or had
+  // its storage cleared — listed every office screen to the next person who looked
+  // at it. An unknown role now lists nothing; the screen beside it says why.
+  const knownRole = mounted ? currentUser?.role ?? null : null;
+  const currentRole = knownRole ?? "Not signed in on this browser";
   const activeCBT = mounted ? cbtConfig : { isOpen: true };
 
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
@@ -144,7 +153,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   };
 
   const handleLogout = () => {
-    if (confirm("Are you sure you want to log out of the Royal Crown Academy portal?")) {
+    if (confirm(`Are you sure you want to log out of the ${school?.school_name || SCHOOL_INFO.name} portal?`)) {
       logout();
       router.push("/login");
     }
@@ -167,7 +176,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       if (item.title === "CBT Portal") {
         return {
           ...item,
-          badge: activeCBT.isOpen ? "Active" : "Closed",
+          badge: activeCBT.isOpen ? "Open here" : "Closed here",
         };
       }
       return item;
@@ -189,10 +198,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <h1 className="font-extrabold text-sm leading-tight text-white tracking-wider drop-shadow-sm">{SCHOOL_INFO.shortName}</h1>
+            <h1 className="font-extrabold text-sm leading-tight text-white tracking-wider drop-shadow-sm">{school?.short_name || SCHOOL_INFO.shortName}</h1>
             <span className="text-[10px] bg-cyan-500/20 text-cyan-300 font-bold px-1.5 py-0.5 rounded border border-cyan-400/40 uppercase tracking-wider">SMS</span>
           </div>
-          <p className="text-[11px] text-blue-200/80 truncate mt-0.5 font-medium">{SCHOOL_INFO.name}</p>
+          <p className="text-[11px] text-blue-200/80 truncate mt-0.5 font-medium">{school?.school_name || SCHOOL_INFO.name}</p>
         </div>
         <button
           type="button"
@@ -280,12 +289,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 <span
                   className={cn(
                     "font-black text-[10px] px-1.5 py-0.2 rounded-md flex items-center gap-0.5 shadow-sm uppercase tracking-wider",
-                    item.badge === "Active"
+                    item.badge === "Open here"
                       ? "bg-cyan-400 text-[#0a1128]"
                       : "bg-amber-400 text-amber-950 font-bold"
                   )}
                 >
-                  {item.badge === "Active" ? (
+                  {item.badge === "Open here" ? (
                     <Sparkles className="w-2.5 h-2.5 text-[#0000FF]" />
                   ) : (
                     <Lock className="w-2.5 h-2.5 text-amber-900" />
@@ -329,11 +338,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       <div className="p-3 border-t border-blue-900/40 text-[11px] text-slate-400 bg-slate-950/60 flex-shrink-0">
         <div className="flex justify-between items-center">
           <span className="text-slate-400">Academic Session:</span>
-          <span className="text-cyan-300 font-bold">{SCHOOL_INFO.currentSession}</span>
+          <span className="text-cyan-300 font-bold">{school?.current_session || SCHOOL_INFO.currentSession}</span>
         </div>
         <div className="flex justify-between items-center mt-1">
           <span className="text-slate-400">Current Term:</span>
-          <span className="text-cyan-300 font-bold">{SCHOOL_INFO.currentTerm}</span>
+          <span className="text-cyan-300 font-bold">{school?.current_term || SCHOOL_INFO.currentTerm}</span>
         </div>
       </div>
     </aside>

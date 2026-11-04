@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRole, requireRoleSession } from "@/lib/auth/guard";
 import { guardianScope } from "@/lib/auth/guardian-links";
-import { databaseUnavailable, getSupabaseServerClient } from "@/lib/supabase/server";
+import { databaseSetupRequired, databaseUnavailable, getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +16,8 @@ type InvoicePayload = {
   admission_no?: string;
   student_name?: string;
   class_name?: string;
-  session?: string;
-  term?: string;
+  session?: string | null;
+  term?: string | null;
   amount_billed?: number;
   amount_paid?: number;
   payment_status?: string;
@@ -36,8 +36,12 @@ function sanitizeInvoice(raw: InvoicePayload) {
     admission_no: admissionNo,
     student_name: studentName,
     class_name: typeof raw.class_name === "string" ? raw.class_name : "",
-    session: typeof raw.session === "string" && raw.session ? raw.session : "2025/2026",
-    term: typeof raw.term === "string" && raw.term ? raw.term : "First Term",
+    // Empty means "this device does not know which term it is billing"; the
+    // school's own settings answer that below. It used to be a session string
+    // compiled into the code, so a bill raised after the school moved on to the
+    // next year was filed under 2025/2026 forever.
+    session: typeof raw.session === "string" ? raw.session.trim() : "",
+    term: typeof raw.term === "string" ? raw.term.trim() : "",
     amount_billed: amount(raw.amount_billed),
     amount_paid: amount(raw.amount_paid),
     payment_status: typeof raw.payment_status === "string" && raw.payment_status ? raw.payment_status : "Unpaid",
@@ -106,6 +110,36 @@ export async function POST(request: Request) {
 
   const supabase = getSupabaseServerClient();
   if (!supabase) return databaseUnavailable();
+
+  // An invoice with no session and term on it is a device that could not read
+  // the school's settings. Filing it under the term the school itself declares
+  // keeps the bills of a new term from being stamped with an old one.
+  if (rows.some((row) => !row.session || !row.term)) {
+    const { data: config, error: configError } = await supabase
+      .from("school_config")
+      .select("current_session, current_term")
+      .eq("id", 1)
+      .maybeSingle();
+    if (configError) {
+      const setup = databaseSetupRequired(configError, "supabase/operations_state.sql");
+      if (setup) return setup;
+      return NextResponse.json({ success: false, error: configError.message }, { status: 502 });
+    }
+    if (!config) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "These invoices have no session and term, and the portal cannot read the school's current ones. Run supabase/operations_state.sql, then set the session and term in Settings.",
+        },
+        { status: 503 }
+      );
+    }
+    for (const row of rows) {
+      row.session = row.session || config.current_session;
+      row.term = row.term || config.current_term;
+    }
+  }
 
   // invoices.student_id is NOT NULL, and the browser only knows admission
   // numbers, so the id is resolved here rather than trusted from the client.

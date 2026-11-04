@@ -1,15 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { SCHOOL_INFO } from "@/lib/constants";
 import {
-  Shield,
   ArrowLeft,
-  Users,
   Trophy,
-  Plus,
 } from "lucide-react";
 
 interface SportsHouse {
@@ -67,8 +63,6 @@ const initialHouses: SportsHouse[] = [
 ];
 
 export default function SetupHousesPage() {
-  const [houses, setHouses] = useState<SportsHouse[]>(initialHouses);
-
   return (
     <DashboardShell>
       <div className="space-y-6">
@@ -90,20 +84,22 @@ export default function SetupHousesPage() {
               Institutional Sports Houses
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Manage extracurricular sports houses, House Masters, and annual Inter-House points for {SCHOOL_INFO.name}.
+              The four houses the enrolment form offers a pupil. This screen only lists them — house masters,
+              membership and Inter-House points have no place to be entered or kept yet.
             </p>
           </div>
         </div>
 
-        {/* House points reach a report card, so an unrecorded total must not look like a tally. */}
+        {/* Nothing on this card is a record the school entered. */}
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[11px] text-amber-900">
-          House points are recorded by the sports prefect; no points, house master, or membership figures have been
-          entered for this school yet.
+          These four houses and their mottos are the list the portal starts from — nobody has approved them, and
+          house masters, membership and Inter-House points are stored nowhere, so every figure below is nought
+          because nothing has been recorded, not because the houses are tied.
         </div>
 
         {/* Houses Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {houses.map((h) => (
+          {initialHouses.map((h) => (
             <div key={h.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3 flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between">

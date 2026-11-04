@@ -5,6 +5,8 @@ import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
 import { useRealtimeInmail, InmailMessage } from "@/lib/realtime-store";
+import { useSchoolConfig } from "@/lib/school-config";
+import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   Mail,
   Send,
@@ -20,6 +22,8 @@ import {
 
 export default function InmailPage() {
   const { messages, sendMessage } = useRealtimeInmail();
+  const { config: school } = useSchoolConfig();
+  const schoolName = school?.school_name?.trim() || SCHOOL_INFO.name;
   const [selectedMessage, setSelectedMessage] = useState<InmailMessage | null>(messages[0] || null);
   const [search, setSearch] = useState("");
   const [isComposing, setIsComposing] = useState(false);
@@ -72,12 +76,13 @@ export default function InmailPage() {
               <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                 Inmail Internal Messaging
               </h1>
-              <span className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                Encrypted Realtime Feed
+              <span className="bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-bold px-2 py-0.5 rounded-full">
+                Kept on this browser
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Secure messaging network for Royal Crown Academy teachers, management, and departments.
+              Internal memos for {schoolName} teachers, management, and departments. Messages are stored on this
+              browser, so nothing here reaches another machine.
             </p>
           </div>
 
@@ -90,11 +95,13 @@ export default function InmailPage() {
           </button>
         </div>
 
+        <DeviceOnlyNotice what="Inmail messages" />
+
         {/* Sent Confirmation Toast */}
         {sentToast && (
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl p-3.5 text-xs font-semibold flex items-center gap-2 shadow-xs">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-            Message broadcasted successfully in real-time across institutional portal nodes.
+            Message saved on this browser only — no one else has received it, and other machines will not see it.
           </div>
         )}
 
@@ -123,10 +130,10 @@ export default function InmailPage() {
                     onChange={(e) => setComposeTo(e.target.value)}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-800"
                   >
-                    <option value="all-staff">All Staff Members (Royal Crown Academy)</option>
+                    <option value="all-staff">All Staff Members ({schoolName})</option>
                     <option value="principal">Office of the Principal</option>
                     <option value="bursar">Accounts & Bursary Department</option>
-                    <option value="exam-officer">Exam Officer (Emmanuel Pam)</option>
+                    <option value="exam-officer">Exam Officer</option>
                     <option value="sarah-k">Sarah K. Danjuma (JSS 1 Maths)</option>
                   </select>
                 </div>
@@ -158,7 +165,7 @@ export default function InmailPage() {
                 <div className="flex items-center justify-between pt-2">
                   <span className="text-[11px] text-slate-400 flex items-center gap-1">
                     <Paperclip className="w-3.5 h-3.5" />
-                    Encrypted internal transmission
+                    Saved on this browser, not sent anywhere
                   </span>
                   <div className="flex gap-2">
                     <button
@@ -269,7 +276,7 @@ export default function InmailPage() {
             )}
 
             <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
-              <span>{SCHOOL_INFO.name} VCS Internal Network</span>
+              <span>{SCHOOL_INFO.name} internal memos • kept on this browser</span>
               <button
                 onClick={() => setIsComposing(true)}
                 className="font-bold text-blue-600 hover:text-blue-700 cursor-pointer"

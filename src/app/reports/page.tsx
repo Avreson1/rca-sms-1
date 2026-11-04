@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
+import { effectiveScope, useSchoolConfig } from "@/lib/school-config";
 import {
   useRealtimeStudents,
   useRealtimeInvoices,
@@ -31,6 +32,15 @@ export default function ReportsHubPage() {
   const { invoices } = useRealtimeInvoices();
   const { staff } = useRealtimeStaff();
   const { gradingTiers } = useRealtimeGradingScales();
+  const { config: school } = useSchoolConfig();
+  // Every export below asks the school's records for one session and term. Taken from
+  // the compiled constants, a school that had moved into the next session in Settings
+  // was forever reading the old one — and answered "no marks are filed" about marks
+  // that exist.
+  const scope = effectiveScope(school, {
+    session: SCHOOL_INFO.currentSession,
+    term: SCHOOL_INFO.currentTerm,
+  });
   const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
 
   const handleDownloadBroadsheet = async () => {
@@ -57,8 +67,8 @@ export default function ReportsHubPage() {
     // every pupil — one arbitrary subject's numbers, labelled as the child's
     // continuous assessment, for a term that may never have been run.
     const filed = await fetchCaScoresFromSupabase({
-      session: SCHOOL_INFO.currentSession,
-      terms: [SCHOOL_INFO.currentTerm],
+      session: scope.session,
+      terms: [scope.term],
     });
 
     if (filed === null) {
@@ -70,7 +80,7 @@ export default function ReportsHubPage() {
     }
     if (filed.length === 0) {
       setDownloadNotice(
-        `No marks are filed for ${SCHOOL_INFO.currentSession}, ${SCHOOL_INFO.currentTerm}, so there is no broadsheet to export. Enter them under Operations → Update CA Scores.`
+        `No marks are filed for ${scope.session}, ${scope.term}, so there is no broadsheet to export. Enter them under Operations → Update CA Scores.`
       );
       setTimeout(() => setDownloadNotice(null), 8000);
       return;
@@ -107,8 +117,8 @@ export default function ReportsHubPage() {
         ];
       });
 
-    exportToCSV(`RCA_Master_Academic_Broadsheet_${SCHOOL_INFO.currentSession.replace("/", "-")}`, headers, rows);
-    setDownloadNotice(`Broadsheet exported: ${rows.length} filed subject results for ${SCHOOL_INFO.currentTerm}.`);
+    exportToCSV(`RCA_Master_Academic_Broadsheet_${scope.session.replace("/", "-")}`, headers, rows);
+    setDownloadNotice(`Broadsheet exported: ${rows.length} filed subject results for ${scope.term}.`);
     setTimeout(() => setDownloadNotice(null), 4000);
   };
 
@@ -151,7 +161,7 @@ export default function ReportsHubPage() {
       ];
     });
 
-    exportToCSV(`RCA_Bursary_Fee_Debtor_Ledger_${SCHOOL_INFO.currentSession.replace("/", "-")}`, headers, rows);
+    exportToCSV(`RCA_Bursary_Fee_Debtor_Ledger_${scope.session.replace("/", "-")}`, headers, rows);
     setDownloadNotice("Bursary Fee Collection & Debtor Ledger CSV downloaded!");
     setTimeout(() => setDownloadNotice(null), 3000);
   };
@@ -179,7 +189,7 @@ export default function ReportsHubPage() {
       s.feeStatus,
     ]);
 
-    exportToCSV(`RCA_Master_Enrollment_Registry_${SCHOOL_INFO.currentSession.replace("/", "-")}`, headers, rows);
+    exportToCSV(`RCA_Master_Enrollment_Registry_${scope.session.replace("/", "-")}`, headers, rows);
     setDownloadNotice("Student Enrollment & Sports House Registry CSV downloaded!");
     setTimeout(() => setDownloadNotice(null), 3000);
   };
@@ -207,7 +217,7 @@ export default function ReportsHubPage() {
       st.isFormMaster ? "Yes" : "No",
     ]);
 
-    exportToCSV(`RCA_Faculty_Staff_Directory_${SCHOOL_INFO.currentSession.replace("/", "-")}`, headers, rows);
+    exportToCSV(`RCA_Faculty_Staff_Directory_${scope.session.replace("/", "-")}`, headers, rows);
     setDownloadNotice("Faculty & Staff Workload Directory CSV downloaded!");
     setTimeout(() => setDownloadNotice(null), 3000);
   };

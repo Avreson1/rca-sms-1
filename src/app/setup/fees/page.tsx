@@ -3,8 +3,10 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { SCHOOL_INFO } from "@/lib/constants";
+import { SCHOOL_INFO, ALL_CLASSES } from "@/lib/constants";
 import { useRealtimeFees, FeeComponentRecord, useRealtimeClasses } from "@/lib/realtime-store";
+import { effectiveScope, useSchoolConfig } from "@/lib/school-config";
+import { billForClass } from "@/lib/fee-billing";
 import {
   CreditCard,
   Plus,
@@ -15,11 +17,52 @@ import {
   FileSpreadsheet,
   Trash2,
   Sparkles,
+  TriangleAlert,
 } from "lucide-react";
 
+const STANDARD_SCHEDULE_SUGGESTION: Omit<FeeComponentRecord, "id">[] = [
+  {
+    name: "Term Tuition & Instructional Fee",
+    category: "Tuition",
+    applicableClass: "All Classes",
+    amount: 90000,
+    isMandatory: true,
+  },
+  {
+    name: "ICT Lab & Computer Systems Levy",
+    category: "Levy",
+    applicableClass: "All Classes",
+    amount: 20000,
+    isMandatory: true,
+  },
+  {
+    name: "Science Practical & Chemical Reagents Fee",
+    category: "Laboratory",
+    applicableClass: "SS 1 - 3",
+    amount: 15000,
+    isMandatory: true,
+  },
+  {
+    name: "Terminal Examination & CBT Testing Levy",
+    category: "Examination",
+    applicableClass: "All Classes",
+    amount: 10000,
+    isMandatory: true,
+  },
+  {
+    name: "School Development & Infrastructure Fund",
+    category: "Levy",
+    applicableClass: "All Classes",
+    amount: 10000,
+    isMandatory: true,
+  },
+];
+
 export default function SetupFeesPage() {
-  const { fees, addFeeComponent, deleteFeeComponent, clearAllFees } = useRealtimeFees();
+  const { fees, feesSource, saveFeeComponents, removeFeeComponent, reloadFees } = useRealtimeFees();
   const { classes } = useRealtimeClasses();
+  const { config: school } = useSchoolConfig();
+  const scope = effectiveScope(school, { session: SCHOOL_INFO.currentSession, term: SCHOOL_INFO.currentTerm });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [name, setName] = useState("");
@@ -28,21 +71,36 @@ export default function SetupFeesPage() {
   const [amount, setAmount] = useState<number>(0);
   const [isMandatory, setIsMandatory] = useState(true);
 
-  const totalTermFee = fees.reduce((sum, f) => sum + f.amount, 0);
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [previewClass, setPreviewClass] = useState("All Classes");
 
-  const handleAddFee = (e: React.FormEvent) => {
+  // Summing every item on the list is not any pupil's bill: the laboratory fee
+  // is only charged to SS, a nursery levy only to nursery. The headline figure
+  // now answers the question the bursar is actually asking — what does a child
+  // in this class owe — and the schedule total is labelled as the list of items.
+  const preview =
+    previewClass === "All Classes"
+      ? { items: fees, total: fees.reduce((sum, f) => sum + f.amount, 0) }
+      : billForClass(fees, previewClass);
+  const scheduleTotal = fees.reduce((sum, f) => sum + f.amount, 0);
+
+  const handleAddFee = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || amount <= 0) return;
 
-    addFeeComponent({
-      name: name.trim(),
-      category,
-      applicableClass,
-      amount,
-      isMandatory,
-      session: SCHOOL_INFO.currentSession,
-      term: SCHOOL_INFO.currentTerm,
-    });
+    setSaving(true);
+    setProblem(null);
+    const outcome = await saveFeeComponents([
+      { name: name.trim(), category, applicableClass, amount, isMandatory },
+    ]);
+    setSaving(false);
+
+    if (outcome.failures.length > 0) {
+      setProblem(`The price was NOT filed: ${outcome.failures[0]}. Leave the window open and try again.`);
+      return;
+    }
 
     setIsModalOpen(false);
     setName("");
@@ -50,56 +108,43 @@ export default function SetupFeesPage() {
     setIsMandatory(true);
   };
 
-  const handleSeedStandardFees = () => {
-    const defaultFees: Omit<FeeComponentRecord, "id">[] = [
-      {
-        name: "Term Tuition & Instructional Fee",
-        category: "Tuition",
-        applicableClass: "All Classes",
-        amount: 90000,
-        isMandatory: true,
-        session: SCHOOL_INFO.currentSession,
-        term: SCHOOL_INFO.currentTerm,
-      },
-      {
-        name: "ICT Lab & Computer Systems Levy",
-        category: "Levy",
-        applicableClass: "All Classes",
-        amount: 20000,
-        isMandatory: true,
-        session: SCHOOL_INFO.currentSession,
-        term: SCHOOL_INFO.currentTerm,
-      },
-      {
-        name: "Science Practical & Chemical Reagents Fee",
-        category: "Laboratory",
-        applicableClass: "SS 1 - SS 3",
-        amount: 15000,
-        isMandatory: true,
-        session: SCHOOL_INFO.currentSession,
-        term: SCHOOL_INFO.currentTerm,
-      },
-      {
-        name: "Terminal Examination & CBT Testing Levy",
-        category: "Examination",
-        applicableClass: "All Classes",
-        amount: 10000,
-        isMandatory: true,
-        session: SCHOOL_INFO.currentSession,
-        term: SCHOOL_INFO.currentTerm,
-      },
-      {
-        name: "School Development & Infrastructure Fund",
-        category: "Levy",
-        applicableClass: "All Classes",
-        amount: 10000,
-        isMandatory: true,
-        session: SCHOOL_INFO.currentSession,
-        term: SCHOOL_INFO.currentTerm,
-      },
-    ];
+  const handleSeedStandardFees = async () => {
+    const suggestionTotal = STANDARD_SCHEDULE_SUGGESTION.reduce((sum, f) => sum + f.amount, 0);
+    if (
+      !confirm(
+        `This writes a suggested schedule of ${STANDARD_SCHEDULE_SUGGESTION.length} items (₦${suggestionTotal.toLocaleString()} across the list) onto the school's records for ${scope.session}, ${scope.term}. ` +
+          "Change or delete any amount that is not what the school charges before you generate invoices."
+      )
+    )
+      return;
 
-    defaultFees.forEach((f) => addFeeComponent(f));
+    setSaving(true);
+    setProblem(null);
+    const outcome = await saveFeeComponents(STANDARD_SCHEDULE_SUGGESTION);
+    setSaving(false);
+
+    if (outcome.failures.length > 0) {
+      setProblem(`The suggested schedule was NOT filed: ${outcome.failures[0]}.`);
+    }
+  };
+
+  const handleRemoveFee = async (fee: FeeComponentRecord) => {
+    if (
+      !confirm(
+        `Remove “${fee.name}” (₦${fee.amount.toLocaleString()}) from the ${scope.session} ${scope.term} schedule?\n\n` +
+          "Invoices already generated keep the amount they went out with; this does not re-bill anybody."
+      )
+    )
+      return;
+
+    setRemovingId(fee.id);
+    setProblem(null);
+    const outcome = await removeFeeComponent(fee.id);
+    setRemovingId(null);
+
+    if (!outcome.ok) {
+      setProblem(`The fee item is still on the school's schedule: ${outcome.reason}.`);
+    }
   };
 
   return (
@@ -122,15 +167,41 @@ export default function SetupFeesPage() {
               Institutional Fee Schedule &amp; Levies
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Dynamic termly billing structure applied to student invoices for {SCHOOL_INFO.name}.
+              What {school?.school_name?.trim() || SCHOOL_INFO.name} charges each term. These are the amounts an
+              invoice is priced from, so they are filed on the school&apos;s records — every machine bills from the
+              same list.
             </p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded border ${
+                feesSource === "server"
+                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                  : "bg-amber-50 text-amber-800 border-amber-300"
+              }`}
+              title={
+                feesSource === "server"
+                  ? "This list came from the school's fee_components table."
+                  : "The school's schedule could not be read, so this is the copy remembered on this device."
+              }
+            >
+              {feesSource === "server" ? "On the school's records" : "This device's copy only"}
+            </span>
+            {feesSource === "server" && fees.length > 0 && (
+              <button
+                onClick={() => void reloadFees()}
+                className="px-3 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-all cursor-pointer"
+                title="Re-read the schedule in case somebody else changed it"
+              >
+                Refresh
+              </button>
+            )}
             {fees.length === 0 && (
               <button
-                onClick={handleSeedStandardFees}
-                className="px-3.5 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer"
+                onClick={() => void handleSeedStandardFees()}
+                disabled={saving}
+                className="px-3.5 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <Sparkles className="w-3.5 h-3.5 text-blue-600" />
                 Populate Standard Fee Schedule
@@ -153,26 +224,56 @@ export default function SetupFeesPage() {
           </div>
         </div>
 
+        {problem && (
+          <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-[11px] leading-snug text-amber-950 flex items-start gap-2">
+            <TriangleAlert className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
+            <p>{problem}</p>
+          </div>
+        )}
+
         {/* Total Fee Banner */}
         <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-md border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
-              Standard Cumulative Term Bill
+              Term bill for: {previewClass}
             </span>
             <h2 className="text-3xl font-black text-white mt-1">
-              ₦{totalTermFee.toLocaleString()}{" "}
-              <span className="text-xs font-normal text-slate-400">/ Student (Termly Cumulative)</span>
+              ₦{preview.total.toLocaleString()}{" "}
+              <span className="text-xs font-normal text-slate-400">per student ({preview.items.length} item chargeable)</span>
             </h2>
             <p className="text-xs text-slate-300 mt-1">
-              Session: <strong className="text-white">{SCHOOL_INFO.currentSession}</strong> • Term:{" "}
-              <strong className="text-emerald-400">{SCHOOL_INFO.currentTerm}</strong>
+              Session: <strong className="text-white">{scope.session}</strong> • Term:{" "}
+              <strong className="text-emerald-400">{scope.term}</strong>
+            </p>
+            <p className="text-[10px] text-slate-400 mt-1">
+              A pupil is charged only the items aimed at their class or level, not the whole list. The full schedule
+              comes to ₦{scheduleTotal.toLocaleString()} across {fees.length} item{fees.length === 1 ? "" : "s"}.
             </p>
           </div>
 
-          <div className="bg-slate-800 border border-slate-700 p-4 rounded-xl text-xs space-y-1">
-            <p className="text-slate-400">
-              Active Components: <strong className="text-white">{fees.length} Items</strong>
-            </p>
+          <div className="bg-slate-800 border border-slate-700 p-4 rounded-xl text-xs space-y-2 w-full sm:w-auto">
+            <label className="block text-slate-400">
+              Check a class&apos;s bill
+              <select
+                value={previewClass}
+                onChange={(e) => setPreviewClass(e.target.value)}
+                className="mt-1 w-full sm:w-44 bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white font-semibold"
+              >
+                <option value="All Classes">All Classes (whole list)</option>
+                {ALL_CLASSES.map((cls) => (
+                  <option key={cls} value={cls}>
+                    {cls}
+                  </option>
+                ))}
+                {classes
+                  .filter((c) => !ALL_CLASSES.includes(c.name))
+                  .map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
             <p className="text-slate-400">
               Currency: <strong className="text-emerald-400">Nigerian Naira (NGN - ₦)</strong>
             </p>
@@ -184,16 +285,18 @@ export default function SetupFeesPage() {
           <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <h3 className="font-bold text-sm text-slate-800">Itemized Fee Components</h3>
             <span className="text-xs bg-slate-200 text-slate-700 font-bold px-2.5 py-0.5 rounded-full">
-              {fees.length} Fee Items Active
+              {fees.length} Fee Item{fees.length === 1 ? "" : "s"} Filed
             </span>
           </div>
 
           {fees.length === 0 ? (
             <div className="py-12 text-center text-slate-400 space-y-3">
               <CreditCard className="w-10 h-10 mx-auto text-slate-300 stroke-1" />
-              <div className="text-sm font-semibold text-slate-600">No Fee Components Configured</div>
+              <div className="text-sm font-semibold text-slate-600">No Fee Components Filed</div>
               <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                No fee items currently configured. Click &apos;Add Fee Component&apos; or &apos;Populate Standard Fee Schedule&apos; to begin.
+                {feesSource === "server"
+                  ? `Nothing is on the school's schedule for ${scope.session}, ${scope.term} yet. Until there is, invoices have no price to be built from.`
+                  : "The school's schedule could not be read, and this device has no remembered copy either. Add a component to file one."}
               </p>
             </div>
           ) : (
@@ -206,6 +309,7 @@ export default function SetupFeesPage() {
                     <th className="py-3 px-3">Target Level</th>
                     <th className="py-3 px-4 text-right">Amount (₦)</th>
                     <th className="py-3 px-3 text-center">Requirement</th>
+                    <th className="py-3 px-3 text-center">Filed under</th>
                     <th className="py-3 px-4 text-right">Action</th>
                   </tr>
                 </thead>
@@ -233,15 +337,15 @@ export default function SetupFeesPage() {
                           {f.isMandatory ? "Mandatory" : "Optional"}
                         </span>
                       </td>
+                      <td className="py-3 px-3 text-center text-[10px] text-slate-500">
+                        {f.session && f.term ? `${f.session} · ${f.term}` : "This device only — not filed"}
+                      </td>
                       <td className="py-3 px-4 text-right">
                         <button
-                          onClick={() => {
-                            if (confirm(`Remove fee item ${f.name}?`)) {
-                              deleteFeeComponent(f.id);
-                            }
-                          }}
-                          className="text-slate-400 hover:text-red-600 p-1 cursor-pointer"
-                          title="Delete fee item"
+                          onClick={() => void handleRemoveFee(f)}
+                          disabled={removingId === f.id}
+                          className="text-slate-400 hover:text-red-600 p-1 cursor-pointer disabled:opacity-40"
+                          title="Remove from the school's schedule"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -345,6 +449,16 @@ export default function SetupFeesPage() {
                   </label>
                 </div>
 
+                <p className="text-[10px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-2">
+                  Saved onto the school&apos;s schedule under{" "}
+                  <strong className="text-slate-700">
+                    {scope.session}, {scope.term}
+                  </strong>{" "}
+                  — the session and term set in Settings, not whichever term this browser last loaded. An item with
+                  the same name and target level already filed for this term has its amount replaced, so a corrected
+                  price does not leave two lines on the bill.
+                </p>
+
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                   <button
                     type="button"
@@ -355,9 +469,10 @@ export default function SetupFeesPage() {
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer"
+                    disabled={saving}
+                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer disabled:opacity-50"
                   >
-                    Save Fee Item
+                    {saving ? "Filing…" : "Save Fee Item"}
                   </button>
                 </div>
               </form>

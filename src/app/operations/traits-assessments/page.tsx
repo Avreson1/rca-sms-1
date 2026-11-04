@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
+import { REPORT_TERMS, effectiveScope, sessionOptions, useSchoolConfig, type ReportTerm } from "@/lib/school-config";
 import {
   useRealtimeStudents,
   useRealtimeClasses,
@@ -12,6 +13,7 @@ import {
   useRealtimeAuth,
   PsychomotorRecord,
 } from "@/lib/realtime-store";
+import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   Heart,
   Activity,
@@ -57,9 +59,16 @@ export default function TraitsAssessmentsPage() {
   const { traits } = useRealtimeTraits();
   const { psychomotorList, savePsychomotorAssessment } = useRealtimePsychomotor();
   const { currentUser } = useRealtimeAuth();
+  const { config: school } = useSchoolConfig();
 
   const currentRole = currentUser?.role || "SUPER_ADMIN";
   const isTeacher = currentRole === "TEACHER";
+
+  // The endorsement prints on the child's card under the Head of School's name.
+  // A form teacher typing it put the principal's words on paper with no record of
+  // who wrote them, so this box is closed to every role but the one that is the
+  // head in this school. Ratings and the form master's own remark are unaffected.
+  const canWriteHeadEndorsement = currentRole === "SUPER_ADMIN";
 
   const accessibleClasses = useMemo(() => {
     if (isTeacher && currentUser?.assignedClass) {
@@ -69,8 +78,32 @@ export default function TraitsAssessmentsPage() {
   }, [isTeacher, currentUser, classes]);
 
   // Filter & Selector State
-  const [selectedSession, setSelectedSession] = useState<string>(SCHOOL_INFO.currentSession || "2025/2026");
-  const [selectedTerm, setSelectedTerm] = useState<"First Term" | "Second Term" | "Third Term">("First Term");
+  const schoolScope = effectiveScope(school, {
+    session: SCHOOL_INFO.currentSession,
+    term: SCHOOL_INFO.currentTerm,
+  });
+  const sessionList = sessionOptions(schoolScope.session);
+  const [selectedSession, setSelectedSession] = useState<string>(schoolScope.session);
+  const [selectedTerm, setSelectedTerm] = useState<ReportTerm>(
+    (REPORT_TERMS as readonly string[]).includes(schoolScope.term)
+      ? (schoolScope.term as ReportTerm)
+      : "First Term"
+  );
+
+  // The form opens on the session and term the school's own record says it is
+  // in. Both used to be typed into this page, so an office working in the
+  // second term rated pupils into a column nothing else read — and the ratings
+  // filed before Settings moved on still sat under the old session. Applied
+  // once, so a teacher who picks a different period keeps their pick.
+  const openedOnCurrentPeriod = useRef(false);
+  useEffect(() => {
+    if (!school || openedOnCurrentPeriod.current) return;
+    openedOnCurrentPeriod.current = true;
+    setSelectedSession(school.current_session?.trim() || SCHOOL_INFO.currentSession);
+    if ((REPORT_TERMS as readonly string[]).includes(school.current_term)) {
+      setSelectedTerm(school.current_term as ReportTerm);
+    }
+  }, [school]);
   const [selectedClass, setSelectedClass] = useState<string>(
     isTeacher && currentUser?.assignedClass ? currentUser.assignedClass : classes[0]?.name || "Primary 1"
   );
@@ -160,7 +193,7 @@ export default function TraitsAssessmentsPage() {
       },
     };
     savePsychomotorAssessment(updated);
-    showTempSaved("Rating updated");
+    showTempSaved("Rating saved on this browser");
   };
 
   // Handle attendance change
@@ -184,7 +217,7 @@ export default function TraitsAssessmentsPage() {
       },
     };
     savePsychomotorAssessment(updated);
-    showTempSaved("Attendance updated");
+    showTempSaved("Attendance saved on this browser");
   };
 
   // Handle remarks change
@@ -200,7 +233,7 @@ export default function TraitsAssessmentsPage() {
       [field]: value,
     };
     savePsychomotorAssessment(updated);
-    showTempSaved("Remark saved");
+    showTempSaved("Remark saved on this browser");
   };
 
   // Quick Batch Fill for All Students in Selected Class
@@ -210,7 +243,8 @@ export default function TraitsAssessmentsPage() {
     if (
       !window.confirm(
         `Set every one of the ${classStudents.length} pupils in ${selectedClass} to rating ${ratingValue}? ` +
-          "Identical scores for every child is a form teacher's decision, not a default."
+          "Identical scores for every child is a form teacher's decision, not a default. " +
+          "The ratings are written to this browser only — other machines will not see them."
       )
     ) {
       return;
@@ -231,7 +265,7 @@ export default function TraitsAssessmentsPage() {
       });
     });
 
-    showTempSaved(`All students in ${selectedClass} set to rating ${ratingValue}!`);
+    showTempSaved(`All ${classStudents.length} pupils in ${selectedClass} set to rating ${ratingValue} on this browser.`);
   };
 
   const showTempSaved = (msg: string) => {
@@ -263,7 +297,7 @@ export default function TraitsAssessmentsPage() {
               </h1>
               <span className="bg-purple-50 border border-purple-200 text-purple-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
                 <Heart className="w-3 h-3 text-purple-600" />
-                Live Scorecard Sync
+                Kept on this browser
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -290,14 +324,16 @@ export default function TraitsAssessmentsPage() {
           </div>
         </div>
 
+        <DeviceOnlyNotice what="Saved traits and psychomotor ratings" />
+
         {/* Saved Alert Toast */}
         {isSaved && (
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl p-3 text-xs font-semibold flex items-center justify-between animate-in fade-in">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-              <span>{saveMessage || "Assessments updated and synchronized with official Score Cards."}</span>
+              <span>{saveMessage || "Assessments saved on this browser — the score card reads them from here."}</span>
             </div>
-            <span className="text-[10px] text-emerald-700 font-mono">Auto-saved to store</span>
+            <span className="text-[10px] text-emerald-700 font-mono">Saved on this browser</span>
           </div>
         )}
 
@@ -312,10 +348,18 @@ export default function TraitsAssessmentsPage() {
               onChange={(e) => setSelectedSession(e.target.value)}
               className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
             >
-              <option value="2025/2026">2025/2026 Academic Session</option>
-              <option value="2024/2025">2024/2025 Academic Session</option>
-              <option value="2026/2027">2026/2027 Academic Session</option>
+              {sessionList.map((option) => (
+                <option key={option} value={option}>
+                  {option} Academic Session
+                </option>
+              ))}
+              {!sessionList.includes(selectedSession) && (
+                <option value={selectedSession}>{selectedSession} Academic Session</option>
+              )}
             </select>
+            <p className="text-[10px] text-slate-400 mt-1">
+              Centred on {schoolScope.session}, the session the school says it is in.
+            </p>
           </div>
 
           <div>
@@ -324,12 +368,14 @@ export default function TraitsAssessmentsPage() {
             </label>
             <select
               value={selectedTerm}
-              onChange={(e) => setSelectedTerm(e.target.value as any)}
+              onChange={(e) => setSelectedTerm(e.target.value as ReportTerm)}
               className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
             >
-              <option value="First Term">First Term</option>
-              <option value="Second Term">Second Term</option>
-              <option value="Third Term">Third Term (Promotion Term)</option>
+              {REPORT_TERMS.map((term) => (
+                <option key={term} value={term}>
+                  {term === "Third Term" ? "Third Term (Promotion Term)" : term}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -711,6 +757,7 @@ export default function TraitsAssessmentsPage() {
                           <div className="flex items-center justify-between">
                             <label className="font-bold text-slate-700">Principal / Head of School Endorsement</label>
                             <select
+                              disabled={!canWriteHeadEndorsement}
                               onChange={(e) => {
                                 if (e.target.value) {
                                   handleRemarkChange(student.id, student.admissionNo, "principalRemark", e.target.value);
@@ -727,10 +774,25 @@ export default function TraitsAssessmentsPage() {
                           <textarea
                             rows={2}
                             value={assessment.principalRemark}
-                            onChange={(e) => handleRemarkChange(student.id, student.admissionNo, "principalRemark", e.target.value)}
-                            placeholder="Enter principal official endorsement remark..."
+                            readOnly={!canWriteHeadEndorsement}
+                            onChange={(e) => {
+                              if (!canWriteHeadEndorsement) return;
+                              handleRemarkChange(student.id, student.admissionNo, "principalRemark", e.target.value);
+                            }}
+                            placeholder={
+                              canWriteHeadEndorsement
+                                ? "Enter principal official endorsement remark..."
+                                : "Closed to your role — the Head of School signs this card"
+                            }
                             className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-purple-500 focus:outline-hidden"
                           />
+                          {!canWriteHeadEndorsement && (
+                            <p className="text-[10px] text-slate-500 leading-snug">
+                              This line is signed by the Head of School. Your role rates the pupil and
+                              writes the form master&apos;s remark; whatever is typed here would print on the
+                              card under the principal&apos;s name, so it stays closed to you.
+                            </p>
+                          )}
                         </div>
 
                       </div>

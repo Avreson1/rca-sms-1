@@ -11,6 +11,7 @@ import {
   useRealtimeClasses,
 } from "@/lib/realtime-store";
 import { exportToCSV, parseCSV, downloadSampleTemplate } from "@/lib/csv-utils";
+import type { BulkStaffResult } from "@/lib/supabase/db";
 import {
   Users,
   Search,
@@ -115,6 +116,12 @@ export default function StaffManagementPage() {
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvPreview, setCsvPreview] = useState<any[]>([]);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  // Kept on screen until the office closes it: the passwords in it are the only
+  // copy that will ever exist, so a result that faded away would leave a
+  // whole staff room with no way to sign in.
+  const [bulkResult, setBulkResult] = useState<BulkStaffResult | null>(null);
+  const [bulkCopied, setBulkCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Out-of-band Credential Distribution Slip
@@ -129,6 +136,7 @@ export default function StaffManagementPage() {
   } | null>(null);
   const [copiedSlip, setCopiedSlip] = useState(false);
   const [slipBusy, setSlipBusy] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   // Shown when the staff record saved but the login did not, which is a job the
   // office has to finish; it stays on screen until dismissed, because a toast
@@ -176,6 +184,31 @@ export default function StaffManagementPage() {
       setCredentialProblem(`The portal server did not answer, so no login was issued for ${member.username}.`);
     } finally {
       setSlipBusy(null);
+    }
+  };
+
+  /**
+   * Takes a member off the school's register. Removal is confirmed by the
+   * server, and the login that came with the record is suspended with it — if
+   * it could not be, the notice stays on screen until it is dismissed, because
+   * an active credential for someone who has left is exactly the thing an
+   * office must not lose track of.
+   */
+  const removeStaff = async (member: StaffRecord) => {
+    if (!confirm(`Remove ${member.fullName} (${member.staffId}) from the school's register? Their portal login will be suspended.`)) {
+      return;
+    }
+
+    setRemovingId(member.staffId);
+    setCredentialProblem(null);
+    try {
+      const outcome = await deleteStaff(member.staffId);
+      if (!outcome.ok && outcome.reason) {
+        setCredentialProblem(`${member.fullName} is still on the school's register: ${outcome.reason}.`);
+      }
+      if (outcome.warning) setCredentialProblem(outcome.warning);
+    } finally {
+      setRemovingId(null);
     }
   };
 
@@ -307,16 +340,29 @@ export default function StaffManagementPage() {
     reader.readAsText(file);
   };
 
-  const handleConfirmCsvUpload = () => {
-    if (csvPreview.length === 0) return;
-    const count = bulkAddStaff(csvPreview);
-    setUploadStatus(`Successfully onboarded ${count} staff members in bulk!`);
-    setTimeout(() => {
-      setIsCsvModalOpen(false);
-      setCsvFile(null);
+  const closeCsvModal = () => {
+    setIsCsvModalOpen(false);
+    setBulkResult(null);
+    setBulkCopied(false);
+  };
+
+  const handleConfirmCsvUpload = async () => {
+    if (csvPreview.length === 0 || importing) return;
+    setImporting(true);
+    setUploadStatus(`Filing ${csvPreview.length} staff records on the school's database…`);
+    try {
+      const result = await bulkAddStaff(csvPreview);
+      setBulkResult(result);
       setCsvPreview([]);
+      setCsvFile(null);
       setUploadStatus(null);
-    }, 1500);
+      if (result.saved > 0) {
+        setNotificationMsg(`${result.saved} staff ${result.saved === 1 ? "record is" : "records are"} on the school's register`);
+        setTimeout(() => setNotificationMsg(null), 5000);
+      }
+    } finally {
+      setImporting(false);
+    }
   };
 
   // Export Staff Directory to CSV
@@ -415,7 +461,11 @@ export default function StaffManagementPage() {
             </button>
 
             <button
-              onClick={() => setIsCsvModalOpen(true)}
+              onClick={() => {
+                setBulkResult(null);
+                setBulkCopied(false);
+                setIsCsvModalOpen(true);
+              }}
               className="px-3.5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <Upload className="w-4 h-4" />
@@ -618,13 +668,10 @@ export default function StaffManagementPage() {
                               Permissions
                             </button>
                             <button
-                              onClick={() => {
-                                if (confirm(`Remove ${s.fullName} from staff directory?`)) {
-                                  deleteStaff(s.id);
-                                }
-                              }}
-                              className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
-                              title="Delete Staff"
+                              onClick={() => void removeStaff(s)}
+                              disabled={removingId === s.staffId}
+                              className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer disabled:cursor-wait disabled:opacity-50"
+                              title="Remove from the school's register"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -662,6 +709,13 @@ export default function StaffManagementPage() {
                 <p className="text-slate-500">
                   Staff ID: <strong className="text-slate-800">{editingStaff.staffId}</strong> • Role:{" "}
                   <strong className="text-blue-700">{editingStaff.role}</strong>
+                </p>
+
+                <p className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-2.5 leading-snug">
+                  These ticks are the office&apos;s own notes and are kept on this device. They do not open or close any
+                  door: each request is checked against the member&apos;s role, so a tick here cannot let a teacher
+                  publish results and a blank box cannot stop an exam officer. Change what someone can do by changing
+                  their role in Settings → User Access.
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
@@ -703,7 +757,7 @@ export default function StaffManagementPage() {
                 <div className="flex justify-end pt-2">
                   <button
                     onClick={() => {
-                      setNotificationMsg(`Permissions updated for ${editingStaff.fullName}`);
+                      setNotificationMsg(`Notes kept on this device for ${editingStaff.fullName}`);
                       setTimeout(() => setNotificationMsg(null), 3000);
                       setEditingStaff(null);
                     }}
@@ -825,6 +879,11 @@ export default function StaffManagementPage() {
                     </span>
                     <span className="text-[10px] text-blue-700 font-semibold">Configurable Toggles</span>
                   </div>
+                  <p className="text-[10px] text-slate-600 leading-snug">
+                    These notes are kept on this device, alongside the register. What a member can actually do is set
+                    by their role — the portal refuses a request their role does not cover, whatever is ticked here. To
+                    give someone more, change their role in Settings → User Access.
+                  </p>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
                     <label className="flex items-center gap-2 p-1 rounded hover:bg-white cursor-pointer">
@@ -938,7 +997,7 @@ export default function StaffManagementPage() {
                   <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
                   <h3 className="font-bold text-base text-slate-900">Bulk Staff Onboarding via CSV</h3>
                 </div>
-                <button onClick={() => setIsCsvModalOpen(false)} className="text-slate-400 font-bold cursor-pointer">
+                <button onClick={closeCsvModal} className="text-slate-400 font-bold cursor-pointer">
                   ✕
                 </button>
               </div>
@@ -1004,6 +1063,78 @@ export default function StaffManagementPage() {
                   </div>
                 )}
 
+                {bulkResult && (
+                  <div className="space-y-2">
+                    <div
+                      className={`p-3 rounded-xl border text-[11px] font-medium ${
+                        bulkResult.saved === 0
+                          ? "bg-red-50 border-red-200 text-red-900"
+                          : bulkResult.failures.length > 0
+                            ? "bg-amber-50 border-amber-200 text-amber-900"
+                            : "bg-emerald-50 border-emerald-200 text-emerald-900"
+                      }`}
+                    >
+                      {bulkResult.saved > 0
+                        ? `${bulkResult.saved} of the ${bulkResult.saved + bulkResult.failures.length} rows are on the school's register.`
+                        : "None of these rows reached the school's register."}
+                      {bulkResult.failures.length > 0 && (
+                        <> {bulkResult.failures.length} row(s) were refused — fix the file and run them again.</>
+                      )}
+                    </div>
+
+                    {bulkResult.logins.length > 0 && (
+                      <div className="border border-blue-200 rounded-xl overflow-x-auto max-h-52 overflow-y-auto">
+                        <table className="w-full text-left text-[11px]">
+                          <thead className="bg-blue-50 text-blue-900 font-bold sticky top-0">
+                            <tr>
+                              <th className="py-2 px-3">Staff member</th>
+                              <th className="py-2 px-3">Login</th>
+                              <th className="py-2 px-3">Password (shown once)</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {bulkResult.logins.map((login) => (
+                              <tr key={login.username}>
+                                <td className="py-1.5 px-3 font-semibold">{login.fullName}</td>
+                                <td className="py-1.5 px-3 font-mono">{login.username}</td>
+                                <td className="py-1.5 px-3 font-mono">{login.password}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {bulkResult.logins.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void navigator.clipboard
+                            .writeText(
+                              bulkResult.logins
+                                .map((login) => `${login.fullName}\t${login.username}\t${login.password}`)
+                                .join("\n")
+                            )
+                            .then(() => setBulkCopied(true))
+                            .catch(() => setBulkCopied(false));
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-[#0000FF] text-white text-[11px] font-bold flex items-center gap-1.5 cursor-pointer"
+                      >
+                        {bulkCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        {bulkCopied ? "Copied — hand these out and this list is gone" : "Copy every login and password"}
+                      </button>
+                    )}
+
+                    {bulkResult.failures.length > 0 && (
+                      <ul className="space-y-1 text-[11px] text-slate-700 list-disc pl-5">
+                        {bulkResult.failures.map((failure) => (
+                          <li key={failure}>{failure}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                   <button
                     type="button"
@@ -1017,18 +1148,18 @@ export default function StaffManagementPage() {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => setIsCsvModalOpen(false)}
+                      onClick={closeCsvModal}
                       className="px-3.5 py-2 rounded-lg bg-slate-100 text-slate-700 font-semibold cursor-pointer"
                     >
-                      Cancel
+                      {bulkResult ? "Close" : "Cancel"}
                     </button>
                     <button
                       type="button"
-                      disabled={csvPreview.length === 0}
-                      onClick={handleConfirmCsvUpload}
+                      disabled={csvPreview.length === 0 || importing}
+                      onClick={() => void handleConfirmCsvUpload()}
                       className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold shadow-xs cursor-pointer"
                     >
-                      Onboard {csvPreview.length} Staff Now
+                      {importing ? "Filing on the database…" : `Onboard ${csvPreview.length} Staff Now`}
                     </button>
                   </div>
                 </div>

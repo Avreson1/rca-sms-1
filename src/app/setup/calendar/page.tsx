@@ -4,12 +4,14 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
+import { effectiveScope, useSchoolConfig } from "@/lib/school-config";
 import {
   useRealtimeCalendar,
   useRealtimeActivityTemplates,
   CalendarEventRecord,
   ActivityTemplateRecord,
 } from "@/lib/realtime-store";
+import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   Calendar,
   Plus,
@@ -49,6 +51,15 @@ export default function AcademicCalendarPage() {
     resetActivityTemplatesToDefault,
   } = useRealtimeActivityTemplates();
 
+  // Milestones are stamped with the session and term the school says it is in. The
+  // frozen constants in `SCHOOL_INFO` were the year compiled into the bundle, so a
+  // school that moved into a new session kept filing its calendar under the old one.
+  const { config: school } = useSchoolConfig();
+  const scope = effectiveScope(school, {
+    session: SCHOOL_INFO.currentSession,
+    term: SCHOOL_INFO.currentTerm,
+  });
+
   const [activeTab, setActiveTab] = useState<"calendar" | "activity-templates">("calendar");
   const [termFilter, setTermFilter] = useState<string>("All");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -87,7 +98,7 @@ export default function AcademicCalendarPage() {
       dateRange: newDateRange.trim() || "TBD",
       category: newCat,
       term: newTerm,
-      session: SCHOOL_INFO.currentSession,
+      session: scope.session,
       description: newDesc.trim() || "Official academic milestone.",
       status: newStatus,
     });
@@ -97,7 +108,7 @@ export default function AcademicCalendarPage() {
     setNewDateRange("");
     setNewDesc("");
     setNewStatus("Upcoming");
-    showToast("Calendar milestone successfully created.");
+    showToast("Calendar milestone saved on this browser.");
   };
 
   const handleCreateActivityTemplate = (e: React.FormEvent) => {
@@ -122,7 +133,7 @@ export default function AcademicCalendarPage() {
     setActBudget("");
     setActObjectives("");
     setActDuration(1);
-    showToast("Activity Input Template added to library.");
+    showToast("Activity template saved on this browser — other machines will not see it.");
   };
 
   const handleInstantiateActivityIntoCalendar = (template: ActivityTemplateRecord) => {
@@ -131,84 +142,87 @@ export default function AcademicCalendarPage() {
       title: template.title,
       dateRange: `${todayStr} (${template.defaultDurationDays} Day${template.defaultDurationDays > 1 ? "s" : ""})`,
       category: template.category === "Sports" || template.category === "Cultural" || template.category === "Excursion" || template.category === "Club" ? "Academic" : (template.category as any),
-      term: SCHOOL_INFO.currentTerm as any,
-      session: SCHOOL_INFO.currentSession,
+      term: scope.term as any,
+      session: scope.session,
       description: `[Activity Template: ${template.targetSection}] Coordinator: ${template.coordinator}. Venue: ${template.venue}. Budget: ${template.budget}. Objectives: ${template.objectives}`,
       status: "Upcoming",
     });
 
-    showToast(`Scheduled "${template.title}" into ${SCHOOL_INFO.currentTerm} calendar.`);
+    showToast(`Scheduled "${template.title}" into the ${scope.term}, ${scope.session} calendar on this browser.`);
   };
 
   const handleSeedStandardTermMilestones = () => {
+    // These used to arrive dated "September 8, 2025" and marked Completed, which is a
+    // history the school never lived: seeded in the next session, the calendar claimed
+    // seven past events had happened. They come in as undated, upcoming rows to edit.
     const defaultMilestones: Omit<CalendarEventRecord, "id">[] = [
       {
         title: "Staff Resumption & Pre-Term Harmonization Workshop",
-        dateRange: "September 8, 2025",
+        dateRange: "Set the date",
         category: "Administrative",
-        term: "First Term",
-        session: SCHOOL_INFO.currentSession,
+        term: scope.term as CalendarEventRecord["term"],
+        session: scope.session,
         description: "Curriculum harmonization, test pool development, and staff onboarding.",
-        status: "Completed",
+        status: "Upcoming",
       },
       {
-        title: "Student Resumption & Commencement of 1st Term Lectures",
-        dateRange: "September 15, 2025",
+        title: "Student Resumption & Commencement of Lectures",
+        dateRange: "Set the date",
         category: "Academic",
-        term: "First Term",
-        session: SCHOOL_INFO.currentSession,
+        term: scope.term as CalendarEventRecord["term"],
+        session: scope.session,
         description: "All returning and newly admitted students commence classroom lectures.",
-        status: "Completed",
+        status: "Upcoming",
       },
       {
-        title: "1st Continuous Assessment (Test 1) Week",
-        dateRange: "October 13 - 17, 2025",
+        title: "Continuous Assessment (Test 1) Week",
+        dateRange: "Set the date",
         category: "Examination",
-        term: "First Term",
-        session: SCHOOL_INFO.currentSession,
+        term: scope.term as CalendarEventRecord["term"],
+        session: scope.session,
         description: "Classroom Test 1 assessments across all subjects (10 Marks).",
-        status: "Completed",
+        status: "Upcoming",
       },
       {
         title: "Mid-Term Examination & Open Day",
-        dateRange: "October 27 - 31, 2025",
+        dateRange: "Set the date",
         category: "Academic",
-        term: "First Term",
-        session: SCHOOL_INFO.currentSession,
+        term: scope.term as CalendarEventRecord["term"],
+        session: scope.session,
         description: "Parent-Teacher interactive consultation and mid-term grade reviews.",
-        status: "Completed",
+        status: "Upcoming",
       },
       {
         title: "Proctored CBT Examination Week",
-        dateRange: "November 24 - 28, 2025",
+        dateRange: "Set the date",
         category: "Examination",
-        term: "First Term",
-        session: SCHOOL_INFO.currentSession,
-        description: "Online Computer-Based Testing in ICT Lab with instant CA sync.",
-        status: "Current",
+        term: scope.term as CalendarEventRecord["term"],
+        session: scope.session,
+        description: "Online Computer-Based Testing in the ICT Lab; the score shows on that machine for a teacher to file.",
+        status: "Upcoming",
       },
       {
-        title: "1st Term Final Examination & Score Entry Deadline",
-        dateRange: "December 1 - 5, 2025",
+        title: "Final Examination & Score Entry Deadline",
+        dateRange: "Set the date",
         category: "Examination",
-        term: "First Term",
-        session: SCHOOL_INFO.currentSession,
+        term: scope.term as CalendarEventRecord["term"],
+        session: scope.session,
         description: "Theory examinations and final Continuous Assessment gradebook locking.",
         status: "Upcoming",
       },
       {
         title: "Result Compilation, Speech & Prize-Giving Day",
-        dateRange: "December 12, 2025",
+        dateRange: "Set the date",
         category: "Administrative",
-        term: "First Term",
-        session: SCHOOL_INFO.currentSession,
+        term: scope.term as CalendarEventRecord["term"],
+        session: scope.session,
         description: "Official report card release and vacation commencement.",
         status: "Upcoming",
       },
     ];
 
     defaultMilestones.forEach((m) => addCalendarEvent(m));
-    showToast("Populated default session milestones.");
+    showToast("Starter milestones added on this browser only, undated and upcoming — set each date as the school fixes it.");
   };
 
   const filteredEvents = calendarEvents.filter((ev) => {
@@ -248,8 +262,8 @@ export default function AcademicCalendarPage() {
               </span>
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Current Session: <strong className="text-slate-800">{SCHOOL_INFO.currentSession}</strong> • Term:{" "}
-              <strong className="text-[#0000FF]">{SCHOOL_INFO.currentTerm}</strong> • Scheduled Events:{" "}
+              Current Session: <strong className="text-slate-800">{scope.session}</strong> • Term:{" "}
+              <strong className="text-[#0000FF]">{scope.term}</strong> • Scheduled Events:{" "}
               <strong className="text-slate-800">{calendarEvents.length}</strong> • Activity Templates:{" "}
               <strong className="text-slate-800">{activityTemplates.length}</strong>
             </p>
@@ -295,6 +309,8 @@ export default function AcademicCalendarPage() {
             )}
           </div>
         </div>
+
+        <DeviceOnlyNotice what="The school calendar and the activity templates" />
 
         {/* Tab Selector */}
         <div className="flex border-b border-slate-200 gap-4">
@@ -351,7 +367,11 @@ export default function AcademicCalendarPage() {
               {calendarEvents.length > 0 && (
                 <button
                   onClick={() => {
-                    if (confirm("Are you sure you want to clear all calendar milestones?")) {
+                    if (
+                      confirm(
+                        "Clear every calendar milestone stored on this browser? Other machines keep theirs, and this browser's list cannot be brought back."
+                      )
+                    ) {
                       clearAllCalendarEvents();
                     }
                   }}
@@ -368,7 +388,7 @@ export default function AcademicCalendarPage() {
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-[#0000FF]" />
-                  Official Term Schedule ({SCHOOL_INFO.currentSession} Session)
+                  Official Term Schedule ({scope.session} Session)
                 </h3>
                 <span className="text-xs bg-cyan-50 text-cyan-900 font-black px-2.5 py-0.5 rounded-full border border-cyan-200">
                   {filteredEvents.length} Milestones Scheduled

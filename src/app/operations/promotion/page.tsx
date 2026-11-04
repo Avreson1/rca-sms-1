@@ -4,6 +4,7 @@ import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
+import { effectiveScope, useSchoolConfig } from "@/lib/school-config";
 import {
   useRealtimeStudents,
   useRealtimeClasses,
@@ -45,8 +46,17 @@ export default function StudentPromotionPage() {
   // roster used to carry one subject's numbers per pupil, so a child who had
   // done well all year could be retained — or, with the buffer empty, shown as
   // scoring 0% and retained for a term nobody had marked yet.
-  const { subjectScores: filedMarks, filedLoaded } = useRealtimeSubjectScores({
+  //
+  // The year is the one the school's own record names. Read against the year
+  // compiled into the bundle, a school that had moved into its next session in
+  // Settings found no filed marks at all and could not promote anybody.
+  const { config: school } = useSchoolConfig();
+  const scope = effectiveScope(school, {
     session: SCHOOL_INFO.currentSession,
+    term: SCHOOL_INFO.currentTerm,
+  });
+  const { subjectScores: filedMarks, filedLoaded } = useRealtimeSubjectScores({
+    session: scope.session,
     terms: [...PROMOTION_TERMS],
     className: sourceClass,
   });
@@ -95,7 +105,7 @@ export default function StudentPromotionPage() {
       kind: qualifiedIds.length === 0 ? "bad" : "ok",
       text:
         qualifiedIds.length === 0
-          ? `No pupil in ${sourceClass} reaches ${PASS_MARK}% on a filed mark. ${unmarked} of ${filtered.length} have no marks filed at all for ${SCHOOL_INFO.currentSession}, so nothing can be decided for them.`
+          ? `No pupil in ${sourceClass} reaches ${PASS_MARK}% on a filed mark. ${unmarked} of ${filtered.length} have no marks filed at all for ${scope.session}, so nothing can be decided for them.`
           : `${qualifiedIds.length} of ${filtered.length} pupils in ${sourceClass} reach ${PASS_MARK}% on filed marks.${unmarked > 0 ? ` ${unmarked} have no marks filed and are not included.` : ""}`,
     });
   };

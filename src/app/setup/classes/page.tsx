@@ -10,6 +10,7 @@ import {
   useRealtimeStaff,
   ClassArmRecord,
 } from "@/lib/realtime-store";
+import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   School,
   Plus,
@@ -95,6 +96,8 @@ export default function SetupClassesPage() {
             Add New Class Arm
           </button>
         </div>
+
+        <DeviceOnlyNotice what="The class list" />
 
         {/* Section Tabs */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -196,7 +199,11 @@ export default function SetupClassesPage() {
                         </Link>
                         <button
                           onClick={() => {
-                            if (confirm(`Delete class arm ${c.name}?`)) {
+                            if (
+                              confirm(
+                                `Delete class arm ${c.name}? This removes it from the class list held on this browser only, and it cannot be brought back. Other machines keep their own list.`
+                              )
+                            ) {
                               deleteClass(c.id);
                             }
                           }}

@@ -106,4 +106,21 @@ body {
     page-break-after: always !important;
     break-after: page !important;
   }
+
+  /* One panel out of a busy screen. The bursary prints a single receipt from the
+     invoicing table without the filters, totals and navigation coming with it:
+     mark that panel printable-region and everything else is left off the page. */
+  body * {
+    visibility: hidden;
+  }
+  .printable-region,
+  .printable-region * {
+    visibility: visible;
+  }
+  .printable-region {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
 }

@@ -11,6 +11,7 @@ import {
   useRealtimeAuth,
   useRealtimeSubjects,
 } from "@/lib/realtime-store";
+import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   GraduationCap,
   ArrowLeft,
@@ -142,7 +143,8 @@ export default function OperationsAcademicsPage() {
               Academic Operations &amp; Master Timetable
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Live curriculum schedules, faculty workloads, and institutional class timetables for {SCHOOL_INFO.name}.
+              Curriculum schedules, faculty workloads, and class timetables for {SCHOOL_INFO.name}. The timetable below
+              is built from this browser&apos;s own copy.
             </p>
           </div>
 
@@ -165,6 +167,8 @@ export default function OperationsAcademicsPage() {
             )}
           </div>
         </div>
+
+        <DeviceOnlyNotice what="The timetable" />
 
         {/* View Selection Tabs */}
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2 print:hidden">
@@ -223,7 +227,11 @@ export default function OperationsAcademicsPage() {
                 {isSuperOrExamOfficer && classEntries.length > 0 && (
                   <button
                     onClick={() => {
-                      if (confirm(`Clear all scheduled periods for ${selectedClass}?`)) {
+                      if (
+                        confirm(
+                          `Clear all scheduled periods for ${selectedClass}? This empties the timetable held on this browser only, and the periods cannot be brought back.`
+                        )
+                      ) {
                         clearClassTimetable(selectedClass);
                       }
                     }}
@@ -327,7 +335,7 @@ export default function OperationsAcademicsPage() {
                   <p className="text-[11px] text-slate-400 mt-0.5">
                     {isSuperOrExamOfficer
                       ? "Click on any empty slot or use the Schedule Class Period button above to build this class schedule."
-                      : "The academic schedule for this class has not been published yet."}
+                      : "No periods have been scheduled for this class on this browser yet."}
                   </p>
                 </div>
               )}

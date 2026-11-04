@@ -109,8 +109,8 @@ export default function DashboardHome() {
               <CheckCircle2 className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-800">Workspace Active</p>
-              <p className="text-[11px] text-slate-500">Live VCS Session Synchronized</p>
+              <p className="text-xs font-bold text-slate-800">Signed In</p>
+              <p className="text-[11px] text-slate-500">On this browser, for this session</p>
             </div>
           </div>
         </div>

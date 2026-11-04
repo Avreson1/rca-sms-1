@@ -5,6 +5,7 @@ import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO, ALL_SCHOOL_SECTIONS, ALL_CLASSES } from "@/lib/constants";
 import { useRealtimeSubjects, SubjectRecord } from "@/lib/realtime-store";
+import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   BookOpen,
   Plus,
@@ -114,7 +115,7 @@ export default function SetupSubjectsPage() {
       }));
 
       bulkAddSubjects(newBatch);
-      showToast(`Successfully added ${names.length} subjects to ${selectedClasses.length} selected classes.`);
+      showToast(`Added ${names.length} subject${names.length === 1 ? "" : "s"} to ${selectedClasses.length} classes on this browser.`);
     } else {
       if (!subjectName.trim()) {
         alert("Please enter the subject title.");
@@ -131,7 +132,7 @@ export default function SetupSubjectsPage() {
         assignedTeachersCount: 0,
       });
 
-      showToast(`Subject "${subjectName.trim()}" added to ${selectedClasses.length} classes.`);
+      showToast(`Subject "${subjectName.trim()}" added to ${selectedClasses.length} classes on this browser.`);
     }
 
     // Reset Form
@@ -205,7 +206,7 @@ export default function SetupSubjectsPage() {
 
         if (imported.length > 0) {
           bulkAddSubjects(imported);
-          showToast(`Imported ${imported.length} subjects from CSV.`);
+          showToast(`Read ${imported.length} subjects from the CSV into this browser — not onto the school's records.`);
         }
       } catch (err) {
         console.error(err);
@@ -259,7 +260,8 @@ export default function SetupSubjectsPage() {
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Easily register and assign subjects to one, several, or all school classes seamlessly. Subject codes are optional.
+              Register subjects and assign them to one, several or all classes. Subject codes are optional. The score
+              card and report card builders read this list.
             </p>
           </div>
 
@@ -301,6 +303,9 @@ export default function SetupSubjectsPage() {
             </button>
           </div>
         </div>
+
+        {/* This list does not reach the school's records */}
+        <DeviceOnlyNotice what="The subject list" className="mt-1" />
 
         {/* Toast Alert */}
         {toastMessage && (
@@ -368,14 +373,18 @@ export default function SetupSubjectsPage() {
             </div>
             <div className="flex items-center gap-3">
               <span className="text-xs bg-slate-200 text-slate-700 font-bold px-2.5 py-0.5 rounded-full">
-                {filtered.length} Subjects Active
+                {filtered.length} Subjects On This Device
               </span>
               {subjects.length > 0 && (
                 <button
                   onClick={() => {
-                    if (confirm("Are you sure you want to clear all registered subjects?")) {
+                    if (
+                      confirm(
+                        "This clears the subject list stored on THIS browser only. Other machines keep theirs, and the list cannot be brought back. Continue?"
+                      )
+                    ) {
                       clearAllSubjects();
-                      showToast("All subjects cleared.");
+                      showToast("Subject list cleared on this browser. Other devices still hold theirs.");
                     }
                   }}
                   className="text-xs text-rose-600 hover:text-rose-700 font-semibold cursor-pointer"

@@ -10,6 +10,7 @@ import {
   TierCAStructure,
   CAComponentItem,
 } from "@/lib/realtime-store";
+import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   PieChart,
   ArrowLeft,
@@ -94,14 +95,18 @@ export default function CAStructurePage() {
 
     updateTierCAComponents(selectedTierKey, currentComponents);
     setEditingComponents(null);
-    showToast(`Saved CA Structure for ${activeStructure.tierTitle}`);
+    showToast(`CA structure for ${activeStructure.tierTitle} saved on this browser.`);
   };
 
   const handleResetDefaults = () => {
-    if (confirm("Reset all educational tier CA structures to standard approved defaults?")) {
+    if (
+      confirm(
+        "Reset every tier's CA structure on this browser back to the built-in defaults? Weights you changed here are dropped and cannot be brought back."
+      )
+    ) {
       resetCAStructuresToDefault();
       setEditingComponents(null);
-      showToast("Reset all CA structures to curriculum defaults.");
+      showToast("CA structures reset to their defaults on this browser only.");
     }
   };
 
@@ -158,6 +163,8 @@ export default function CAStructurePage() {
             </Link>
           </div>
         </div>
+
+        <DeviceOnlyNotice what="The CA component structure" />
 
         {/* Permissions & Roles Banner */}
         <div className="p-4 rounded-3xl bg-gradient-to-r from-blue-950 via-[#0a1128] to-blue-950 text-white border border-cyan-400/30 flex items-center justify-between shadow-lg">

@@ -94,7 +94,7 @@ export function downloadSampleTemplate(
         "rca_students_enrollment_template.csv",
         [
           "Full Name",
-          "Class (e.g. Pre-Play Class, Nursery 1, Primary 5, SS 2A)",
+          "Class (Pre-Play Class to SS 3, exactly as Setup > Classes names it)",
           "Gender (Male/Female)",
           "Guardian Name",
           "Guardian Phone",

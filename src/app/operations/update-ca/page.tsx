@@ -15,7 +15,7 @@ import {
   StudentRecord,
 } from "@/lib/realtime-store";
 import { ALL_CLASSES } from "@/lib/constants";
-import { isSupabaseConfigured } from "@/lib/supabase/client";
+import { useSchoolConfig, effectiveScope } from "@/lib/school-config";
 import { exportToCSV, parseCSV, downloadSampleTemplate } from "@/lib/csv-utils";
 import {
   BookOpen,
@@ -43,13 +43,27 @@ export default function UpdateCAPage() {
   const { gradingTiers } = useRealtimeGradingScales();
   const { currentUser } = useRealtimeAuth();
 
+  // The session and term the school says it is in. This screen read one session
+  // and filed into another: the grid pulled the marks of a date compiled into the
+  // portal while the Save button filed under the school's own record, so a class
+  // marked after the office moved into a new session read back empty and the
+  // teacher typed the same marks a second time.
+  const { config: school } = useSchoolConfig();
+  const schoolScope = effectiveScope(school, {
+    session: SCHOOL_INFO.currentSession,
+    term: SCHOOL_INFO.currentTerm,
+  });
+
   const currentRole = currentUser?.role || "SUPER_ADMIN";
   const isTeacher = currentRole === "TEACHER";
 
   const allClassesList = classes.length > 0 ? classes.map((c) => c.name) : ALL_CLASSES;
   const availableClasses = useMemo(() => {
+    // A teacher marks the arm they are assigned to. "Primary 1" used to be
+    // added to every teacher's list here, so a teacher assigned to SS 2 could
+    // open and file Primary 1's gradebook too.
     if (isTeacher && currentUser?.assignedClass) {
-      return allClassesList.filter((c) => c === currentUser.assignedClass || c === "Primary 1");
+      return allClassesList.filter((c) => c === currentUser.assignedClass);
     }
     return allClassesList;
   }, [isTeacher, currentUser, allClassesList]);
@@ -81,8 +95,8 @@ export default function UpdateCAPage() {
   // cells stay blank rather than carrying over whatever this browser held for
   // the previously selected subject, which Save would then file twice over.
   const { subjectScores: filedMarks, filedLoaded } = useRealtimeSubjectScores({
-    session: SCHOOL_INFO.currentSession,
-    terms: [SCHOOL_INFO.currentTerm],
+    session: schoolScope.session,
+    terms: [schoolScope.term],
     className: selectedClass,
   });
 
@@ -118,23 +132,22 @@ export default function UpdateCAPage() {
     updateStudentScore(student.id, newScores);
   };
 
-  const handleSave = () => {
-    if (!isSupabaseConfigured) {
-      setIsSaved(false);
-      setSaveNote(
-        `This device is not connected to the school records, so ${selectedSubject} scores are kept in this browser only.`
-      );
-      return;
-    }
-
-    const filed = saveCaScores(selectedSubject, filteredStudents);
+  const handleSave = async () => {
+    setSaveNote(null);
+    const { filed, total, reason } = await saveCaScores(selectedSubject, filteredStudents);
     setIsSaved(filed > 0);
-    setSaveNote(
-      filed === 0
-        ? `No scores are filled in for ${selectedSubject} yet, so there was nothing to send.`
-        : `Sending ${filed} ${selectedSubject} score${filed === 1 ? "" : "s"} for ${SCHOOL_INFO.currentSession}, ${SCHOOL_INFO.currentTerm}.`
-    );
-    setTimeout(() => setIsSaved(false), 4000);
+    if (filed > 0) {
+      setSaveNote(
+        `${filed} ${selectedSubject} score${filed === 1 ? "" : "s"} for ${schoolScope.session}, ${schoolScope.term} are on the school's records.`
+      );
+    } else {
+      setSaveNote(
+        total === 0
+          ? `No scores are filled in for ${selectedSubject} yet, so there was nothing to send.`
+          : `Nothing was filed: ${reason ?? "the school's records did not answer"}. The marks are on this screen only — fix the cause and save again.`
+      );
+    }
+    setTimeout(() => setIsSaved(false), 6000);
   };
 
   // CSV Upload for Scores
@@ -149,47 +162,91 @@ export default function UpdateCAPage() {
       const parsedRows = parseCSV(text);
 
       if (parsedRows.length < 2) {
-        setUploadStatus("Error: CSV must contain at least a header row and 1 score row.");
+        setUploadStatus("This file has a header but no score row under it. Use 'CSV Template' to start from the right columns.");
+        setCsvPreview([]);
         return;
       }
 
-      const dataRows = parsedRows.slice(1);
-      const scoreUpdates = dataRows.map((cols) => ({
-        admissionNo: cols[0] || "",
-        studentName: cols[1] || "",
-        test1: Math.min(10, Math.max(0, parseInt(cols[2], 10) || 0)),
-        test2: Math.min(10, Math.max(0, parseInt(cols[3], 10) || 0)),
-        project: Math.min(10, Math.max(0, parseInt(cols[4], 10) || 0)),
-        midTerm: Math.min(10, Math.max(0, parseInt(cols[5], 10) || 0)),
-        exam: Math.min(60, Math.max(0, parseInt(cols[6], 10) || 0)),
-      }));
+      // A blank cell is left alone, not read as zero. The parser used to turn an
+      // empty column into 0, so a sheet that only carried the examination mark
+      // wiped the first and second tests that were already filed for that child.
+      const mark = (raw: string | undefined, max: number) => {
+        const value = (raw || "").trim();
+        if (value === "") return undefined;
+        const parsed = Number.parseInt(value, 10);
+        if (!Number.isFinite(parsed)) return undefined;
+        return Math.min(max, Math.max(0, parsed));
+      };
+
+      const scoreUpdates: {
+        admissionNo: string;
+        studentName: string;
+        test1?: number;
+        test2?: number;
+        project?: number;
+        midTerm?: number;
+        exam?: number;
+      }[] = [];
+      const skipped: string[] = [];
+
+      parsedRows.slice(1).forEach((cols, idx) => {
+        const admissionNo = cols[0]?.trim();
+        if (!admissionNo) {
+          skipped.push(`row ${idx + 2}: no admission number`);
+          return;
+        }
+        const entry: (typeof scoreUpdates)[number] = {
+          admissionNo,
+          studentName: cols[1]?.trim() || "",
+        };
+        const test1 = mark(cols[2], 10);
+        const test2 = mark(cols[3], 10);
+        const project = mark(cols[4], 10);
+        const midTerm = mark(cols[5], 10);
+        const exam = mark(cols[6], 60);
+        if (test1 !== undefined) entry.test1 = test1;
+        if (test2 !== undefined) entry.test2 = test2;
+        if (project !== undefined) entry.project = project;
+        if (midTerm !== undefined) entry.midTerm = midTerm;
+        if (exam !== undefined) entry.exam = exam;
+        scoreUpdates.push(entry);
+      });
 
       setCsvPreview(scoreUpdates);
-      setUploadStatus(`Parsed ${scoreUpdates.length} student score entries.`);
+      setUploadStatus(
+        skipped.length
+          ? `${scoreUpdates.length} score row${scoreUpdates.length === 1 ? "" : "s"} read. Skipped ${skipped.length}: ${skipped.slice(0, 3).join("; ")}${skipped.length > 3 ? `; +${skipped.length - 3} more` : ""}`
+          : `${scoreUpdates.length} score row${scoreUpdates.length === 1 ? "" : "s"} read. Empty cells will be left as they are on the school's records, not filed as zero.`
+      );
     };
     reader.readAsText(file);
   };
 
-  const handleConfirmScoreUpload = () => {
+  const handleConfirmScoreUpload = async () => {
     if (csvPreview.length === 0) return;
-    const filed = bulkUpdateScores(csvPreview, selectedSubject);
-    setSaveNote(
-      !isSupabaseConfigured
-        ? "This device is not connected to the school records, so the uploaded scores stay in this browser only."
-        : filed === 0
-          ? `Every row in the file scored zero for ${selectedSubject}, so there was nothing to send.`
-          : `Filing ${filed} uploaded ${selectedSubject} score${filed === 1 ? "" : "s"} to the school records.`
-    );
+    const { filed, unmatched, reason } = await bulkUpdateScores(csvPreview, selectedSubject);
+    // The count that reached the school's records is kept separate from the count
+    // in the file, and rows naming a child who is not on the roll are said out
+    // loud: a file of 40 rows that filed 38 marks used to read as 40 marks filed.
     setUploadStatus(
-      `Updated ${csvPreview.length} student score records. ${filed} sent to the school records.`
+      `${filed} of ${csvPreview.length} rows in the file are on the school's records for ${selectedSubject}` +
+        (unmatched > 0
+          ? `. ${unmatched} row${unmatched === 1 ? "" : "s"} named an admission number that is not on the school's roll and were left alone.`
+          : ".") +
+        (reason ? ` Nothing more was filed: ${reason}.` : "")
     );
+    setSaveNote(
+      filed === 0
+        ? `The uploaded file put no mark on the school's records for ${selectedSubject}: ${reason ?? "every row scored zero, or the school's records did not answer"}.`
+        : `${filed} uploaded ${selectedSubject} score${filed === 1 ? "" : "s"} are on the school's records.`
+    );
+    setIsSaved(filed > 0);
     setTimeout(() => {
       setIsCsvModalOpen(false);
       setCsvFile(null);
       setCsvPreview([]);
       setUploadStatus(null);
-      setIsSaved(filed > 0);
-    }, 1500);
+    }, 8000);
   };
 
   // Export Score Sheet to CSV
@@ -380,7 +437,7 @@ export default function UpdateCAPage() {
               Academic Term
             </label>
             <div className="w-full text-xs font-semibold bg-slate-100 border border-slate-200 rounded-lg p-2.5 text-slate-700">
-              {SCHOOL_INFO.currentSession} • {SCHOOL_INFO.currentTerm}
+              {schoolScope.session} • {schoolScope.term}
             </div>
           </div>
 
@@ -627,6 +684,7 @@ export default function UpdateCAPage() {
                 )}
 
                 {csvPreview.length > 0 && (
+                  <>
                   <div className="border border-slate-200 rounded-xl overflow-x-auto max-h-48 overflow-y-auto">
                     <table className="w-full text-left text-[11px]">
                       <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0">
@@ -645,16 +703,21 @@ export default function UpdateCAPage() {
                           <tr key={idx}>
                             <td className="py-1.5 px-3 font-mono font-bold text-blue-900">{row.admissionNo}</td>
                             <td className="py-1.5 px-3 font-semibold">{row.studentName}</td>
-                            <td className="py-1.5 px-2 text-center">{row.test1}</td>
-                            <td className="py-1.5 px-2 text-center">{row.test2}</td>
-                            <td className="py-1.5 px-2 text-center">{row.project}</td>
-                            <td className="py-1.5 px-2 text-center">{row.midTerm}</td>
-                            <td className="py-1.5 px-2 text-center font-bold text-blue-800">{row.exam}</td>
+                            <td className="py-1.5 px-2 text-center">{row.test1 ?? "—"}</td>
+                            <td className="py-1.5 px-2 text-center">{row.test2 ?? "—"}</td>
+                            <td className="py-1.5 px-2 text-center">{row.project ?? "—"}</td>
+                            <td className="py-1.5 px-2 text-center">{row.midTerm ?? "—"}</td>
+                            <td className="py-1.5 px-2 text-center font-bold text-blue-800">{row.exam ?? "—"}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
+                  <p className="text-[10px] text-slate-500">
+                    A dash means the cell was empty in the file. The mark already on the school&apos;s records for that
+                    pupil stays as it is — an empty cell is never filed as zero.
+                  </p>
+                  </>
                 )}
 
                 <div className="flex items-center justify-between pt-3 border-t border-slate-100">

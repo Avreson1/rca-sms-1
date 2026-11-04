@@ -45,3 +45,34 @@ export function databaseUnavailable() {
     { status: 503 }
   );
 }
+
+/**
+ * "relation does not exist" and "permission denied for table" both mean the same
+ * thing to the person watching a spinner: the portal is broken. They usually
+ * mean one SQL file has not been run on this project yet. Hand back the file
+ * name so the office can fix it in the Supabase editor, instead of a database
+ * message that reads like a fault in the code.
+ */
+export function databaseSetupRequired(
+  error: { code?: string; message?: string; details?: string } | null | undefined,
+  sqlFile: string
+): NextResponse | null {
+  if (!error) return null;
+  const text = `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""}`;
+  const tableMissing =
+    error.code === "42P01" || // undefined_table, straight from Postgres
+    error.code === "PGRST205" || // the REST layer's own "not in the schema cache"
+    /could not find the table|relation .* does not exist|schema cache/i.test(text);
+  const grantMissing =
+    error.code === "42501" || /permission denied for table|insufficient privilege/i.test(text);
+  if (!tableMissing && !grantMissing) return null;
+
+  return NextResponse.json(
+    {
+      success: false,
+      error: `This part of the database is not set up on this project yet. Run ${sqlFile} in the Supabase SQL editor, then try again.`,
+      reason: error.message ?? error.code ?? "missing table or grant",
+    },
+    { status: 503 }
+  );
+}

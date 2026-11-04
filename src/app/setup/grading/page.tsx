@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   Save,
   CheckCircle2,
+  TriangleAlert,
   RotateCcw,
   Sliders,
   Plus,
@@ -27,9 +28,10 @@ import {
 } from "lucide-react";
 
 export default function SetupGradingPage() {
-  const { gradingTiers, updateGradingTierBrackets, resetGradingScalesToDefault } = useRealtimeGradingScales();
+  const { gradingTiers, updateGradingTierBrackets } = useRealtimeGradingScales();
   const [activeTierKey, setActiveTierKey] = useState<string>("PRIMARY");
-  const [isSaved, setIsSaved] = useState(false);
+  const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const activeTier =
     gradingTiers[activeTierKey] || DEFAULT_GRADING_TIERS[activeTierKey] || DEFAULT_GRADING_TIERS.PRIMARY;
@@ -74,18 +76,35 @@ export default function SetupGradingPage() {
     setBrackets(brackets.filter((_, i) => i !== index));
   };
 
+  const fileScale = async (rows: GradeBracket[], label: string) => {
+    setBusy(true);
+    const reason = await updateGradingTierBrackets(activeTierKey, rows);
+    setBusy(false);
+    if (reason) {
+      setNotice({
+        tone: "warn",
+        text: `The ${label} scale was NOT filed on the school's records: ${reason}. This browser shows the change; the next machine will still read the old scale.`,
+      });
+      return;
+    }
+    setNotice({
+      tone: "ok",
+      text: `The ${label} scale is filed on the school's records. Score cards built from now on grade with it; cards already printed keep the grades they went out with.`,
+    });
+  };
+
   const handleSavePolicy = () => {
-    updateGradingTierBrackets(activeTierKey, brackets);
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 3000);
+    void fileScale(brackets, activeTier.tierTitle ?? activeTierKey);
   };
 
   const handleResetUniversal = () => {
-    if (confirm("Reset to official Universal Grading Standard (A: 70-100, B: 60-69, C: 50-59, D: 45-49 Pass, F: 0-44)?")) {
+    if (
+      confirm(
+        "Replace the brackets on screen with the standard scale (A: 70-100, B: 60-69, C: 50-59, D: 45-49 Pass, F: 0-44) and file it as the school's scale?"
+      )
+    ) {
       setBrackets(UNIVERSAL_GRADING_BRACKETS);
-      updateGradingTierBrackets(activeTierKey, UNIVERSAL_GRADING_BRACKETS);
-      setIsSaved(true);
-      setTimeout(() => setIsSaved(false), 3000);
+      void fileScale(UNIVERSAL_GRADING_BRACKETS, "standard");
     }
   };
 
@@ -114,7 +133,9 @@ export default function SetupGradingPage() {
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Standardized A – F universal grading criteria across all classes. Pass mark is officially set at <strong>45% (Grade D)</strong>.
+              The bands that turn a mark into a letter on every score card. You are editing the{" "}
+              <strong>{activeTier.tierTitle ?? activeTierKey}</strong> scale; the school&apos;s filed copy is what other
+              machines read.
             </p>
           </div>
 
@@ -128,19 +149,31 @@ export default function SetupGradingPage() {
             </button>
             <button
               onClick={handleSavePolicy}
-              className="px-4 py-2 text-xs font-black bg-[#0000FF] hover:bg-blue-700 text-white rounded-xl transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5 cursor-pointer"
+              disabled={busy}
+              className="px-4 py-2 text-xs font-black bg-[#0000FF] hover:bg-blue-700 text-white rounded-xl transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               <Save className="w-4 h-4 text-cyan-300" />
-              {isSaved ? "Grading Scale Saved!" : "Save & Sync Scale"}
+              {busy ? "Filing…" : "File Scale On The School's Records"}
             </button>
           </div>
         </div>
 
-        {/* Success Alert */}
-        {isSaved && (
-          <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl p-4 text-xs font-bold flex items-center gap-2 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-            Grading criteria synchronized! Gradebooks and scorecards updated in real-time.
+        {/* What the last filing actually did */}
+        {notice && (
+          <div
+            className={`${
+              notice.tone === "ok"
+                ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+                : "bg-amber-50 border-amber-300 text-amber-950"
+            } rounded-2xl p-4 text-xs font-bold flex items-start gap-2`}
+            role="status"
+          >
+            {notice.tone === "ok" ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+            ) : (
+              <TriangleAlert className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
+            )}
+            <p className="whitespace-pre-line">{notice.text}</p>
           </div>
         )}
 
@@ -149,20 +182,22 @@ export default function SetupGradingPage() {
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-black uppercase tracking-wider text-cyan-300 bg-cyan-500/20 px-2.5 py-0.5 rounded-full border border-cyan-400/40">
-                Official Universal Standard
+                The Scale The Portal Starts From
               </span>
-              <span className="text-xs text-blue-200 font-bold">Enforced Across All Classes</span>
+              <span className="text-xs text-blue-200 font-bold">One band per school section, edited below</span>
             </div>
             <h2 className="text-lg font-black text-white">
               A (70-100) • B (60-69) • C (50-59) • D (45-49 Pass Mark) • F (0-44 Fail)
             </h2>
             <p className="text-xs text-blue-200/80 leading-relaxed max-w-2xl">
-              Applicable uniformly across Creche, Playgroup, Nursery 1-2, Basic Primary 1-5, JSS 1-3 and SS 1-3.
+              The usual West African banding, offered as the starting point for Creche through SS 3. What the school
+              actually grades with is the scale filed on its records, shown in the tabs below — if they differ, the
+              filed scale is the one on the score cards.
             </p>
           </div>
 
           <div className="bg-blue-900/60 border border-cyan-400/30 p-3.5 rounded-2xl text-center min-w-[150px]">
-            <span className="text-[10px] text-cyan-300 uppercase font-bold block">Pass Benchmark</span>
+            <span className="text-[10px] text-cyan-300 uppercase font-bold block">Usual Pass Mark</span>
             <strong className="text-2xl font-black text-white">45% (D)</strong>
           </div>
         </div>

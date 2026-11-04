@@ -130,15 +130,22 @@ export async function POST(request: Request) {
       admissionNos,
       session?.username ?? ""
     );
-    const reason = linkError ?? `unknown pupil: ${unknownAdmissionNos.slice(0, 5).join(", ")}`;
-    return NextResponse.json(
-      {
-        success: false,
-        error: `Login “${account.username}” was created with its password, but no pupil was linked to it — ${reason}. Link the children from the account row before the parent signs in.`,
-        data: account,
-      },
-      { status: 400 }
-    );
+    // A link that worked is part of a successful account, so it must not be
+    // reported as one: the manager reads a non-2xx as "nothing was linked" and
+    // the office then re-types children it has already given the login.
+    if (linkError || unknownAdmissionNos.length > 0) {
+      const reason = linkError
+        ? `the link could not be saved (${linkError})`
+        : `no enrolled pupil for ${unknownAdmissionNos.slice(0, 5).join(", ")}${unknownAdmissionNos.length > 5 ? ", + more" : ""}`;
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Login “${account.username}” was created with its password, but no pupil was linked to it — ${reason}. Check the admission numbers, then link the children from the account row before the parent signs in.`,
+          data: account,
+        },
+        { status: linkError ? 502 : 400 }
+      );
+    }
   }
 
   return NextResponse.json({ success: true, data: account });

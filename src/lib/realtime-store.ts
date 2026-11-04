@@ -2,17 +2,25 @@
 
 import { useState, useEffect } from "react";
 import { SCHOOL_INFO, ROLES, RBAC_STEPS } from "./constants";
-import { getSupabaseBrowserClient, isSupabaseConfigured } from "./supabase/client";
+import { cachedSchoolSession, cachedSchoolTerm } from "./school-config";
+import { isSupabaseConfigured } from "./supabase/client";
 import {
   fetchStudentsFromSupabase,
   fetchStaffFromSupabase,
   fetchInvoicesFromSupabase,
+  fetchFeeComponentsFromSupabase,
+  saveFeeComponentsOnServer,
+  removeFeeComponentOnServer,
   fetchGradingTiersFromSupabase,
   insertStudentToSupabase,
   bulkInsertStudentsToSupabase,
   deleteStudentFromSupabase,
   insertStaffToSupabase,
-  saveInvoiceToSupabase,
+  deleteStaffFromSupabase,
+  bulkInsertStaffOnServer,
+  type BulkStaffResult,
+  recordPaymentOnServer,
+  type ReceiptDetails,
   bulkSaveInvoicesToSupabase,
   saveCaScoresToSupabase,
   fetchCaScoresFromSupabase,
@@ -343,13 +351,17 @@ export interface CBTConfigRecord {
 
 export const DEFAULT_CBT_CONFIG: CBTConfigRecord = {
   isOpen: true,
-  activeExamMode: "Terminal Examination",
+  // Mode, window and the candidate notice start blank: a fresh browser used to
+  // arrive pre-filled with "Terminal Examination", "Monday - Friday (8:00 AM -
+  // 2:00 PM)" and a finished lockdown paragraph, so the CBT screen read out a
+  // schedule and wording the school had never set. Blank means not announced.
+  activeExamMode: "",
   targetClasses: ["All Classes"],
-  scheduledWindow: "Monday - Friday (8:00 AM - 2:00 PM)",
-  offlineMessage: "The Computer-Based Testing (CBT) portal is currently closed for the term. Please contact the Examination Office or Dean of Studies for the approved assessment schedule.",
+  scheduledWindow: "",
+  offlineMessage: "",
   allowAdminBypass: true,
-  updatedAt: "2026-01-01T00:00:00.000Z",
-  updatedBy: "Super Administrator",
+  // No updatedAt / updatedBy either: nobody has changed anything on this browser
+  // yet, and the defaults used to sign the row "Super Administrator, 1 January 2026".
 };
 
 // -------------------------------------------------------------
@@ -828,7 +840,8 @@ export function useRealtimeGradingScales() {
     };
   }, []);
 
-  const updateGradingTierBrackets = (tierKey: string, newBrackets: GradeBracket[]) => {
+  /** Files the scale and answers with why the school said no, or null. */
+  const updateGradingTierBrackets = async (tierKey: string, newBrackets: GradeBracket[]): Promise<string | null> => {
     const updated = {
       ...gradingTiers,
       [tierKey]: {
@@ -845,37 +858,45 @@ export function useRealtimeGradingScales() {
     // school's tables and not in this browser's storage — a reload used to put
     // the seeded numbers back while the marks filed in between stayed graded
     // against the scale the office had typed.
-    if (isSupabaseConfigured) {
-      void saveGradingTiersToSupabase(updated, `the ${updated[tierKey]?.tierTitle ?? tierKey} grading scale`);
+    if (!isSupabaseConfigured) {
+      return "this device is not connected to the school database";
     }
+    const filed = await saveGradingTiersToSupabase(updated, `the ${updated[tierKey]?.tierTitle ?? tierKey} grading scale`);
+    return filed ? null : "the school's records did not accept the new scale";
   };
 
-  const resetGradingScalesToDefault = () => {
-    setGradingTiers(DEFAULT_GRADING_TIERS);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.GRADING_SCALES, JSON.stringify(DEFAULT_GRADING_TIERS));
-      broadcast("GRADING_SCALES_UPDATED");
-    }
-    if (isSupabaseConfigured) {
-      void saveGradingTiersToSupabase(DEFAULT_GRADING_TIERS, "the restored grading scales");
-    }
-  };
-
-  return { gradingTiers, updateGradingTierBrackets, resetGradingScalesToDefault };
+  return { gradingTiers, updateGradingTierBrackets };
 }
 
 /**
  * On screen a pupil has one set of CA scores; in the database the `ca_scores`
  * row is keyed by subject, session and term as well. Without the subject a
  * typed score has nowhere to be filed, so only screens that know it can push
- * scores to the server. Returns how many pupils were sent.
+ * scores to the server.
+ *
+ * Waits for the server rather than firing and claiming success: the Save button
+ * used to read "Sent to the school records" the moment it was clicked, while a
+ * refused pupil was only ever mentioned in the corner notice.
  */
-function fileCaScoresOnServer(students: StudentRecord[], subject: string) {
+async function fileCaScoresOnServer(
+  students: StudentRecord[],
+  subject: string
+): Promise<{ filed: number; total: number; reason: string | null }> {
   const scored = students.filter((s) => {
     const { test1, test2, project, midTerm, exam } = s.caScores;
     return test1 + test2 + project + midTerm + exam > 0;
   });
-  if (!isSupabaseConfigured || scored.length === 0) return 0;
+  if (scored.length === 0) return { filed: 0, total: 0, reason: "no pupil in this class has a mark to send" };
+  if (!isSupabaseConfigured) {
+    return { filed: 0, total: scored.length, reason: "this device is not connected to the school records" };
+  }
+
+  // Filed under the session and term the school says it is in. With the compiled
+  // constants here, a school that had moved into 2026/2027 in Settings kept
+  // filing marks under 2025/2026, and the score card — which reads the filed
+  // session — showed the class as if nobody had marked anything.
+  const session = cachedSchoolSession() || SCHOOL_INFO.currentSession;
+  const term = cachedSchoolTerm() || SCHOOL_INFO.currentTerm;
 
   const records = scored.map((student) => {
     const { test1, test2, project, midTerm, exam } = student.caScores;
@@ -884,8 +905,8 @@ function fileCaScoresOnServer(students: StudentRecord[], subject: string) {
     return {
       admissionNo: student.admissionNo,
       subject,
-      session: SCHOOL_INFO.currentSession,
-      term: SCHOOL_INFO.currentTerm,
+      session,
+      term,
       test1,
       test2,
       project,
@@ -897,16 +918,43 @@ function fileCaScoresOnServer(students: StudentRecord[], subject: string) {
     };
   });
 
-  void saveCaScoresToSupabase(
+  const saved = await saveCaScoresToSupabase(
     records,
-    `${subject} scores for ${scored.length} pupil${scored.length === 1 ? "" : "s"} (${SCHOOL_INFO.currentSession}, ${SCHOOL_INFO.currentTerm})`
+    `${subject} scores for ${scored.length} pupil${scored.length === 1 ? "" : "s"} (${session}, ${term})`
   );
-  return scored.length;
+  return {
+    filed: saved ? scored.length : 0,
+    total: scored.length,
+    reason: saved ? null : `the school's records did not take the ${subject} marks`,
+  };
 }
 
 // -------------------------------------------------------------
 // Hook: Real-Time Students Store (Connected to Supabase & Live Sync)
 // -------------------------------------------------------------
+/**
+ * Admission numbers that cannot collide with a pupil already on the roll.
+ *
+ * The number used to be `students.length + 1` with the year typed into the
+ * code. Unenrol one child and the next admission reuses that child's number —
+ * and `/api/students` upserts on `admission_no`, so a new family silently took
+ * over an existing pupil's record, marks and invoices. The year was frozen at
+ * 2025 whatever session the school was in.
+ */
+function allocateAdmissionNos(used: string[], count: number): string[] {
+  const taken = new Set(used.map((no) => no.trim().toUpperCase()).filter(Boolean));
+  const year = /\d{4}/.exec(cachedSchoolSession() || SCHOOL_INFO.currentSession)?.[0]
+    ?? String(new Date().getFullYear());
+  const numbers: string[] = [];
+  for (let seq = 1; numbers.length < count; seq++) {
+    const candidate = `RCA/STD/${year}/${String(seq).padStart(3, "0")}`;
+    if (taken.has(candidate)) continue;
+    taken.add(candidate);
+    numbers.push(candidate);
+  }
+  return numbers;
+}
+
 export function useRealtimeStudents() {
   const [students, setStudents] = useState<StudentRecord[]>(INITIAL_STUDENTS);
 
@@ -929,31 +977,15 @@ export function useRealtimeStudents() {
           localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(supabaseStudents));
         }
       });
-
-      const client = getSupabaseBrowserClient();
-      if (client) {
-        const sub = client
-          .channel("realtime-students")
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "students" },
-            () => {
-              fetchStudentsFromSupabase().then((refreshed) => {
-                if (refreshed) {
-                  setStudents(refreshed);
-                  localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(refreshed));
-                }
-              });
-            }
-          )
-          .subscribe();
-
-        return () => {
-          client.removeChannel(sub);
-        };
-      }
     }
 
+    // No Supabase Realtime subscription here. Every table the browser could
+    // subscribe to is protected by row-level security with no policy for the
+    // anon key — deliberately, because the anon key is in the page — so a
+    // browser subscriber is told nothing about a change it may not read. What
+    // did work was being skipped by that dead subscription: the channel below
+    // was only set up when the database was not configured, so two tabs of the
+    // same office browser never shared an update.
     let channel: BroadcastChannel | null = null;
     if (typeof window !== "undefined" && "BroadcastChannel" in window) {
       channel = new BroadcastChannel(CHANNEL_NAME);
@@ -1017,7 +1049,14 @@ export function useRealtimeStudents() {
     broadcast("STUDENTS_UPDATED");
   };
 
-  const addStudent = (newStudent: {
+  /**
+   * Enrols one pupil and reports whether the school's records took them.
+   *
+   * The answer matters: the row is added to this browser first so the roster
+   * repaints immediately, and a screen that claimed "enrolled" without waiting
+   * would be telling the office about a pupil the database may have refused.
+   */
+  const addStudent = async (newStudent: {
     fullName: string;
     gender: "Male" | "Female";
     className: string;
@@ -1026,11 +1065,14 @@ export function useRealtimeStudents() {
     guardianPhone?: string;
     admissionNo?: string;
     feeStatus?: StudentRecord["feeStatus"];
-  }) => {
-    const nextSeq = (students.length + 1).toString().padStart(3, "0");
+  }): Promise<{ student: StudentRecord; reason: string | null }> => {
+    const [generatedAdmissionNo] = allocateAdmissionNos(
+      students.map((s) => s.admissionNo),
+      1
+    );
     const student: StudentRecord = {
       id: `s-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      admissionNo: newStudent.admissionNo || `RCA/STD/2025/${nextSeq}`,
+      admissionNo: newStudent.admissionNo?.trim() || generatedAdmissionNo,
       fullName: newStudent.fullName,
       gender: newStudent.gender,
       className: newStudent.className,
@@ -1045,13 +1087,23 @@ export function useRealtimeStudents() {
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updated));
     broadcast("STUDENTS_UPDATED");
 
-    if (isSupabaseConfigured) {
-      insertStudentToSupabase(student);
+    if (!isSupabaseConfigured) {
+      return { student, reason: "no school database is connected, so this pupil exists on this browser only" };
     }
-    return student;
+    const filed = await insertStudentToSupabase(student);
+    return { student, reason: filed ? null : "the school's records did not accept the enrolment" };
   };
 
-  const bulkAddStudents = (
+  /**
+   * Enrols a batch and reports whether the school's records took them.
+   *
+   * There are no invented fallbacks here any more. A CSV row with an empty
+   * gender used to be filed as "Female" and a row with no class as "Primary 1",
+   * so one shifted column in a spreadsheet put a child in the wrong arm, under
+   * the wrong sex, on the school's own records. The screen that reads the file
+   * rejects those rows instead.
+   */
+  const bulkAddStudents = async (
     newStudents: {
       fullName: string;
       gender: "Male" | "Female";
@@ -1062,18 +1114,21 @@ export function useRealtimeStudents() {
       admissionNo?: string;
       feeStatus?: StudentRecord["feeStatus"];
     }[]
-  ) => {
-    let currentSeq = students.length;
+  ): Promise<{ count: number; reason: string | null }> => {
+    const needsNumber = newStudents.filter((ns) => !ns.admissionNo?.trim());
+    const generated = allocateAdmissionNos(
+      [...students.map((s) => s.admissionNo), ...newStudents.map((ns) => ns.admissionNo ?? "")],
+      needsNumber.length
+    );
+    let nextGenerated = 0;
     const addedRecords: StudentRecord[] = newStudents.map((ns) => {
-      currentSeq++;
-      const seqStr = currentSeq.toString().padStart(3, "0");
       return {
         id: `s-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        admissionNo: ns.admissionNo || `RCA/STD/2025/${seqStr}`,
+        admissionNo: ns.admissionNo?.trim() || generated[nextGenerated++],
         fullName: ns.fullName,
-        gender: ns.gender || "Female",
-        className: ns.className || "Primary 1",
-        house: ns.house || "Sapphire (Blue)",
+        gender: ns.gender,
+        className: ns.className,
+        house: ns.house,
         guardianName: ns.guardianName || "Not Specified",
         guardianPhone: ns.guardianPhone || "N/A",
         feeStatus: ns.feeStatus || "Outstanding",
@@ -1086,14 +1141,17 @@ export function useRealtimeStudents() {
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updated));
     broadcast("STUDENTS_UPDATED");
 
-    if (isSupabaseConfigured) {
-      bulkInsertStudentsToSupabase(addedRecords);
+    if (!isSupabaseConfigured) {
+      return {
+        count: addedRecords.length,
+        reason: "no school database is connected, so these pupils exist on this browser only",
+      };
     }
-
-    return addedRecords.length;
+    const filed = await bulkInsertStudentsToSupabase(addedRecords);
+    return { count: addedRecords.length, reason: filed ? null : "the school's records did not accept the batch" };
   };
 
-  const bulkUpdateScores = (
+  const bulkUpdateScores = async (
     scoresList: {
       admissionNo: string;
       test1?: number;
@@ -1103,7 +1161,7 @@ export function useRealtimeStudents() {
       exam?: number;
     }[],
     subject?: string
-  ) => {
+  ): Promise<{ filed: number; total: number; unmatched: number; reason: string | null }> => {
     const scoreMap = new Map(scoresList.map((item) => [item.admissionNo.trim().toUpperCase(), item]));
     const updated = students.map((s) => {
       const match = scoreMap.get(s.admissionNo.trim().toUpperCase());
@@ -1126,11 +1184,18 @@ export function useRealtimeStudents() {
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updated));
     broadcast("STUDENTS_UPDATED");
 
+    // A row whose admission number is not on the roll matches nothing here, and
+    // used to be dropped without a word: 40 rows in the file, 38 marks on screen,
+    // and no one told that two children were never on this class's register.
+    const onRoll = new Set(updated.map((s) => s.admissionNo.trim().toUpperCase()));
+    const unmatched = scoresList.filter((item) => !onRoll.has(item.admissionNo.trim().toUpperCase())).length;
+
     if (subject) {
       const imported = updated.filter((s) => scoreMap.has(s.admissionNo.trim().toUpperCase()));
-      return fileCaScoresOnServer(imported, subject);
+      const outcome = await fileCaScoresOnServer(imported, subject);
+      return { ...outcome, unmatched };
     }
-    return 0;
+    return { filed: 0, total: 0, unmatched, reason: "no subject was chosen, so the marks were not filed anywhere" };
   };
 
   const deleteStudent = (studentId: string) => {
@@ -1593,23 +1658,56 @@ export function useRealtimeStaff() {
     return insertStaffToSupabase(newMember);
   };
 
-  const bulkAddStaff = (newStaffList: Omit<StaffRecord, "id">[]) => {
-    const newMembers: StaffRecord[] = newStaffList.map((item, idx) => ({
-      ...item,
-      id: `st-${Date.now()}-${idx}`,
-    }));
-    const updated = [...newMembers, ...staff];
-    setStaff(updated);
-    localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(updated));
-    broadcast("STAFF_UPDATED");
-    return newMembers.length;
+  const bulkAddStaff = async (newStaffList: Omit<StaffRecord, "id">[]): Promise<BulkStaffResult> => {
+    if (!isSupabaseConfigured) {
+      return {
+        saved: 0,
+        logins: [],
+        failures: ["this device is not connected to the school database, so nobody was onboarded"],
+      };
+    }
+
+    // Every row goes to the server before it appears on the list. An import
+    // that only wrote localStorage announced 40 members as onboarded, showed
+    // them until the page reloaded, and issued no login for any of them.
+    const result = await bulkInsertStaffOnServer(newStaffList.map((item) => ({ ...item, id: "" })));
+
+    if (result.saved > 0) {
+      const refreshed = await fetchStaffFromSupabase();
+      if (refreshed) {
+        setStaff(refreshed);
+        localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(refreshed));
+        broadcast("STAFF_UPDATED");
+      }
+    }
+
+    return result;
   };
 
+  /**
+   * Removes a member from the school's records, not just from this browser.
+   * Returns the server's answer so the register can repeat a warning about a
+   * login it could not suspend; on any refusal the list is left as it was,
+   * because a name the office cannot remove is not a name to hide.
+   */
   const deleteStaff = (staffId: string) => {
-    const updated = staff.filter((s) => s.id !== staffId);
-    setStaff(updated);
-    localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(updated));
-    broadcast("STAFF_UPDATED");
+    if (!isSupabaseConfigured) {
+      return Promise.resolve({
+        ok: false,
+        reason: "this device is not connected to the school database",
+        warning: null,
+      });
+    }
+
+    return deleteStaffFromSupabase(staffId).then((outcome) => {
+      if (!outcome.ok) return outcome;
+
+      const updated = staff.filter((s) => s.staffId !== staffId);
+      setStaff(updated);
+      localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(updated));
+      broadcast("STAFF_UPDATED");
+      return outcome;
+    });
   };
 
   const updateStaff = (staffId: string, updates: Partial<StaffRecord>) => {
@@ -1728,50 +1826,96 @@ export function useRealtimeInvoices() {
     };
   }, []);
 
-  const recordPayment = (invoiceId: string, paymentAmount: number) => {
-    const updated = invoices.map((inv) => {
-      if (inv.id === invoiceId) {
-        const newPaid = Math.min(inv.amountBilled, inv.amountPaid + paymentAmount);
-        const status = newPaid >= inv.amountBilled ? "Paid" : "Partial";
-        return {
-          ...inv,
-          amountPaid: newPaid,
-          paymentStatus: status as InvoiceRecord["paymentStatus"],
-          lastPaymentDate: new Date().toISOString().split("T")[0],
-        };
-      }
-      return inv;
+  /**
+   * Records a payment the bursar actually took.
+   *
+   * The school's answer is what changes the list: the server files a receipt and
+   * moves the balance in one call, so a sum shown as cleared here is a payment
+   * somebody signed for, not a number a browser liked.
+   */
+  const recordPayment = async (
+    invoiceId: string,
+    paymentAmount: number,
+    meta: { paymentChannel: string; bankReference: string }
+  ): Promise<{
+    ok: boolean;
+    invoice: InvoiceRecord | null;
+    receipt: ReceiptDetails | null;
+    reason: string | null;
+  }> => {
+    const target = invoices.find((inv) => inv.id === invoiceId);
+    if (!target) {
+      return { ok: false, invoice: null, receipt: null, reason: "that invoice is not on this screen any more" };
+    }
+    if (!isSupabaseConfigured) {
+      return { ok: false, invoice: null, receipt: null, reason: "this device is not connected to the school database" };
+    }
+
+    const outcome = await recordPaymentOnServer({
+      invoiceNo: target.invoiceNo,
+      amount: paymentAmount,
+      paymentChannel: meta.paymentChannel,
+      bankReference: meta.bankReference,
     });
 
+    if (!outcome.ok || !outcome.filed) {
+      return { ok: false, invoice: null, receipt: null, reason: outcome.reason };
+    }
+
+    const updatedInvoice: InvoiceRecord = {
+      ...target,
+      amountPaid: outcome.filed.invoice.amountPaid,
+      paymentStatus: outcome.filed.invoice.paymentStatus as InvoiceRecord["paymentStatus"],
+      lastPaymentDate: outcome.filed.invoice.lastPaymentDate,
+    };
+    const updated = invoices.map((inv) => (inv.id === invoiceId ? updatedInvoice : inv));
     setInvoices(updated);
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(updated));
       broadcast("INVOICES_UPDATED");
     }
 
-    const paid = updated.find((inv) => inv.id === invoiceId);
-    if (paid && isSupabaseConfigured) {
-      void saveInvoiceToSupabase(paid);
-    }
+    return {
+      ok: true,
+      invoice: updatedInvoice,
+      receipt: outcome.filed.receipt,
+      reason: null,
+    };
   };
 
   /**
-   * Generated invoices only exist on this device until they reach the server,
-   * so the list is filed in one bulk request instead of waiting for a page
-   * reload to read the browser's own copy back again.
+   * Files a generated run of invoices and shows the school's own list back.
+   *
+   * Generated invoices did not exist anywhere until a bulk request went out,
+   * and the screen announced "Generated 34 new student invoices!" whether or not
+   * the server took them. Now nothing joins the ledger until it is filed.
    */
-  const addInvoices = (generated: InvoiceRecord[]) => {
-    if (generated.length === 0) return;
-    const updated = [...generated, ...invoices];
-    setInvoices(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(updated));
+  const addInvoices = async (
+    generated: InvoiceRecord[]
+  ): Promise<{ saved: number; reason: string | null }> => {
+    if (generated.length === 0) return { saved: 0, reason: "no invoice was generated" };
+    if (!isSupabaseConfigured) {
+      return { saved: 0, reason: "this device is not connected to the school database" };
+    }
+
+    const reason = await bulkSaveInvoicesToSupabase(generated);
+    if (reason) return { saved: 0, reason };
+
+    const refreshed = await fetchInvoicesFromSupabase();
+    if (refreshed) {
+      setInvoices(refreshed);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(refreshed));
+      }
+      broadcast("INVOICES_UPDATED");
+    } else {
+      const updated = [...generated, ...invoices];
+      setInvoices(updated);
+      if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(updated));
       broadcast("INVOICES_UPDATED");
     }
 
-    if (isSupabaseConfigured) {
-      void bulkSaveInvoicesToSupabase(generated);
-    }
+    return { saved: generated.length, reason: null };
   };
 
   return { invoices, recordPayment, addInvoices };
@@ -1809,10 +1953,11 @@ export function syncCBTScoreToCA(
 
     studentList[targetStudentIndex] = {
       ...studentList[targetStudentIndex],
-      caScores: {
-        ...studentList[targetStudentIndex].caScores,
-        [targetCAField]: scaledScore,
-      },
+      // The attempt is recorded, the mark is not. This used to write the scaled
+      // score into `caScores` for the chosen column, so a child's exam mark on
+      // this machine changed because somebody sat a practice run on it — with no
+      // server row, no name attached and no way to trace it. A CA entry screen
+      // shows the raw CBT figure below; a person decides whether it becomes a mark.
       cbtSyncStatus: {
         syncedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
         cbtScore: cbtRawScore,
@@ -2106,10 +2251,27 @@ export function useRealtimeCalendar() {
 }
 
 // -------------------------------------------------------------
-// Hook: Real-Time Fee Structure & Components Store
+// Hook: Fee Structure & Components (the school's own schedule)
 // -------------------------------------------------------------
+
+export interface FeeSaveResult {
+  saved: number;
+  failures: string[];
+  /** True when the schedule on screen is the one filed on the school's records. */
+  fromServer: boolean;
+}
+
+/**
+ * The fee schedule prices every invoice, so it cannot live in one browser.
+ *
+ * `feesSource` is the part the screens need: a list read from this device's
+ * cache can look identical to the school's schedule while being somebody's
+ * unpublished draft, and a bill built from it would quote amounts nobody else
+ * can check. Invoicing refuses to price from a device-only schedule.
+ */
 export function useRealtimeFees() {
   const [fees, setFees] = useState<FeeComponentRecord[]>(INITIAL_FEES);
+  const [feesSource, setFeesSource] = useState<"server" | "device">("device");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -2121,6 +2283,15 @@ export function useRealtimeFees() {
       } else {
         localStorage.setItem(STORAGE_KEYS.FEES, JSON.stringify(INITIAL_FEES));
       }
+    }
+
+    if (isSupabaseConfigured) {
+      fetchFeeComponentsFromSupabase().then((serverFees) => {
+        if (serverFees === null) return;
+        setFees(serverFees);
+        setFeesSource("server");
+        localStorage.setItem(STORAGE_KEYS.FEES, JSON.stringify(serverFees));
+      });
     }
 
     let channel: BroadcastChannel | null = null;
@@ -2138,52 +2309,62 @@ export function useRealtimeFees() {
     };
   }, []);
 
-  const addFeeComponent = (newFee: Omit<FeeComponentRecord, "id">) => {
-    const item: FeeComponentRecord = {
-      ...newFee,
-      id: `fee-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-    };
-    const updated = [...fees, item];
-    setFees(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.FEES, JSON.stringify(updated));
+  const showServerSchedule = (): Promise<boolean> => {
+    if (!isSupabaseConfigured) return Promise.resolve(false);
+    return fetchFeeComponentsFromSupabase().then((serverFees) => {
+      if (serverFees === null) return false;
+      setFees(serverFees);
+      setFeesSource("server");
+      localStorage.setItem(STORAGE_KEYS.FEES, JSON.stringify(serverFees));
       broadcast("FEES_UPDATED");
-    }
-    return item;
+      return true;
+    });
   };
 
-  const deleteFeeComponent = (id: string) => {
-    const updated = fees.filter((f) => f.id !== id);
-    setFees(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.FEES, JSON.stringify(updated));
-      broadcast("FEES_UPDATED");
+  /**
+   * Files fee items on the school's schedule, then shows the schedule back as
+   * the server stored it — including the session and term it was filed under,
+   * which is the school's current one rather than this device's.
+   *
+   * Nothing is added to the list before the server has taken it, so a refused
+   * price cannot sit on screen and get billed from.
+   */
+  const saveFeeComponents = async (items: Omit<FeeComponentRecord, "id">[]): Promise<FeeSaveResult> => {
+    if (items.length === 0) return { saved: 0, failures: [], fromServer: feesSource === "server" };
+
+    if (!isSupabaseConfigured) {
+      return {
+        saved: 0,
+        failures: ["this device is not connected to the school database, so no price was filed"],
+        fromServer: false,
+      };
     }
+
+    const { saved, reason } = await saveFeeComponentsOnServer(
+      items.map((item) => ({ ...item, id: "" }))
+    );
+    if (reason) return { saved: 0, failures: [reason], fromServer: feesSource === "server" };
+
+    await showServerSchedule();
+    return { saved: saved.length, failures: [], fromServer: true };
   };
 
-  const updateFeeComponent = (id: string, updates: Partial<FeeComponentRecord>) => {
-    const updated = fees.map((f) => (f.id === id ? { ...f, ...updates } : f));
-    setFees(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.FEES, JSON.stringify(updated));
-      broadcast("FEES_UPDATED");
+  const removeFeeComponent = async (id: string): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database" };
     }
-  };
 
-  const clearAllFees = () => {
-    setFees([]);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.FEES, JSON.stringify([]));
-      broadcast("FEES_UPDATED");
-    }
+    const outcome = await removeFeeComponentOnServer(id);
+    if (outcome.ok) await showServerSchedule();
+    return outcome;
   };
 
   return {
     fees,
-    addFeeComponent,
-    deleteFeeComponent,
-    updateFeeComponent,
-    clearAllFees,
+    feesSource,
+    saveFeeComponents,
+    removeFeeComponent,
+    reloadFees: showServerSchedule,
   };
 }
 

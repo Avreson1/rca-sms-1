@@ -5,6 +5,7 @@ import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
 import { useRealtimeNewsletter, NewsletterRecord } from "@/lib/realtime-store";
+import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   FileText,
   ArrowLeft,
@@ -118,7 +119,11 @@ export default function SetupReportTemplatesPage() {
   };
 
   const handleResetToDefault = () => {
-    if (confirm("Reset newsletter & report template settings to institutional default?")) {
+    if (
+      confirm(
+        "Reset the newsletter and report card theme held on this browser back to the built-in defaults? What you typed here is dropped and cannot be brought back."
+      )
+    ) {
       resetNewsletter();
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 3000);
@@ -167,11 +172,14 @@ export default function SetupReportTemplatesPage() {
           </div>
         </div>
 
+        <DeviceOnlyNotice what="The report card theme and the terminal newsletter" />
+
         {/* Success Alert */}
         {isSaved && (
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl p-4 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-            Report card color scheme and terminal newsletter template successfully saved and synchronized!
+            The report card color scheme and the terminal newsletter have been updated on this browser. They stay here —
+            other machines will not see them, so print the cards from this one.
           </div>
         )}
 
@@ -227,7 +235,7 @@ export default function SetupReportTemplatesPage() {
                 End-of-Term Official Terminal Newsletter &amp; Notice
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                This editable bulletin will automatically print on the reverse side or accompanying page of all student report cards.
+                This bulletin prints on the report cards printed from this browser, since the newsletter text is kept here.
               </p>
             </div>
             <button

@@ -23,6 +23,16 @@ import {
   FileDown,
 } from "lucide-react";
 
+type CsvStudentRow = {
+  fullName: string;
+  className: string;
+  gender: "Male" | "Female";
+  guardianName: string;
+  guardianPhone: string;
+  house: StudentRecord["house"];
+  feeStatus: StudentRecord["feeStatus"];
+};
+
 export default function StudentsPage() {
   const { students, addStudent, bulkAddStudents, deleteStudent } = useRealtimeStudents();
   const { classes } = useRealtimeClasses();
@@ -36,31 +46,61 @@ export default function StudentsPage() {
   // Single Admission Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newClass, setNewClass] = useState(availableClasses[0] || "Primary 1");
-  const [newGender, setNewGender] = useState<"Male" | "Female">("Female");
+  const [newClass, setNewClass] = useState<string>("");
+  const [newGender, setNewGender] = useState<string>("");
   const [newGuardian, setNewGuardian] = useState("");
   const [newPhone, setNewPhone] = useState("");
-  const [newHouse, setNewHouse] = useState<any>("Sapphire (Blue)");
+  const [newHouse, setNewHouse] = useState<StudentRecord["house"] | "">("");
+  const [enrolBusy, setEnrolBusy] = useState(false);
+  const [enrolError, setEnrolError] = useState<string | null>(null);
 
   // CSV Bulk Upload Modal
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
   const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [csvPreview, setCsvPreview] = useState<any[]>([]);
+  const [csvPreview, setCsvPreview] = useState<CsvStudentRow[]>([]);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvNotice, setCsvNotice] = useState<{ tone: "good" | "warn"; text: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleAddStudent = (e: React.FormEvent) => {
+  const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName.trim()) return;
+    const name = newName.trim();
+    if (!name) {
+      setEnrolError("Type the pupil's name — a child cannot be enrolled without one.");
+      return;
+    }
+    if (newGender !== "Male" && newGender !== "Female") {
+      setEnrolError("Say whether the pupil is a boy or a girl. The portal used to file every blank as Female.");
+      return;
+    }
+    if (!newHouse) {
+      setEnrolError("Pick the sports house this pupil belongs to — it is not decided for them.");
+      return;
+    }
+    if (!newClass) {
+      setEnrolError("Pick the class arm the pupil joins. Create it first in Setup → Classes if the school has none listed.");
+      return;
+    }
 
-    addStudent({
-      fullName: newName,
+    setEnrolBusy(true);
+    setEnrolError(null);
+    const { reason } = await addStudent({
+      fullName: name,
       className: newClass,
-      gender: newGender,
-      guardianName: newGuardian || "Not Specified",
-      guardianPhone: newPhone || "N/A",
+      gender: newGender as "Male" | "Female",
+      guardianName: newGuardian.trim() || "Not Specified",
+      guardianPhone: newPhone.trim() || "N/A",
       house: newHouse,
     });
+    setEnrolBusy(false);
+
+    // The modal stays open when the school's records refused the pupil, so the
+    // clerk sees that before they move on to the next form.
+    if (reason) {
+      setEnrolError(`${name} is on this browser's list, but ${reason}. Fix the cause and enrol again — do not print a card for a pupil who is not on the school's records.`);
+      return;
+    }
 
     setIsModalOpen(false);
     setNewName("");
@@ -78,40 +118,102 @@ export default function StudentsPage() {
     reader.onload = (evt) => {
       const text = evt.target?.result as string;
       const parsedRows = parseCSV(text);
-      
+
       if (parsedRows.length < 2) {
-        setUploadStatus("Error: CSV file must contain at least a header row and 1 data row.");
+        setUploadStatus("This file has a header but no pupil under it. Add the rows, or use CSV Template to start from the right columns.");
+        setCsvPreview([]);
         return;
       }
 
-      // Skip header row and extract preview
-      const dataRows = parsedRows.slice(1);
-      const studentObjects = dataRows.map((cols) => ({
-        fullName: cols[0] || "Unnamed Pupil",
-        className: cols[1] || "Primary 1",
-        gender: (cols[2]?.toLowerCase().includes("male") && !cols[2]?.toLowerCase().includes("female") ? "Male" : "Female") as "Male" | "Female",
-        guardianName: cols[3] || "Parent / Guardian",
-        guardianPhone: cols[4] || "N/A",
-        house: (cols[5] || "Sapphire (Blue)") as any,
-        feeStatus: (cols[6] || "Outstanding") as any,
-      }));
+      const HOUSES: Record<string, StudentRecord["house"]> = {
+        sapphire: "Sapphire (Blue)",
+        ruby: "Ruby (Red)",
+        emerald: "Emerald (Green)",
+        topaz: "Topaz (Yellow)",
+      };
+      const FEES: Record<string, StudentRecord["feeStatus"]> = {
+        "fully cleared": "Fully Cleared",
+        "partially paid": "Partially Paid",
+        outstanding: "Outstanding",
+      };
 
-      setCsvPreview(studentObjects);
-      setUploadStatus(`Parsed ${studentObjects.length} student records ready to ingest.`);
+      const accepted: CsvStudentRow[] = [];
+      const skipped: string[] = [];
+
+      parsedRows.slice(1).forEach((cols, idx) => {
+        const row = idx + 2; // 1-based position in the file, header included
+        const fullName = cols[0]?.trim();
+        const className = cols[1]?.trim();
+        const genderWord = cols[2]?.trim().toLowerCase() || "";
+        const houseWord = (cols[5] || "").trim().toLowerCase().split(" ")[0];
+
+        if (!fullName) {
+          skipped.push(`row ${row}: no name`);
+          return;
+        }
+        if (!className) {
+          skipped.push(`row ${row} (${fullName}): no class`);
+          return;
+        }
+        // "male" is inside "female", so the whole word decides it — anything
+        // else is refused rather than filed as a girl by default.
+        const gender = genderWord === "male" ? "Male" : genderWord === "female" ? "Female" : null;
+        if (!gender) {
+          skipped.push(`row ${row} (${fullName}): gender says "${cols[2] || ""}", the portal needs Male or Female`);
+          return;
+        }
+        const house = HOUSES[houseWord];
+        if (!house) {
+          skipped.push(`row ${row} (${fullName}): sports house "${cols[5] || ""}" is not one of Sapphire, Ruby, Emerald or Topaz`);
+          return;
+        }
+
+        accepted.push({
+          fullName,
+          className,
+          gender,
+          house,
+          guardianName: cols[3]?.trim() || "Not Specified",
+          guardianPhone: cols[4]?.trim() || "N/A",
+          feeStatus: FEES[(cols[6] || "").trim().toLowerCase()] || "Outstanding",
+        });
+      });
+
+      setCsvPreview(accepted);
+      const summary = accepted.length
+        ? `${accepted.length} pupil${accepted.length === 1 ? "" : "s"} ready to enroll`
+        : "No pupil in this file can be enrolled";
+      setUploadStatus(
+        skipped.length
+          ? `${summary}. Skipped ${skipped.length}: ${skipped.slice(0, 3).join("; ")}${skipped.length > 3 ? `; +${skipped.length - 3} more` : ""}`
+          : summary
+      );
     };
     reader.readAsText(file);
   };
 
-  const handleConfirmCsvUpload = () => {
+  const handleConfirmCsvUpload = async () => {
     if (csvPreview.length === 0) return;
-    const count = bulkAddStudents(csvPreview);
-    setUploadStatus(`Successfully enrolled ${count} students in bulk!`);
-    setTimeout(() => {
-      setIsCsvModalOpen(false);
-      setCsvFile(null);
-      setCsvPreview([]);
-      setUploadStatus(null);
-    }, 1500);
+    setCsvBusy(true);
+    const { count, reason } = await bulkAddStudents(csvPreview);
+    setCsvBusy(false);
+    // The banner above the roster carries the result after this modal closes, so
+    // a batch that never reached the school's records is not read as one that did.
+    setCsvNotice(
+      reason
+        ? {
+            tone: "warn",
+            text: `${count} pupil${count === 1 ? "" : "s"} were put on this browser's list, but ${reason}. Fix the cause and enroll them again — do not print cards for pupils the school has not accepted.`,
+          }
+        : {
+            tone: "good",
+            text: `${count} pupil${count === 1 ? "" : "s"} enrolled and filed on the school's records.`,
+          }
+    );
+    setIsCsvModalOpen(false);
+    setCsvFile(null);
+    setCsvPreview([]);
+    setUploadStatus(null);
   };
 
   // Export filtered or full roster to CSV
@@ -215,7 +317,10 @@ export default function StudentsPage() {
             </button>
 
             <button
-              onClick={() => setIsModalOpen(true)}
+              onClick={() => {
+                setEnrolError(null);
+                setIsModalOpen(true);
+              }}
               className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
@@ -223,6 +328,21 @@ export default function StudentsPage() {
             </button>
           </div>
         </div>
+
+        {csvNotice && (
+          <div
+            className={`p-3.5 rounded-xl border text-[11px] font-semibold flex items-start justify-between gap-3 ${
+              csvNotice.tone === "warn"
+                ? "border-amber-300 bg-amber-50 text-amber-900"
+                : "border-emerald-300 bg-emerald-50 text-emerald-900"
+            }`}
+          >
+            <span>{csvNotice.text}</span>
+            <button onClick={() => setCsvNotice(null)} className="font-bold cursor-pointer">
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Filter Controls */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
@@ -380,6 +500,13 @@ export default function StudentsPage() {
                     <p className="text-[11px] text-indigo-800 mt-0.5">
                       <code className="font-mono bg-white/70 px-1 py-0.5 rounded">Full Name</code>, <code className="font-mono bg-white/70 px-1 py-0.5 rounded">Class (e.g. Pre-Play Class, Nursery 1, Primary 5, JSS 1, SS 2)</code>, <code className="font-mono bg-white/70 px-1 py-0.5 rounded">Gender</code>, <code className="font-mono bg-white/70 px-1 py-0.5 rounded">Guardian Name</code>, <code className="font-mono bg-white/70 px-1 py-0.5 rounded">Guardian Phone</code>, <code className="font-mono bg-white/70 px-1 py-0.5 rounded">Sports House</code>, <code className="font-mono bg-white/70 px-1 py-0.5 rounded">Fee Status</code>.
                     </p>
+                    <p className="text-[11px] text-indigo-800 mt-1">
+                      A row is skipped and listed here — before anything is filed — when it has no name, no class, a
+                      gender other than <code className="font-mono bg-white/70 px-1 py-0.5 rounded">Male</code> or
+                      <code className="font-mono bg-white/70 px-1 py-0.5 rounded">Female</code>, or a house the school
+                      does not have. The portal no longer files a blank as a girl, a missing class as Primary 1, or an
+                      unknown house as Sapphire.
+                    </p>
                   </div>
                 </div>
 
@@ -456,11 +583,11 @@ export default function StudentsPage() {
                     </button>
                     <button
                       type="button"
-                      disabled={csvPreview.length === 0}
+                      disabled={csvPreview.length === 0 || csvBusy}
                       onClick={handleConfirmCsvUpload}
                       className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold shadow-xs cursor-pointer"
                     >
-                      Import {csvPreview.length} Students Now
+                      {csvBusy ? "Enrolling…" : `Import ${csvPreview.length} Students Now`}
                     </button>
                   </div>
                 </div>
@@ -502,6 +629,11 @@ export default function StudentsPage() {
                       onChange={(e) => setNewClass(e.target.value)}
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-800"
                     >
+                      <option value="" disabled>
+                        {availableClasses.length > 0
+                          ? "Choose the class arm"
+                          : "No class arm exists yet — create one in Setup"}
+                      </option>
                       {availableClasses.map((cls) => (
                         <option key={cls} value={cls}>
                           {cls}
@@ -514,9 +646,12 @@ export default function StudentsPage() {
                     <label className="block font-semibold text-slate-700 mb-1">Gender</label>
                     <select
                       value={newGender}
-                      onChange={(e) => setNewGender(e.target.value as any)}
+                      onChange={(e) => setNewGender(e.target.value)}
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-800"
                     >
+                      <option value="" disabled>
+                        Say whether the pupil is a boy or a girl
+                      </option>
                       <option value="Female">Female</option>
                       <option value="Male">Male</option>
                     </select>
@@ -553,9 +688,12 @@ export default function StudentsPage() {
                   <label className="block font-semibold text-slate-700 mb-1">Sports House Allocation</label>
                   <select
                     value={newHouse}
-                    onChange={(e) => setNewHouse(e.target.value as any)}
+                    onChange={(e) => setNewHouse(e.target.value as StudentRecord["house"])}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-800"
                   >
+                    <option value="" disabled>
+                      Which house is this pupil in?
+                    </option>
                     <option value="Sapphire (Blue)">Sapphire (Blue)</option>
                     <option value="Ruby (Red)">Ruby (Red)</option>
                     <option value="Emerald (Green)">Emerald (Green)</option>
@@ -563,19 +701,30 @@ export default function StudentsPage() {
                   </select>
                 </div>
 
+                {enrolError && (
+                  <div className="p-3 rounded-xl border border-red-300 bg-red-50 text-[11px] text-red-900 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <span className="font-semibold">{enrolError}</span>
+                  </div>
+                )}
+
                 <div className="flex justify-end gap-2 pt-3">
                   <button
                     type="button"
-                    onClick={() => setIsModalOpen(false)}
+                    onClick={() => {
+                      setIsModalOpen(false);
+                      setEnrolError(null);
+                    }}
                     className="px-3.5 py-2 rounded-lg bg-slate-100 text-slate-700 font-semibold"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer"
+                    disabled={enrolBusy}
+                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold shadow-xs cursor-pointer"
                   >
-                    Enroll Student
+                    {enrolBusy ? "Enrolling…" : "Enroll Student"}
                   </button>
                 </div>
               </form>

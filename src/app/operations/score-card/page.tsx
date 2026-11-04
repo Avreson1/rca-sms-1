@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
@@ -18,6 +18,8 @@ import {
   StudentRecord,
   PsychomotorRecord,
 } from "@/lib/realtime-store";
+import { fetchPublicationsFromSupabase } from "@/lib/supabase/db";
+import { useSchoolConfig, sessionOptions, REPORT_TERMS, type ReportTerm } from "@/lib/school-config";
 import {
   GraduationCap,
   Printer,
@@ -177,8 +179,6 @@ const THEME_STYLES = {
   },
 };
 
-const REPORT_TERMS = ["First Term", "Second Term", "Third Term"] as const;
-
 export default function ScoreCardPage() {
   const { students } = useRealtimeStudents();
   const { classes } = useRealtimeClasses();
@@ -191,6 +191,16 @@ export default function ScoreCardPage() {
   const isParentOrStudent = currentRole === "STUDENT_PARENT";
   const isTeacher = currentRole === "TEACHER";
   const isSuperOrExam = currentRole === "SUPER_ADMIN" || currentRole === "EXAM_OFFICER";
+
+  // What prints at the top of the card. The school's own record wins; the values
+  // compiled into the portal are only what a device shows before that record
+  // arrives, or when it cannot be reached.
+  const { config: school } = useSchoolConfig();
+  const schoolName = school?.school_name || SCHOOL_INFO.name;
+  const schoolAddress = school?.address || SCHOOL_INFO.address;
+  const schoolEmail = school?.email || SCHOOL_INFO.email;
+  const schoolPhone = school?.phone || SCHOOL_INFO.phone;
+  const schoolMotto = school?.motto || SCHOOL_INFO.motto;
 
   // A parent's children are decided by the `guardian_students` rows behind their
   // login: /api/students already returns only those pupils. Matching a ward by
@@ -212,8 +222,10 @@ export default function ScoreCardPage() {
   }, [isParentOrStudent, isTeacher, parentWard, currentUser, classes]);
 
   // Selector Controls
-  const [selectedSession, setSelectedSession] = useState<string>(SCHOOL_INFO.currentSession || "2025/2026");
-  const [selectedTerm, setSelectedTerm] = useState<"First Term" | "Second Term" | "Third Term">("First Term");
+  const schoolSession = school?.current_session?.trim() || SCHOOL_INFO.currentSession;
+  const sessionList = sessionOptions(schoolSession);
+  const [selectedSession, setSelectedSession] = useState<string>(schoolSession);
+  const [selectedTerm, setSelectedTerm] = useState<ReportTerm>("First Term");
   const [selectedClass, setSelectedClass] = useState<string>(
     isParentOrStudent && parentWard
       ? parentWard.className
@@ -224,6 +236,20 @@ export default function ScoreCardPage() {
   const [selectedStudentId, setSelectedStudentId] = useState<string>(
     isParentOrStudent && parentWard ? parentWard.id : ""
   );
+
+  // The card opens on the term the school's own record says it is in. It used to
+  // open on "First Term" whatever term the office was actually working in,
+  // because that was the value typed into the page. Applied once, so a teacher
+  // who picks a different term keeps their pick.
+  const openedOnCurrentTerm = useRef(false);
+  useEffect(() => {
+    if (!school || openedOnCurrentTerm.current) return;
+    openedOnCurrentTerm.current = true;
+    setSelectedSession(schoolSession);
+    if ((REPORT_TERMS as readonly string[]).includes(school.current_term)) {
+      setSelectedTerm(school.current_term as ReportTerm);
+    }
+  }, [school, schoolSession]);
 
   // The marks on a card are the ones filed on the school's own tables, read for
   // the class on screen. All three terms come in one request because the
@@ -276,6 +302,47 @@ export default function ScoreCardPage() {
     return classStudents[0] || null;
   }, [classStudents, selectedStudentId, isParentOrStudent, parentWards]);
 
+  // Whether the exam office has released this class's results.
+  //
+  // The school's own access rules say a parent may "view published report
+  // cards", and until now nothing on a parent's screen consulted any
+  // publication state — the office could withhold a class and the family would
+  // still open the term's marks. Staff keep the full view, because the office
+  // has to be able to read a card before it releases it.
+  const [parentRelease, setParentRelease] = useState<{
+    status: "released" | "checking" | "locked" | "unreadable" | "not_needed";
+    reason?: string;
+  }>({ status: "not_needed" });
+
+  const wardClassName = isParentOrStudent ? currentStudent?.className ?? "" : "";
+
+  useEffect(() => {
+    if (!isParentOrStudent) {
+      setParentRelease({ status: "not_needed" });
+      return;
+    }
+    if (!wardClassName) {
+      setParentRelease({ status: "unreadable", reason: "no pupil is linked to this login yet" });
+      return;
+    }
+
+    setParentRelease({ status: "checking" });
+    let cancelled = false;
+    void fetchPublicationsFromSupabase(selectedSession, selectedTerm).then(({ rows, reason }) => {
+      if (cancelled) return;
+      if (reason) {
+        setParentRelease({ status: "unreadable", reason });
+        return;
+      }
+      const released = (rows ?? []).some((row) => row.class_name === wardClassName);
+      setParentRelease({ status: released ? "released" : "locked" });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isParentOrStudent, wardClassName, selectedSession, selectedTerm]);
+
   // Auto-adapt template layout when class changes
   const activeTierKey = useMemo(() => {
     const lower = (selectedClass || "").toLowerCase();
@@ -285,6 +352,11 @@ export default function ScoreCardPage() {
     if (lower.includes("ss") || lower.includes("senior")) return "SENIOR_SECONDARY";
     return "PRIMARY";
   }, [selectedClass]);
+
+  // The card layout has its own name for a senior arm, but the school's grading
+  // scales are filed under SECONDARY. Looking the scale up by the layout's word
+  // printed a senior card with no grade key at all.
+  const activeGradeTierKey = activeTierKey === "SENIOR_SECONDARY" ? "SECONDARY" : activeTierKey;
 
   // Auto-switch default layout based on class tier unless manually changed
   useEffect(() => {
@@ -450,13 +522,13 @@ export default function ScoreCardPage() {
           </div>
 
           <h2 className="text-xl md:text-2xl font-black text-slate-900 uppercase tracking-tight">
-            {SCHOOL_INFO.name}
+            {schoolName}
           </h2>
           <p className="text-xs font-semibold text-slate-600 tracking-wide">
-            {SCHOOL_INFO.address} • Email: {SCHOOL_INFO.email} • Tel: {SCHOOL_INFO.phone}
+            {schoolAddress} • Email: {schoolEmail} • Tel: {schoolPhone}
           </p>
           <p className="text-[11px] font-bold text-amber-700 italic">
-            &quot;{SCHOOL_INFO.motto}&quot; • Terminal Academic Dossier &amp; Character Assessment
+            &quot;{schoolMotto}&quot; • Terminal Academic Dossier &amp; Character Assessment
           </p>
 
           <div
@@ -711,22 +783,22 @@ export default function ScoreCardPage() {
             </div>
             <div>
               <span className="text-[10px] uppercase font-bold text-slate-400 block">Next Term Resumption</span>
-              <strong className="text-slate-900 font-bold text-xs">{psy.nextTermBegins || newsletter.nextTermResumption}</strong>
+              <strong className="text-slate-900 font-bold text-xs">{psy.nextTermBegins || newsletter.nextTermResumption || "To be announced"}</strong>
             </div>
           </div>
         )}
 
         {/* The scale belongs to this class's tier. One fixed "Pass Mark: 45% (D)" key used
             to print on every card, including nursery, whatever the school had configured. */}
-        {(gradingTiers[activeTierKey]?.brackets?.length ?? 0) > 0 && (
+        {(gradingTiers[activeGradeTierKey]?.brackets?.length ?? 0) > 0 && (
           <div className="border border-slate-200 rounded-xl p-3 bg-slate-50/70 text-[11px] space-y-1.5">
             <div className="flex items-center justify-between border-b border-slate-200 pb-1">
               <span className="font-extrabold text-[10px] uppercase tracking-wider text-slate-700">
-                Grading criteria &mdash; {gradingTiers[activeTierKey].tierTitle}
+                Grading criteria &mdash; {gradingTiers[activeGradeTierKey].tierTitle}
               </span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-[10px]">
-              {gradingTiers[activeTierKey].brackets.map((bracket) => (
+              {gradingTiers[activeGradeTierKey].brackets.map((bracket) => (
                 <div key={bracket.grade} className="bg-white p-1 rounded border border-blue-200">
                   <strong className="text-[#0000FF] block font-black">
                     {bracket.grade}: {bracket.minScore} - {bracket.maxScore}%
@@ -747,7 +819,9 @@ export default function ScoreCardPage() {
               <div>
                 <span className="text-[10px] font-bold uppercase text-slate-400 block">Form Master&apos;s Appraisal</span>
                 <p className="font-semibold text-slate-800 italic mt-0.5 text-[11px] leading-relaxed">
-                  &quot;{psy.formTeacherRemark}&quot;
+                  {psy.formTeacherRemark?.trim()
+                    ? `"${psy.formTeacherRemark}"`
+                    : "Not written by the form teacher for this term."}
                 </p>
               </div>
               <div className="pt-5 border-t border-slate-300 w-48 text-center text-slate-500 font-mono text-[10px]">
@@ -759,7 +833,9 @@ export default function ScoreCardPage() {
               <div>
                 <span className="text-[10px] font-bold uppercase text-slate-400 block">Principal / Director&apos;s Endorsement</span>
                 <p className="font-semibold text-slate-800 italic mt-0.5 text-[11px] leading-relaxed">
-                  &quot;{psy.principalRemark}&quot;
+                  {psy.principalRemark?.trim()
+                    ? `"${psy.principalRemark}"`
+                    : "Endorsement withheld — the Head of School has not written one for this term."}
                 </p>
               </div>
               <div className="pt-5 border-t border-slate-300 w-48 text-center text-slate-500 font-mono text-[10px]">
@@ -774,7 +850,7 @@ export default function ScoreCardPage() {
           <div className="pt-6 border-t-4 border-slate-300 space-y-4 print:break-before-page">
             <div className={`${theme.headerBg} text-white p-4 rounded-xl text-center space-y-1`}>
               <span className={`text-[10px] uppercase font-extrabold tracking-widest ${theme.accentText}`}>
-                Royal Crown Academy • Terminal Circular
+                {schoolName} • Terminal Circular
               </span>
               <h3 className="text-base font-black tracking-tight uppercase">
                 End-of-Term Newsletter &amp; Important Advisories
@@ -926,7 +1002,16 @@ export default function ScoreCardPage() {
         </div>
 
         {/* Parent / Student RBAC Banner */}
-        {isParentOrStudent && (
+        {isParentOrStudent && !parentWard ? (
+          <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 shadow-xs text-xs text-amber-900 flex items-start gap-3 print:hidden">
+            <Lock className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
+            <p>
+              No pupil on the school&apos;s records is linked to this login yet, so there is no card to open. The
+              office links a parent login to its children in Settings → User Access; until it does, this screen has
+              nothing to show — and it will not show a name or a mark that nobody entered.
+            </p>
+          </div>
+        ) : isParentOrStudent && parentWard ? (
           <div className="bg-sky-50 border border-sky-200 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 print:hidden">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center font-bold shadow-sm">
@@ -934,25 +1019,25 @@ export default function ScoreCardPage() {
               </div>
               <div>
                 <p className="text-xs font-bold text-slate-900">
-                  Ward Record: <strong className="text-sky-900">{parentWard?.fullName || "Enrolled Student"}</strong> ({parentWard?.admissionNo || "RCA/2026/001"})
+                  Ward Record: <strong className="text-sky-900">{parentWard.fullName}</strong> ({parentWard.admissionNo})
                 </p>
                 <p className="text-[11px] text-slate-600">
-                  Class: <strong>{parentWard?.className || "Primary 1"}</strong> • House: <strong>{parentWard?.house || "Sapphire"}</strong>
+                  Class: <strong>{parentWard.className}</strong> • House: <strong>{parentWard.house || "Not recorded"}</strong>
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
               <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
-                parentWard?.feeStatus === "Fully Cleared"
+                parentWard.feeStatus === "Fully Cleared"
                   ? "bg-emerald-100 text-emerald-800 border-emerald-300"
                   : "bg-amber-100 text-amber-800 border-amber-300"
               }`}>
-                Fee Status: {parentWard?.feeStatus || "Fully Cleared"}
+                Fee Status: {parentWard.feeStatus || "Not recorded"}
               </span>
             </div>
           </div>
-        )}
+        ) : null}
 
         {/* Global Control & Multi-Selector Menu */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4 print:hidden">
@@ -967,10 +1052,19 @@ export default function ScoreCardPage() {
                 onChange={(e) => setSelectedSession(e.target.value)}
                 className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-[#0000FF] focus:outline-hidden"
               >
-                <option value="2025/2026">2025/2026 Session</option>
-                <option value="2024/2025">2024/2025 Session</option>
-                <option value="2026/2027">2026/2027 Session</option>
+                {sessionList.map((option) => (
+                  <option key={option} value={option}>
+                    {option} Session
+                  </option>
+                ))}
+                {!sessionList.includes(selectedSession) && (
+                  <option value={selectedSession}>{selectedSession} Session</option>
+                )}
               </select>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Centred on {schoolSession}, the session the school is in. A session with no filed marks shows an empty
+                card.
+              </p>
             </div>
 
             <div>
@@ -979,12 +1073,14 @@ export default function ScoreCardPage() {
               </label>
               <select
                 value={selectedTerm}
-                onChange={(e) => setSelectedTerm(e.target.value as any)}
+                onChange={(e) => setSelectedTerm(e.target.value as ReportTerm)}
                 className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-[#0000FF] focus:outline-hidden"
               >
-                <option value="First Term">First Term</option>
-                <option value="Second Term">Second Term</option>
-                <option value="Third Term">Third Term (Annual Promotion)</option>
+                {REPORT_TERMS.map((term) => (
+                  <option key={term} value={term}>
+                    {term === "Third Term" ? "Third Term (Annual Promotion)" : term}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -1156,6 +1252,33 @@ export default function ScoreCardPage() {
                 </Link>
               </div>
             )}
+          </div>
+        ) : isParentOrStudent && parentRelease.status !== "released" ? (
+          <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center shadow-xs max-w-xl mx-auto">
+            <Lock className="w-9 h-9 text-slate-400 mx-auto mb-3" />
+            <h3 className="text-sm font-bold text-slate-900">
+              {parentRelease.status === "checking"
+                ? "Checking whether this result is released"
+                : parentRelease.status === "locked"
+                ? "This report card has not been released yet"
+                : "The release could not be confirmed"}
+            </h3>
+            <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+              {parentRelease.status === "checking" ? (
+                <>Asking the school records whether {wardClassName} is out for {selectedTerm}.</>
+              ) : parentRelease.status === "locked" ? (
+                <>
+                  The exam office has not published {selectedClass} results for {selectedTerm} ({selectedSession}). The
+                  marks are already on the school&apos;s records; the card appears here as soon as they are released.
+                </>
+              ) : (
+                <>
+                  The portal could not check whether this term has been released
+                  {parentRelease.reason ? `: ${parentRelease.reason}` : ""}. Rather than show you a card that may still
+                  be under approval, nothing is shown. Try again shortly, or ask the school office.
+                </>
+              )}
+            </p>
           </div>
         ) : isBatchPrintMode && !isParentOrStudent ? (
           <div className="space-y-8">

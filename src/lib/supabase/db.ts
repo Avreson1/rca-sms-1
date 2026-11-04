@@ -1,8 +1,8 @@
-import { SCHOOL_INFO } from "../constants";
 import {
   StudentRecord,
   StaffRecord,
   InvoiceRecord,
+  FeeComponentRecord,
   SubjectScoreRecord,
   TierGradingConfig,
 } from "../realtime-store";
@@ -304,6 +304,115 @@ export async function insertStaffToSupabase(
   }, `${staff.fullName}'s staff record`);
 }
 
+/**
+ * Removes a staff record from the school's records.
+ *
+ * The register used to filter this browser's list, which looked like a
+ * removal until the page was reloaded and the member was back — with their
+ * login still working. The server answers with a warning when it took the
+ * record but could not suspend the login, and that has to reach the office.
+ */
+export async function deleteStaffFromSupabase(
+  staffId: string
+): Promise<{ ok: boolean; reason: string | null; warning: string | null }> {
+  try {
+    const response = await fetch("/api/staff", {
+      method: "DELETE",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ staffId }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      success?: boolean;
+      error?: string;
+      data?: { loginSuspended?: boolean; loginWarning?: string };
+    } | null;
+
+    if (!response.ok || !payload?.success) {
+      const reason = await serverReason(response);
+      reportSyncFailure(`The staff member was NOT removed from the school records: ${reason}.`);
+      return { ok: false, reason, warning: null };
+    }
+
+    const warning = payload.data?.loginWarning ?? null;
+    reportSyncSaved(
+      payload.data?.loginSuspended
+        ? "Staff record removed from the school records and its login suspended."
+        : "Staff record removed from the school records."
+    );
+    return { ok: true, reason: null, warning };
+  } catch (error) {
+    console.warn("API /api/staff delete failed", error);
+    const reason = "the portal server did not answer";
+    reportSyncFailure(`The staff member was NOT removed from the school records: ${reason}.`);
+    return { ok: false, reason, warning: null };
+  }
+}
+
+export interface BulkStaffResult {
+  saved: number;
+  /** The one-time credentials the server issued, named so the slip can be read out. */
+  logins: (StaffLogin & { fullName: string })[];
+  failures: string[];
+}
+
+/**
+ * Files a CSV import on the server, one member at a time.
+ *
+ * The import used to write straight into this browser's list and announce every
+ * row as onboarded, so none of them reached the school's records and no login
+ * was ever issued. Going one at a time is what lets the answer name the people
+ * who were refused — a duplicate username in a 40-row file is not something the
+ * office can find by eye.
+ */
+export async function bulkInsertStaffOnServer(members: StaffRecord[]): Promise<BulkStaffResult> {
+  const result: BulkStaffResult = { saved: 0, logins: [], failures: [] };
+
+  for (const member of members) {
+    const row = {
+      staff_id: member.staffId,
+      full_name: member.fullName,
+      username: member.username,
+      email: member.email,
+      phone: member.phone,
+      role: member.role,
+      assigned_subjects: member.assignedSubjects,
+      assigned_class: member.assignedClass,
+      is_form_master: member.isFormMaster,
+      email_verified: member.emailVerified,
+      status: member.status,
+    };
+
+    try {
+      const response = await fetch("/api/staff", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(row),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        success?: boolean;
+        error?: string;
+        login?: StaffLogin | null;
+        loginError?: string | null;
+      } | null;
+
+      if (response.ok && payload?.success) {
+        result.saved += 1;
+        if (payload.login) result.logins.push({ ...payload.login, fullName: member.fullName });
+        if (payload.loginError) result.failures.push(`${member.fullName}: ${payload.loginError}`);
+      } else {
+        result.failures.push(`${member.fullName}: ${await serverReason(response)}`);
+      }
+    } catch {
+      result.failures.push(`${member.fullName}: the portal server did not answer`);
+    }
+  }
+
+  return result;
+}
+
 // ============================================================================
 // 3. INVOICES SERVICE
 // ============================================================================
@@ -332,8 +441,11 @@ function toInvoiceRow(invoice: InvoiceRecord) {
     admission_no: invoice.admissionNo,
     student_name: invoice.studentName,
     class_name: invoice.className,
-    session: invoice.session || SCHOOL_INFO.currentSession,
-    term: invoice.term || SCHOOL_INFO.currentTerm,
+    // Left empty rather than guessed at: the server files an undated invoice
+    // under the session and term the school says it is in, instead of the term
+    // this device last managed to load.
+    session: invoice.session?.trim() || null,
+    term: invoice.term?.trim() || null,
     amount_billed: invoice.amountBilled,
     amount_paid: invoice.amountPaid,
     payment_status: invoice.paymentStatus,
@@ -342,17 +454,345 @@ function toInvoiceRow(invoice: InvoiceRecord) {
 }
 
 /**
- * Saves one invoice, or the payment recorded against it. The server resolves
- * the student from the admission number, so a fee recorded here is the school's
- * record of that fee and not just this device's.
+ * Files a run of generated invoices.
+ *
+ * Returns the reason the school's records said no, or null when they were
+ * filed. A term's worth of bills is the one import where "it worked on my
+ * browser" is not an acceptable answer: the bursar has to know whether the
+ * amounts went out or stayed on the machine.
  */
-export async function saveInvoiceToSupabase(invoice: InvoiceRecord): Promise<boolean> {
-  return requestOk("/api/invoices", toInvoiceRow(invoice), `the invoice for ${invoice.studentName}`);
+export async function bulkSaveInvoicesToSupabase(invoices: InvoiceRecord[]): Promise<string | null> {
+  if (invoices.length === 0) return "no invoice was generated";
+
+  const reason = await postQuiet("/api/invoices", invoices.map(toInvoiceRow));
+  if (reason) {
+    reportSyncFailure(`${invoices.length} invoices were NOT filed on the school's records: ${reason}.`);
+    return reason;
+  }
+
+  reportSyncSaved(`${invoices.length} invoices filed on the school's records.`);
+  return null;
 }
 
-export async function bulkSaveInvoicesToSupabase(invoices: InvoiceRecord[]): Promise<boolean> {
-  if (invoices.length === 0) return false;
-  return requestOk("/api/invoices", invoices.map(toInvoiceRow), `${invoices.length} invoices`);
+// ============================================================================
+// 4. PAYMENT RECEIPTS
+// ============================================================================
+
+export interface ReceiptDetails {
+  ref: string;
+  amount: number;
+  channel: string;
+  bankReference: string;
+  receivedBy: string;
+  issuedAt: string;
+}
+
+export interface FiledPayment {
+  receipt: ReceiptDetails | null;
+  invoice: {
+    id: string;
+    amountPaid: number;
+    amountBilled: number;
+    paymentStatus: string;
+    lastPaymentDate: string;
+  };
+}
+
+/**
+ * Takes a payment on the school's records: one call files the receipt and moves
+ * the balance, and the receipt number comes back to be printed for the family.
+ */
+export async function recordPaymentOnServer(input: {
+  invoiceNo: string;
+  amount: number;
+  paymentChannel: string;
+  bankReference: string;
+}): Promise<{ ok: boolean; filed: FiledPayment | null; reason: string | null }> {
+  try {
+    const response = await fetch("/api/payments", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        invoice_no: input.invoiceNo,
+        amount: input.amount,
+        payment_channel: input.paymentChannel,
+        bank_reference: input.bankReference,
+      }),
+    });
+
+    if (!response.ok) {
+      const reason = await serverReason(response);
+      reportSyncFailure(`The payment of ₦${input.amount.toLocaleString()} was NOT filed: ${reason}.`);
+      return { ok: false, filed: null, reason };
+    }
+
+    const payload = (await response.json().catch(() => null)) as {
+      data?: {
+        receipt?: {
+          ref?: string;
+          amount?: number | string;
+          payment_channel?: string;
+          bank_reference?: string;
+          received_by?: string;
+          created_at?: string;
+        } | null;
+        invoice?: {
+          id?: string;
+          amount_paid?: number | string;
+          amount_billed?: number | string;
+          payment_status?: string;
+          last_payment_date?: string;
+        };
+      };
+    } | null;
+
+    const invoice = payload?.data?.invoice;
+    if (!invoice?.id) {
+      const reason = "the server accepted the payment but sent no updated balance back";
+      reportSyncFailure(`The payment of ₦${input.amount.toLocaleString()} is not shown as received: ${reason}.`);
+      return { ok: false, filed: null, reason };
+    }
+
+    const receipt = payload?.data?.receipt;
+    reportSyncSaved(
+      receipt?.ref
+        ? `Payment filed and receipt ${receipt.ref} issued.`
+        : "Payment filed on the school's records."
+    );
+
+    return {
+      ok: true,
+      filed: {
+        receipt: receipt
+          ? {
+              ref: receipt.ref ?? "",
+              amount: Number(receipt.amount) || input.amount,
+              channel: receipt.payment_channel ?? input.paymentChannel,
+              bankReference: receipt.bank_reference ?? input.bankReference,
+              receivedBy: receipt.received_by ?? "",
+              issuedAt: receipt.created_at ?? new Date().toISOString(),
+            }
+          : null,
+        invoice: {
+          id: invoice.id,
+          amountPaid: Number(invoice.amount_paid) || 0,
+          amountBilled: Number(invoice.amount_billed) || 0,
+          paymentStatus: invoice.payment_status ?? "Partial",
+          lastPaymentDate: invoice.last_payment_date ?? "",
+        },
+      },
+      reason: null,
+    };
+  } catch (error) {
+    console.warn("API /api/payments write failed", error);
+    const reason = "the portal server did not answer";
+    reportSyncFailure(`The payment of ₦${input.amount.toLocaleString()} was NOT filed: ${reason}.`);
+    return { ok: false, filed: null, reason };
+  }
+}
+
+interface ReceiptRow {
+  ref: string;
+  amount: number | string | null;
+  payment_channel: string | null;
+  fee_type: string | null;
+  bank_reference: string | null;
+  received_by: string | null;
+  created_at: string | null;
+  status: string | null;
+  session: string | null;
+  term: string | null;
+  admission_no: string | null;
+  student_name: string | null;
+  invoices: { invoice_no: string | null; class_name: string | null } | null;
+}
+
+/**
+ * One payment as the school filed it: the receipt number it issued, the money it
+ * took, and who signed for it.
+ */
+export interface FiledReceipt {
+  invoiceNo: string;
+  feeType: string;
+  studentName: string;
+  admissionNo: string;
+  className: string;
+  status: string;
+  session: string;
+  term: string;
+  receipt: ReceiptDetails;
+}
+
+function toFiledReceipt(row: ReceiptRow): FiledReceipt {
+  return {
+    invoiceNo: row.invoices?.invoice_no ?? "",
+    feeType: row.fee_type ?? "",
+    studentName: row.student_name ?? "",
+    admissionNo: row.admission_no ?? "",
+    className: row.invoices?.class_name ?? "",
+    status: row.status ?? "",
+    session: row.session ?? "",
+    term: row.term ?? "",
+    receipt: {
+      ref: row.ref,
+      amount: Number(row.amount) || 0,
+      channel: row.payment_channel ?? "",
+      bankReference: row.bank_reference ?? "",
+      receivedBy: row.received_by ?? "",
+      issuedAt: row.created_at ?? "",
+    },
+  };
+}
+
+async function readReceipts(query: string): Promise<{ receipts: FiledReceipt[]; reason: string | null }> {
+  try {
+    const response = await fetch(`/api/payments?${query}`, {
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!response.ok) return { receipts: [], reason: await serverReason(response) };
+
+    const payload = (await response.json().catch(() => null)) as { data?: ReceiptRow[] } | null;
+    return { receipts: (payload?.data ?? []).map(toFiledReceipt), reason: null };
+  } catch (error) {
+    console.warn("API /api/payments read failed", error);
+    return { receipts: [], reason: "the portal server did not answer" };
+  }
+}
+
+/**
+ * Receipts already filed for one pupil, newest first.
+ *
+ * A family that lost its slip and a bursary checking what it handed out both
+ * need the number the server issued, so a reprint shows what was actually
+ * received rather than a slip rebuilt on the spot.
+ */
+export function fetchFiledReceipts(admissionNo: string) {
+  return readReceipts(`admission_no=${encodeURIComponent(admissionNo)}`);
+}
+
+/**
+ * The bursary ledger for one session and term.
+ *
+ * Every row is a payment somebody filed; nothing here is derived from an
+ * invoice's balance, which is how the old version of this screen came to
+ * "confirm" money that was never received.
+ */
+export function fetchReceiptLedger(scope: { session?: string; term?: string } = {}) {
+  const params = new URLSearchParams();
+  if (scope.session) params.set("session", scope.session);
+  if (scope.term) params.set("term", scope.term);
+  return readReceipts(params.toString());
+}
+
+// ============================================================================
+// 4A. THE FEE SCHEDULE
+// ============================================================================
+// The amounts typed here used to live only in this browser, while the total
+// they add up to was written into the invoices table and sent to families. The
+// schedule an invoice was priced from has to be on the school's records too, or
+// no printed bill can be checked by anybody who did not type it.
+
+interface FeeComponentRow {
+  id: string;
+  name: string;
+  category: string;
+  applicable_class: string;
+  amount: number | string | null;
+  is_mandatory: boolean | null;
+  session: string | null;
+  term: string | null;
+}
+
+function toFeeRecord(row: FeeComponentRow): FeeComponentRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    category: row.category as FeeComponentRecord["category"],
+    applicableClass: row.applicable_class,
+    amount: Number(row.amount) || 0,
+    isMandatory: row.is_mandatory !== false,
+    session: row.session ?? undefined,
+    term: row.term ?? undefined,
+  };
+}
+
+export async function fetchFeeComponentsFromSupabase(): Promise<FeeComponentRecord[] | null> {
+  const rows = await requestJson<FeeComponentRow[]>("/api/fees", "The fee schedule");
+  if (!rows) return null;
+  return rows.map(toFeeRecord);
+}
+
+/**
+ * Files fee components on the school's schedule.
+ *
+ * The server answers with the rows as it stored them, including the session and
+ * term it filed them under — which is the school's current term, not whatever
+ * term this device last happened to load.
+ */
+export async function saveFeeComponentsOnServer(
+  components: FeeComponentRecord[]
+): Promise<{ saved: FeeComponentRecord[]; reason: string | null }> {
+  try {
+    const response = await fetch("/api/fees", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        components.map((fee) => ({
+          name: fee.name,
+          category: fee.category,
+          applicable_class: fee.applicableClass,
+          amount: fee.amount,
+          is_mandatory: fee.isMandatory,
+        }))
+      ),
+    });
+
+    if (!response.ok) {
+      const reason = await serverReason(response);
+      reportSyncFailure(`The fee schedule was NOT saved to the school records: ${reason}.`);
+      return { saved: [], reason };
+    }
+
+    const payload = (await response.json().catch(() => null)) as { data?: FeeComponentRow[] } | null;
+    const saved = (payload?.data ?? []).map(toFeeRecord);
+    reportSyncSaved(`${saved.length} fee item${saved.length === 1 ? "" : "s"} saved to the school's schedule.`);
+    return { saved, reason: null };
+  } catch (error) {
+    console.warn("API /api/fees write failed", error);
+    const reason = "the portal server did not answer";
+    reportSyncFailure(`The fee schedule was NOT saved to the school records: ${reason}.`);
+    return { saved: [], reason };
+  }
+}
+
+/** Removes one item from the school's schedule, and says why if it could not. */
+export async function removeFeeComponentOnServer(id: string): Promise<{ ok: boolean; reason: string | null }> {
+  try {
+    const response = await fetch("/api/fees", {
+      method: "DELETE",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [id] }),
+    });
+
+    if (!response.ok) {
+      const reason = await serverReason(response);
+      reportSyncFailure(`The fee item was NOT removed from the school's schedule: ${reason}.`);
+      return { ok: false, reason };
+    }
+
+    reportSyncSaved("Fee item removed from the school's schedule. Invoices already printed keep the amount they went out with.");
+    return { ok: true, reason: null };
+  } catch (error) {
+    console.warn("API /api/fees delete failed", error);
+    const reason = "the portal server did not answer";
+    reportSyncFailure(`The fee item was NOT removed from the school's schedule: ${reason}.`);
+    return { ok: false, reason };
+  }
 }
 
 // ============================================================================
@@ -513,4 +953,138 @@ export async function saveGradingTiersToSupabase(
   summary: string
 ): Promise<boolean> {
   return requestOk("/api/grading-tiers", { tiers }, summary);
+}
+
+// ============================================================================
+// 7. SCHOOL SETTINGS, TERM CLOSURE AND RESULT PUBLICATION
+//
+// These three read/write pairs back the screens that used to be a performance:
+// the school's session and term, which terms have been signed off, and which
+// classes have had results released. A page that prints "Published!" or
+// "archived!" has to have been told by the server that the row landed, so every
+// helper here hands the reason for a failure back to the caller instead of
+// swallowing it — the notice bar alone is not enough when a button's label is
+// the claim.
+// ============================================================================
+
+/** Reads a list and keeps "empty" apart from "could not read". */
+async function readList<T>(path: string): Promise<{ rows: T[] | null; reason: string | null }> {
+  try {
+    const response = await fetch(path, { cache: "no-store", headers: { "Content-Type": "application/json" } });
+    if (!response.ok) return { rows: null, reason: await serverReason(response) };
+    const payload = (await response.json()) as { data?: T[] };
+    return { rows: Array.isArray(payload?.data) ? payload.data : [], reason: null };
+  } catch (error) {
+    console.warn(`API ${path} read failed`, error);
+    return { rows: null, reason: "the portal server did not answer" };
+  }
+}
+
+/** One write, returning the server's own sentence when it was refused. */
+async function writeOnce(
+  path: string,
+  method: "POST" | "PUT" | "DELETE",
+  body: unknown
+): Promise<{ ok: boolean; reason: string | null }> {
+  try {
+    const response = await fetch(path, {
+      method,
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) return { ok: false, reason: await serverReason(response) };
+    return { ok: true, reason: null };
+  } catch (error) {
+    console.warn(`API ${path} write failed`, error);
+    return { ok: false, reason: "the portal server did not answer" };
+  }
+}
+
+export interface SchoolConfigRow {
+  school_name: string;
+  short_name: string;
+  motto: string;
+  address: string;
+  email: string;
+  phone: string;
+  website: string;
+  current_session: string;
+  current_term: string;
+  updated_by?: string;
+  updated_at?: string;
+}
+
+/**
+ * The school's own words for which session and term it is in. Returning null
+ * means it was not read: callers keep the values compiled into the portal rather
+ * than showing an empty term, which every mark would then fail to match.
+ */
+export async function fetchSchoolConfigFromSupabase(): Promise<SchoolConfigRow | null> {
+  const { rows, reason } = await readList<SchoolConfigRow>("/api/school-config");
+  if (reason) {
+    reportSyncFailure(`The school's session and term could not be loaded: ${reason}.`);
+    return null;
+  }
+  return rows && rows.length > 0 ? rows[0] : null;
+}
+
+export async function saveSchoolConfigToSupabase(
+  config: SchoolConfigRow
+): Promise<{ ok: boolean; reason: string | null }> {
+  return writeOnce("/api/school-config", "PUT", config);
+}
+
+export interface ClosedTermRow {
+  session: string;
+  term: string;
+  closed_by: string;
+  closed_at: string;
+}
+
+/** Every term the office has signed off, most recent first. */
+export async function fetchClosedTermsFromSupabase(): Promise<{ rows: ClosedTermRow[] | null; reason: string | null }> {
+  return readList<ClosedTermRow>("/api/term-closings");
+}
+
+export async function closeTermOnServer(
+  session: string,
+  term: string
+): Promise<{ ok: boolean; reason: string | null }> {
+  return writeOnce("/api/term-closings", "POST", { session, term });
+}
+
+export async function reopenTermOnServer(
+  session: string,
+  term: string
+): Promise<{ ok: boolean; reason: string | null }> {
+  return writeOnce("/api/term-closings", "DELETE", { session, term });
+}
+
+export interface PublicationRow {
+  session: string;
+  term: string;
+  class_name: string;
+  published_by: string;
+  published_at: string;
+}
+
+/** Which classes are released for one session and term. */
+export async function fetchPublicationsFromSupabase(
+  session: string,
+  term: string
+): Promise<{ rows: PublicationRow[] | null; reason: string | null }> {
+  return readList<PublicationRow>(
+    `/api/result-publications?session=${encodeURIComponent(session)}&term=${encodeURIComponent(term)}`
+  );
+}
+
+/** Releases or withdraws a set of classes; the page only claims what the server confirms. */
+export async function setPublicationsOnServer(
+  session: string,
+  term: string,
+  classes: string[],
+  published: boolean
+): Promise<{ ok: boolean; reason: string | null }> {
+  return writeOnce("/api/result-publications", "POST", { session, term, classes, published });
 }

@@ -157,9 +157,17 @@ export function isRouteAllowed(role: UserRole | string | undefined, pathname: st
 }
 
 /**
- * Checks if a specific action (e.g. DELETE_STUDENT, PUBLISH_RESULTS) is authorized.
+ * The roles that may open a path. A refused screen names them so the visitor
+ * knows whose login to ask for, instead of the "Tier 1 / Tier 2 governance
+ * staff" clearance level it used to invent.
  */
-export function isActionAuthorized(
+export function rolesAllowedForPath(pathname: string): UserRole[] {
+  return (Object.keys(ROLE_ROUTE_ACCESS) as UserRole[]).filter((role) => isRouteAllowed(role, pathname));
+}
+
+/**
+ * Checks if a specific action (e.g. DELETE_STUDENT, PUBLISH_RESULTS) is authorized.
+ */export function isActionAuthorized(
   role: UserRole | string | undefined,
   action: "EDIT_SETUP" | "EDIT_FEES" | "PUBLISH_RESULTS" | "ENTER_CA" | "SYSTEM_PURGE" | "EDIT_STAFF"
 ): boolean {

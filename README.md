@@ -78,20 +78,25 @@ protection rule*: branch name pattern `main`, then tick **Require a pull request
 and **Require status checks to pass** → choose `CI / build`. Until that is set, a broken build can
 be live without anyone deciding it should be.
 
-### 4. The portal is not yet multi-machine
+### 4. The portal is multi-machine for the money and the marks, not yet for the setup
 
-Most setup screens and several operations screens still save to the browser that typed them in, and
-some screens print figures nobody entered. That is the work in
-*Current limitations* and it must be finished before this repository is cloned for live — see the
-`P0`–`P4` order in [DEPLOYMENT.md](DEPLOYMENT.md).
+A clerk's entry now reaches every other machine for: pupils, staff and logins, invoices, the fee
+schedule, payments and receipts, CA and exam marks, the grading scales, the school's own name /
+session / term, published results and closed terms. That was the `P0`–`P2` work and it depends on
+`supabase/operations_state.sql` having been run. Still browser-local: the class list, subject list
+and packages, the calendar, the timetable, the trait list and its ratings, the CA component
+structure, the report theme and newsletter, CBT questions and scores, and Inmail — each of those
+twelve screens now carries a *Kept on this browser* notice so nobody mistakes it for a record. See
+*Current limitations* and the `P0`–`P4` order in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ### Cloning this repository for the live school
 
 Everything that must change, in the order that avoids surprises:
 
-1. New Supabase project → run `supabase/schema.sql`, then `supabase/harden-rls.sql`, then the
-   `GRANT` block in [DEPLOYMENT.md](DEPLOYMENT.md) (privileges belong to the `service_role`, so a
-   new project needs them again).
+1. New Supabase project → run every file in *Database setup* below, in that order, including
+   `supabase/operations_state.sql`. The `GRANT` block at the end of that file is what lets the
+   server touch the new tables (privileges belong to the `service_role`, so a new project needs
+   them again); a clone that skips it shows *"permission denied for table school_config"*.
 2. New Render service from the cloned repository; set `NEXT_PUBLIC_SUPABASE_URL`,
    `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (the `sb_secret_…` form), a fresh
    `AUTH_SESSION_SECRET`, and the `AUTH_SUPER_ADMIN_*` bootstrap account.
@@ -212,6 +217,17 @@ Run these in the Supabase SQL editor, in order:
    staff screen works, but a parent's data calls fail with *The guardian link table could not be
    read* (or, once the table exists but holds no row for them, *No pupil is linked to this login
    yet*).
+6. [`supabase/operations_state.sql`](supabase/operations_state.sql) — **the one that turns the
+   office screens from a performance into a record.** It creates `school_config` (the school's own
+   name, session and term), `result_publications` (which class arms are released), `closed_terms`
+   (what End of Term actually archived) and `fee_components` (the bursar's price list), adds the
+   `bank_reference` / `received_by` / `session` / `term` columns a payment receipt needs, and
+   grants all of them to `service_role`. Safe to re-run. Until you run it, Settings, Publish
+   Results, End of Term, Fee Structure, Invoicing and the Transactions ledger answer
+   *This part of the database is not set up on this project yet. Run supabase/operations_state.sql
+   in the Supabase SQL editor, then try again.* (`503`) — and everything those three office
+   screens used to claim ("Published and authorized results for SS 2!", "successfully archived!
+   Next term initialized.") was a browser-local performance with no record behind it.
 
 `app_accounts` and `guardian_students` deliberately have RLS enabled with **no** policies, so
 only the server (holding the service-role key) can read them. The browser's anon key sees
@@ -235,6 +251,20 @@ Inside that, each data route also checks the role:
 | `/api/accounts` | Super admin | Super admin |
 | `/api/accounts/issue` | — | Super admin (issues or replaces one login by username) |
 | `/api/presence` | any signed-in role | any signed-in role |
+| `/api/grading-tiers` | super admin, exam officer, teacher, bursar, parent, QA tester | super admin, exam officer |
+| `/api/school-config` | every signed-in role | super admin, exam officer |
+| `/api/result-publications` | super admin, exam officer, teacher, parent, QA tester (the screens that gate a card on a release row) | super admin, exam officer |
+| `/api/term-closings` | every signed-in role | super admin, exam officer (`DELETE` re-opens a term) |
+| `/api/fees` | super admin, bursar, QA tester | super admin, bursar |
+| `/api/payments` | receipts for one pupil: super admin, bursar, QA tester, parent (**own children only**); the whole ledger: super admin, bursar, QA tester | super admin, bursar |
+
+`/api/payments` POST is the money path. The receipt is filed first and the invoice balance moved
+second; if the balance cannot be moved, the receipt that was just written is withdrawn and the
+screen says the payment was not recorded — so the school is never left with a paper payment against
+an unchanged debt, nor a reduced debt with no receipt behind it. `ref` (`RCA-PAY-XXXXXXXX`) and
+`received_by` (the username on the signed cookie, never the request body) are made by the server,
+and a payment larger than the outstanding balance is refused with the amount still owed in the
+message, so a fat-fingered amount cannot quietly turn a family's bill into a credit.
 
 `POST /api/staff` does two things in one request: it saves the staff row and asks
 `createAppAccount` for that person's login, returning the generated password in the same response
@@ -286,7 +316,7 @@ Super admin, exam officer, or teacher signs in and sends one student's scores:
   "term": "First Term",
   "scores": [
     { "subject": "Mathematics", "test1": 8, "test2": 7, "project": 9,
-      "midTerm": 6, "exam": 45, "grade": "B2", "remark": "Very good" }
+      "midTerm": 6, "exam": 45 }
   ]
 }
 ```
@@ -296,8 +326,16 @@ schema's CHECK constraints are enforced before anything reaches Supabase (`0–1
 `test1`/`test2`/`project`/`midTerm`, `0–60` for `exam`), a repeated subject in one submission is
 rejected, and `total_score` is never sent because the database computes it. Rows are upserted on
 `(student_id, subject, session, term)`, so re-submitting a subject updates it instead of
-duplicating it. `grade` is required from the caller: the schema would otherwise file the row
-under its `DEFAULT 'F'`, which would book a failed grade against a child who was never graded.
+duplicating it.
+
+**The grade is decided by the server, not the caller.** `tier_grade` and `remark` are worked out
+from the total against the grading scale whose `applicable_classes` covers that pupil's class in
+`grading_tiers`. A `grade` or `remark` in the request body is ignored, because a stale tab, a
+different scale or a tampered body must not be able to file an `A1` against 32/100 — that letter is
+what prints on the paper card the family collects. If the class has no scale on file, or the total
+falls outside every bracket, the whole submission is refused with the reason and nothing is saved;
+the schema's `DEFAULT 'F'` is never reached, so a child is never booked a failed grade for a mark
+that was not filed.
 
 *Update CA* is the caller. It sends one request per pupil for the subject chosen on screen, under
 the session and term in `SCHOOL_INFO`, and skips rows that are still all zero — an untouched pupil
@@ -333,27 +371,41 @@ cannot break the build. Nothing in `rca-sms/` reaches production.
 
 Be aware of what this system does **not** do today:
 
-- **Some screens still keep their work in the browser.** The CBT-to-CA sync
-  (`syncCBTScoreToCA`) writes this device's copy; that score only reaches the database when
-  *Update CA* files it. `fetchGradingTiersFromSupabase()` reads Supabase directly with the anon
-  key instead of going through a route, so under the tightened RLS it returns 401 and the grading
-  tiers fall back to the built-in defaults without a notice — the one call the notice does not
-  cover. Settings, subject templates, timetable and the rest of the `localStorage` keys have no
-  route behind them at all.
-- **A parent's view is only as deep as the pupil record.** `/api/students` now returns their
-  children (with the CA row attached to each pupil) and `/api/invoices` their balances, but the
-  per-subject score list, psychomotor and traits records have no read route at all — they live in
-  this browser's copy. A parent on a device that staff never used therefore opens an empty
-  scorecard detail; the summary marks come from the pupil record. Give those tables a route (the
-  same `guardianScope` filter applies) before telling parents the portal shows full continuous
-  assessment.
-- **The invoicing page is reachable by a Parent role.** It lists only their own children's
-  invoices now, but recording a payment on it is a bursar write, so the call is refused with `403`
-  and the notice says why. The page should be split into a parent view before parents are onboarded
-  in quantity.
-- **Grading maths still runs in the browser.** `/api/ca` records the `grade` the caller sends
-  instead of deriving it from `total_score`, so a crafted request can file any letter grade under
-  a passing or failing total. Server-side grading is the next change.
+- **Twelve screens still keep their work in the browser.** Each one now says so on screen, with a
+  *Kept on this browser* notice: CBT (question bank and score), Inmail, the timetable
+  (*Academics*), Traits & Psychomotor ratings, the CBT lockdown switch in Settings, the CA
+  component structure, the school calendar and activity templates, the class list, the report-card
+  theme and terminal newsletter, the subject packages, the subject list and the trait list. None of
+  them has a route behind it, so a second machine cannot see the typing and the data is lost if the
+  device is cleared. What *is* multi-machine: pupils, staff, logins, invoices, fee payments and
+  receipts, CA/exam marks and grades, the grading scales, the fee schedule, the school's own name /
+  session / term, published results and closed terms. The CBT-to-CA path (`syncCBTScoreToCA`)
+  writes this device's copy, so a CBT mark only reaches the database when *Update CA* files it.
+- **The bursary loop works, but only once the migration is run.** `supabase/operations_state.sql`
+  creates `fee_components` and the receipt columns; until it has been executed on this project,
+  Fee Structure, Invoicing, Record Payment and the Transactions ledger return `503` and file
+  nothing. Every claim below about those screens is code-complete and typechecks, but is unproven
+  against a live database until that SQL has run.
+- **A parent's view is only as deep as the pupil record.** `/api/students` returns their children,
+  `/api/invoices` their balances, `/api/ca` the per-subject marks and `/api/payments` the receipts
+  filed against their own children — each filtered by `guardian_students` from the signed cookie,
+  never from the request. What has no read route is the psychomotor and traits record, so a card
+  printed on a parent's own phone shows the marks but not the behaviour ratings the form teacher
+  typed on the staff laptop. Give those tables a route (the same `guardianScope` filter applies)
+  before telling parents the portal shows the whole card.
+- **The invoicing page is one screen doing two jobs.** A Parent login may open it and sees only
+  their own children's invoices and filed receipts. Every write control — *Bill n Enrolled Pupils*,
+  *Record Payment* — is hidden unless `isActionAuthorized(role, "EDIT_FEES")` passes, which is the
+  same pair of roles (`SUPER_ADMIN`, `ACCOUNTANT`) that `/api/invoices` and `/api/payments` accept,
+  so a family is no longer offered a form the server can only refuse; in its place the page reads
+  *Reading only. Take your payment evidence to the Bursary.* Splitting it into a separate parent
+  view is still worth doing before parents are onboarded in quantity.
+- **Grading is decided on the server; the card maths is not.** `POST /api/ca` derives
+  `tier_grade` and `remark` from the total against that pupil's class scale in `grading_tiers` and
+  ignores any grade the request sends. What still happens in the browser is the *reading* of those
+  rows — averages, class positions and the pass-or-hold line on a score card or promotion screen —
+  so two machines can disagree if one holds a stale copy of the marks. Moving that arithmetic
+  server-side is the next change.
 - **No password reset by email, and deliberately no "forgot password" link on the sign-in page.**
   A forgotten passcode is reset by a super admin: Settings → User Access → **New Password** on that
   person's row, which issues a replacement and signs out every device already holding the old one.
@@ -363,7 +415,34 @@ Be aware of what this system does **not** do today:
 - **No email or SMS sending** — staff activation and notifications are manual.
 - **No online payments** — invoices are tracked, not paid through the portal.
 - **"Realtime" sync is per-browser** (`BroadcastChannel`), not server push across users.
-- **No AI proctoring or long-term audit store** for CBT exams.
+- **The CBT "proctor" is a browser lockdown, and the screen says so.** It watches four things,
+  because those are the four listeners attached: leaving full screen, tab or window focus loss,
+  the blocked shortcuts (copy, paste, print-screen, right-click, F12) and the strike count that ends
+  the sitting on the third. There is **no camera, microphone, face or gaze check** — the portal
+  never asks `getUserMedia` — and the panel that used to print "AI Video Proctor", "HD 1080p",
+  "Face Verified & Centered" and a decibel meter fed by `Math.random()` has been removed, because a
+  child sat an exam believing their face was being watched. The strike log is this device's own note,
+  not evidence the school holds, so it cannot be used in a malpractice case; there is no audit store
+  for it. A finished CBT attempt shows a score and no verdict: the letter and remark come from the
+  class scale when a teacher files the mark in *Update CA*.
+- **An empty question bank serves five sample questions written into the source.** `DEFAULT_CBT_QUESTIONS`
+  in `src/app/cbt/page.tsx` is a 5-question, 50-mark ICT paper with `correctAnswerIndex` set, and it
+  loads whenever this browser holds no imported bank — so the portal always looks ready to examine.
+  The answers are in the bundle the browser downloads, which makes the paper trivially readable by any
+  pupil who opens dev tools. The screen now says so in four places (bank card, bank preview header,
+  sitting header, result screen) and calls it *sample questions* rather than a loaded paper. Delete the
+  fallback and gate the launch button on a non-empty bank before any real exam is sat here.
+- **A login the browser cannot read paints nothing.** `DashboardShell` used to treat an unread
+  session as `SUPER_ADMIN`, so a laptop that had just been handed over, or whose storage was
+  cleared, listed every office screen with an administrator's menu. An unknown role now gets a
+  waiting screen that names the login as the missing piece; the refused screen tells the visitor
+  which roles do open that path (`rolesAllowedForPath` in `src/lib/rbac.ts`) instead of inventing a
+  "Tier 1 / Tier 2 governance staff" clearance level.
+- **The Head of School's endorsement is the head's to write.** On *Traits & Psychomotor* the
+  endorsement preset selector and textarea are disabled for every role but `SUPER_ADMIN`, because
+  whatever is typed there prints on the child's card under the principal's name. A card whose
+  endorsement was never written prints *Endorsement withheld — the Head of School has not written
+  one for this term*; an unwritten form master remark says so too, instead of a pair of empty quotes.
 
 ## Documentation
 

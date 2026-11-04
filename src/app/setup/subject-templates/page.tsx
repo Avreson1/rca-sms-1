@@ -8,6 +8,7 @@ import {
   useRealtimeSubjectTemplates,
   SubjectTemplateRecord,
 } from "@/lib/realtime-store";
+import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   Layers,
   Plus,
@@ -234,6 +235,8 @@ export default function SubjectTemplatesPage() {
           </div>
         </div>
 
+        <DeviceOnlyNotice what="The subject packages" />
+
         {/* Filter Controls */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -333,7 +336,11 @@ export default function SubjectTemplatesPage() {
                   <span className="text-[11px] text-slate-400 font-medium">Ready for Class Assignment</span>
                   <button
                     onClick={() => {
-                      if (confirm(`Delete ${tpl.name}?`)) {
+                      if (
+                        confirm(
+                          `Delete ${tpl.name}? This clears it from the package list held on this browser only, and it cannot be brought back.`
+                        )
+                      ) {
                         deleteTemplate(tpl.id);
                       }
                     }}

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
 import { useRealtimeTraits, TraitConfigItem } from "@/lib/realtime-store";
+import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   Sparkles,
   ArrowLeft,
@@ -73,7 +74,7 @@ export default function SetupTraitsPage() {
               type="button"
               onClick={resetTraitsToDefault}
               className="px-3 py-2 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
-              title="Reset traits to national curriculum standards"
+              title="Put the default trait list back on this browser. Traits you added here are dropped and cannot be brought back."
             >
               <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
               Reset Defaults
@@ -96,6 +97,8 @@ export default function SetupTraitsPage() {
             </Link>
           </div>
         </div>
+
+        <DeviceOnlyNotice what="The trait list" />
 
         {/* 2-Column Traits Display */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
