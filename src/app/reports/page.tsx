@@ -12,6 +12,7 @@ import {
   calculateGradeForClass,
 } from "@/lib/realtime-store";
 import { exportToCSV } from "@/lib/csv-utils";
+import { fetchCaScoresFromSupabase } from "@/lib/supabase/db";
 import {
   FileText,
   ArrowLeft,
@@ -32,13 +33,15 @@ export default function ReportsHubPage() {
   const { gradingTiers } = useRealtimeGradingScales();
   const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
 
-  const handleDownloadBroadsheet = () => {
+  const handleDownloadBroadsheet = async () => {
     const headers = [
       "S/N",
       "Admission No",
       "Student Full Name",
       "Class Level",
-      "Gender",
+      "Session",
+      "Term",
+      "Subject",
       "1st Test (10)",
       "2nd Test (10)",
       "Project (10)",
@@ -49,29 +52,64 @@ export default function ReportsHubPage() {
       "Remark",
     ];
 
-    const rows = students.map((s, idx) => {
-      const total = s.caScores.test1 + s.caScores.test2 + s.caScores.project + s.caScores.midTerm + s.caScores.exam;
-      const gradeInfo = calculateGradeForClass(total, s.className, gradingTiers);
-      return [
-        idx + 1,
-        s.admissionNo,
-        s.fullName,
-        s.className,
-        s.gender,
-        s.caScores.test1,
-        s.caScores.test2,
-        s.caScores.project,
-        s.caScores.midTerm,
-        s.caScores.exam,
-        total,
-        gradeInfo.grade,
-        gradeInfo.remark,
-      ];
+    // A broadsheet is a list of filed marks, so it is built from the marks the
+    // school filed. This used to print the roster's single score buffer for
+    // every pupil — one arbitrary subject's numbers, labelled as the child's
+    // continuous assessment, for a term that may never have been run.
+    const filed = await fetchCaScoresFromSupabase({
+      session: SCHOOL_INFO.currentSession,
+      terms: [SCHOOL_INFO.currentTerm],
     });
 
+    if (filed === null) {
+      setDownloadNotice(
+        "The broadsheet could not be built: the filed marks could not be read from the school records. Try again once the sync notice clears."
+      );
+      setTimeout(() => setDownloadNotice(null), 8000);
+      return;
+    }
+    if (filed.length === 0) {
+      setDownloadNotice(
+        `No marks are filed for ${SCHOOL_INFO.currentSession}, ${SCHOOL_INFO.currentTerm}, so there is no broadsheet to export. Enter them under Operations → Update CA Scores.`
+      );
+      setTimeout(() => setDownloadNotice(null), 8000);
+      return;
+    }
+
+    const nameByAdmission = new Map(students.map((s) => [s.admissionNo, s.fullName]));
+
+    const rows = filed
+      .slice()
+      .sort((a, b) =>
+        `${a.className}${a.admissionNo}${a.subjectName}`.localeCompare(`${b.className}${b.admissionNo}${b.subjectName}`)
+      )
+      .map((row, idx) => {
+        const gradeInfo = calculateGradeForClass(row.total, row.className, gradingTiers);
+        return [
+          idx + 1,
+          row.admissionNo,
+          // The mark row is filed against a pupil; if that pupil is no longer on
+          // the roll the number still identifies them, so it is printed rather
+          // than a name guessed from somewhere else.
+          nameByAdmission.get(row.admissionNo) ?? row.admissionNo,
+          row.className,
+          row.session,
+          row.term,
+          row.subjectName,
+          row.test1,
+          row.test2,
+          row.project,
+          row.midTerm,
+          row.exam,
+          row.total,
+          gradeInfo.grade,
+          gradeInfo.remark,
+        ];
+      });
+
     exportToCSV(`RCA_Master_Academic_Broadsheet_${SCHOOL_INFO.currentSession.replace("/", "-")}`, headers, rows);
-    setDownloadNotice("Master Academic Broadsheet CSV downloaded successfully!");
-    setTimeout(() => setDownloadNotice(null), 3000);
+    setDownloadNotice(`Broadsheet exported: ${rows.length} filed subject results for ${SCHOOL_INFO.currentTerm}.`);
+    setTimeout(() => setDownloadNotice(null), 4000);
   };
 
   const handleDownloadDebtorList = () => {
@@ -87,16 +125,18 @@ export default function ReportsHubPage() {
       "Last Payment Date",
     ];
 
-    const rows = (invoices.length > 0 ? invoices : students.map((s, i) => ({
-      invoiceNo: `RCA/INV/2025/${(i + 1).toString().padStart(3, "0")}`,
-      admissionNo: s.admissionNo,
-      studentName: s.fullName,
-      className: s.className,
-      amountBilled: 135000,
-      amountPaid: s.feeStatus === "Fully Cleared" ? 135000 : s.feeStatus === "Partially Paid" ? 85000 : 0,
-      paymentStatus: s.feeStatus,
-      lastPaymentDate: "2025-10-01",
-    }))).map((inv: any) => {
+    // Only invoices that actually exist. When the invoice table was empty this used to
+    // invent a ₦135,000 bill, a payment figure, an invoice number and a payment date for
+    // every enrolled pupil and hand that spreadsheet to the bursary.
+    if (invoices.length === 0) {
+      setDownloadNotice(
+        "No invoices are on file, so there is no debtor ledger to export. Raise bills under Accounts → Invoicing first."
+      );
+      setTimeout(() => setDownloadNotice(null), 8000);
+      return;
+    }
+
+    const rows = invoices.map((inv) => {
       const balance = inv.amountBilled - inv.amountPaid;
       return [
         inv.invoiceNo,

@@ -75,9 +75,14 @@ export async function GET() {
     );
   }
 
+  // No `ca_scores` embed here. That table is keyed by subject, session and term,
+  // so attaching it to a pupil gave the browser one arbitrary subject's marks
+  // to display as though they were the child's whole continuous assessment.
+  // Filed marks are read from /api/ca, which is asked for a class, a session
+  // and a term.
   let query = supabase
     .from("students")
-    .select("*, ca_scores(test1, test2, project, mid_term, exam)")
+    .select("*")
     .order("created_at", { ascending: false });
   if (scope.admissionNos) query = query.in("admission_no", scope.admissionNos);
 
@@ -106,7 +111,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: "Provide at least one student with admission_no and full_name." }, { status: 400 });
   }
 
-  const { error } = await supabase.from("students").upsert(rows, { onConflict: "id" });
+  // Keyed on the admission number, which is the identifier the whole portal
+  // uses for a pupil (CA scores, invoices and removal all address it) and the
+  // column the schema makes unique. Keyed on `id`, re-saving an enrolled child —
+  // the same admission number with a browser-generated id — tried to insert a
+  // second row and the database refused with a 502 that looked like a fault.
+  const { error } = await supabase.from("students").upsert(rows, { onConflict: "admission_no" });
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 502 });
   return NextResponse.json({ success: true });
 }

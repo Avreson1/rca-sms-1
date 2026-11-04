@@ -4,6 +4,7 @@ import {
   StudentRecord,
   StaffRecord,
   InvoiceRecord,
+  SubjectScoreRecord,
   TierGradingConfig,
   GradeBracket,
 } from "../realtime-store";
@@ -152,7 +153,6 @@ interface StudentRow {
   guardian_name: string | null;
   guardian_phone: string | null;
   fee_status: string | null;
-  ca_scores?: CaScoresRow[] | null;
 }
 
 interface StaffRow {
@@ -192,14 +192,6 @@ interface GradingTierRow {
   brackets: GradeBracket[] | null;
 }
 
-interface CaScoresRow {
-  test1: number | null;
-  test2: number | null;
-  project: number | null;
-  mid_term: number | null;
-  exam: number | null;
-}
-
 function toStudentRow(student: StudentRecord) {
   return {
     admission_no: student.admissionNo,
@@ -221,11 +213,6 @@ export async function fetchStudentsFromSupabase(): Promise<StudentRecord[] | nul
   if (!rows) return null;
 
   return rows.map((item) => {
-    const ca =
-      Array.isArray(item.ca_scores) && item.ca_scores.length > 0
-        ? item.ca_scores[0]
-        : { test1: 0, test2: 0, project: 0, mid_term: 0, exam: 0 };
-
     return {
       id: item.id,
       admissionNo: item.admission_no,
@@ -236,13 +223,9 @@ export async function fetchStudentsFromSupabase(): Promise<StudentRecord[] | nul
       guardianName: item.guardian_name || undefined,
       guardianPhone: item.guardian_phone || undefined,
       feeStatus: (item.fee_status || "Outstanding") as StudentRecord["feeStatus"],
-      caScores: {
-        test1: Number(ca.test1) || 0,
-        test2: Number(ca.test2) || 0,
-        project: Number(ca.project) || 0,
-        midTerm: Number(ca.mid_term) || 0,
-        exam: Number(ca.exam) || 0,
-      },
+      // The roll carries no marks. `caScores` is the CA entry grid's buffer, and
+      // the only thing that fills it is /api/ca, for one subject at a time.
+      caScores: { test1: 0, test2: 0, project: 0, midTerm: 0, exam: 0 },
     };
   });
 }
@@ -385,6 +368,73 @@ export async function bulkSaveInvoicesToSupabase(invoices: InvoiceRecord[]): Pro
 // ============================================================================
 // 5. CONTINUOUS ASSESSMENT SCORES
 // ============================================================================
+
+interface CaReadRow {
+  student_id: string;
+  admission_no: string;
+  full_name: string;
+  class_name: string;
+  subject: string;
+  session: string;
+  term: string;
+  test1: number | string | null;
+  test2: number | string | null;
+  project: number | string | null;
+  mid_term: number | string | null;
+  exam: number | string | null;
+  total_score: number | string | null;
+  tier_grade: string | null;
+  remark: string | null;
+  updated_at: string | null;
+}
+
+/**
+ * Reads the marks filed on the school's own tables for one session and term.
+ *
+ * A report card built from `saveSubjectScore` alone only ever held the marks
+ * typed into that browser, which is why the same pupil showed a full card in
+ * the staff room and an empty one in the office.
+ */
+export async function fetchCaScoresFromSupabase(options: {
+  session: string;
+  terms: string[];
+  className?: string;
+}): Promise<SubjectScoreRecord[] | null> {
+  const params = new URLSearchParams({ session: options.session, term: options.terms.join(",") });
+  if (options.className) params.set("class_name", options.className);
+
+  const rows = await requestJson<CaReadRow[]>(`/api/ca?${params.toString()}`, "The filed marks");
+  if (!rows) return null;
+
+  return rows.map((row) => {
+    const components = {
+      test1: Number(row.test1) || 0,
+      test2: Number(row.test2) || 0,
+      project: Number(row.project) || 0,
+      midTerm: Number(row.mid_term) || 0,
+      exam: Number(row.exam) || 0,
+    };
+    const total =
+      Number.isFinite(Number(row.total_score)) && Number(row.total_score) > 0
+        ? Number(row.total_score)
+        : components.test1 + components.test2 + components.project + components.midTerm + components.exam;
+
+    return {
+      id: `${row.student_id}|${row.subject}|${row.session}|${row.term}`,
+      studentId: row.student_id,
+      admissionNo: row.admission_no,
+      subjectName: row.subject,
+      className: row.class_name,
+      session: row.session,
+      term: row.term as SubjectScoreRecord["term"],
+      ...components,
+      total,
+      grade: row.tier_grade || "",
+      remark: row.remark || "",
+      updatedAt: row.updated_at || undefined,
+    };
+  });
+}
 
 /**
  * `/api/ca` files one student's scores for a session and term, so records for

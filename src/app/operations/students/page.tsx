@@ -116,6 +116,10 @@ export default function StudentsPage() {
 
   // Export filtered or full roster to CSV
   const handleExportCSV = () => {
+    // Enrollment details only. Marks live in `ca_scores`, one row per subject,
+    // so a roster column could only ever hold one subject's numbers and be
+    // mistaken for the pupil's whole assessment. Filed marks export from
+    // Reports → Master Academic Broadsheet.
     const headers = [
       "Admission No",
       "Full Name",
@@ -125,33 +129,18 @@ export default function StudentsPage() {
       "Parent/Guardian",
       "Phone Number",
       "Fee Status",
-      "1st Test (10)",
-      "2nd Test (10)",
-      "Project (10)",
-      "Mid-Term (10)",
-      "Exam (60)",
-      "Total CA Score (100)",
     ];
 
-    const rows = filtered.map((s) => {
-      const total = s.caScores.test1 + s.caScores.test2 + s.caScores.project + s.caScores.midTerm + s.caScores.exam;
-      return [
-        s.admissionNo,
-        s.fullName,
-        s.className,
-        s.gender,
-        s.house,
-        s.guardianName || "N/A",
-        s.guardianPhone || "N/A",
-        s.feeStatus,
-        s.caScores.test1,
-        s.caScores.test2,
-        s.caScores.project,
-        s.caScores.midTerm,
-        s.caScores.exam,
-        total,
-      ];
-    });
+    const rows = filtered.map((s) => [
+      s.admissionNo,
+      s.fullName,
+      s.className,
+      s.gender,
+      s.house,
+      s.guardianName || "Not recorded",
+      s.guardianPhone || "Not recorded",
+      s.feeStatus,
+    ]);
 
     exportToCSV(`RCA_Student_Roster_${classFilter.replace(/\s+/g, "_")}`, headers, rows);
   };

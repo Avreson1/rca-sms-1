@@ -15,6 +15,7 @@ import {
   saveInvoiceToSupabase,
   bulkSaveInvoicesToSupabase,
   saveCaScoresToSupabase,
+  fetchCaScoresFromSupabase,
 } from "./supabase/db";
 
 // Channel for instant multi-tab & multi-window event synchronization
@@ -558,27 +559,30 @@ export const DEFAULT_TRAITS: TraitConfigItem[] = [
 // -------------------------------------------------------------
 // Standard Educational Class Arms Baseline (Single Class Stream for Secondary, Zero Default Capacity)
 // -------------------------------------------------------------
+// The class arms themselves are this school's real structure, so they stay. The invented
+// staff numbers in `formTeacherId` do not: an unassigned arm has no teacher, and naming the
+// super admin as SS 2's form teacher put a person on a register who was never appointed.
 export const DEFAULT_CLASSES: ClassArmRecord[] = [
   // Creche & Playgroup
-  { id: "c-pp", name: "Pre-Play Class", section: "Creche & Playgroup", formTeacher: "Unassigned", formTeacherId: "RCA/PERS/001", studentsCount: 0, capacity: 0 },
-  { id: "c-pl", name: "Play Class", section: "Creche & Playgroup", formTeacher: "Unassigned", formTeacherId: "RCA/PERS/002", studentsCount: 0, capacity: 0 },
+  { id: "c-pp", name: "Pre-Play Class", section: "Creche & Playgroup", formTeacher: "Unassigned", formTeacherId: "", studentsCount: 0, capacity: 0 },
+  { id: "c-pl", name: "Play Class", section: "Creche & Playgroup", formTeacher: "Unassigned", formTeacherId: "", studentsCount: 0, capacity: 0 },
   // Nursery
-  { id: "c-nur1", name: "Nursery 1", section: "Nursery School", formTeacher: "Unassigned", formTeacherId: "RCA/PERS/003", studentsCount: 0, capacity: 0 },
-  { id: "c-nur2", name: "Nursery 2", section: "Nursery School", formTeacher: "Unassigned", formTeacherId: "RCA/PERS/004", studentsCount: 0, capacity: 0 },
+  { id: "c-nur1", name: "Nursery 1", section: "Nursery School", formTeacher: "Unassigned", formTeacherId: "", studentsCount: 0, capacity: 0 },
+  { id: "c-nur2", name: "Nursery 2", section: "Nursery School", formTeacher: "Unassigned", formTeacherId: "", studentsCount: 0, capacity: 0 },
   // Basic Primary 1 - 5
-  { id: "c-pri1", name: "Primary 1", section: "Basic Primary", formTeacher: "Unassigned", formTeacherId: "RCA/PERS/005", studentsCount: 0, capacity: 0 },
-  { id: "c-pri2", name: "Primary 2", section: "Basic Primary", formTeacher: "Unassigned", formTeacherId: "RCA/PERS/006", studentsCount: 0, capacity: 0 },
-  { id: "c-pri3", name: "Primary 3", section: "Basic Primary", formTeacher: "Unassigned", formTeacherId: "RCA/PERS/007", studentsCount: 0, capacity: 0 },
-  { id: "c-pri4", name: "Primary 4", section: "Basic Primary", formTeacher: "Unassigned", formTeacherId: "RCA/PERS/008", studentsCount: 0, capacity: 0 },
-  { id: "c-pri5", name: "Primary 5", section: "Basic Primary", formTeacher: "Unassigned", formTeacherId: "RCA/PERS/009", studentsCount: 0, capacity: 0 },
+  { id: "c-pri1", name: "Primary 1", section: "Basic Primary", formTeacher: "Unassigned", formTeacherId: "", studentsCount: 0, capacity: 0 },
+  { id: "c-pri2", name: "Primary 2", section: "Basic Primary", formTeacher: "Unassigned", formTeacherId: "", studentsCount: 0, capacity: 0 },
+  { id: "c-pri3", name: "Primary 3", section: "Basic Primary", formTeacher: "Unassigned", formTeacherId: "", studentsCount: 0, capacity: 0 },
+  { id: "c-pri4", name: "Primary 4", section: "Basic Primary", formTeacher: "Unassigned", formTeacherId: "", studentsCount: 0, capacity: 0 },
+  { id: "c-pri5", name: "Primary 5", section: "Basic Primary", formTeacher: "Unassigned", formTeacherId: "", studentsCount: 0, capacity: 0 },
   // Junior Secondary (Single Unified Stream: JSS 1, JSS 2, JSS 3)
-  { id: "c-jss1", name: "JSS 1", section: "Junior Secondary", formTeacher: "Unassigned", formTeacherId: "RCA/PERS/010", studentsCount: 0, capacity: 0 },
-  { id: "c-jss2", name: "JSS 2", section: "Junior Secondary", formTeacher: "Unassigned", formTeacherId: "RCA/PERS/011", studentsCount: 0, capacity: 0 },
-  { id: "c-jss3", name: "JSS 3", section: "Junior Secondary", formTeacher: "Unassigned", formTeacherId: "RCA/PERS/012", studentsCount: 0, capacity: 0 },
+  { id: "c-jss1", name: "JSS 1", section: "Junior Secondary", formTeacher: "Unassigned", formTeacherId: "", studentsCount: 0, capacity: 0 },
+  { id: "c-jss2", name: "JSS 2", section: "Junior Secondary", formTeacher: "Unassigned", formTeacherId: "", studentsCount: 0, capacity: 0 },
+  { id: "c-jss3", name: "JSS 3", section: "Junior Secondary", formTeacher: "Unassigned", formTeacherId: "", studentsCount: 0, capacity: 0 },
   // Senior Secondary (Single Unified Stream: SS 1, SS 2, SS 3)
-  { id: "c-sss1", name: "SS 1", section: "Senior Secondary", formTeacher: "Unassigned", formTeacherId: "RCA/PERS/013", studentsCount: 0, capacity: 0 },
-  { id: "c-sss2", name: "SS 2", section: "Senior Secondary", formTeacher: "Dominic Mark", formTeacherId: "RCA/PERS/025", studentsCount: 0, capacity: 0 },
-  { id: "c-sss3", name: "SS 3", section: "Senior Secondary", formTeacher: "Unassigned", formTeacherId: "RCA/PERS/016", studentsCount: 0, capacity: 0 },
+  { id: "c-sss1", name: "SS 1", section: "Senior Secondary", formTeacher: "Unassigned", formTeacherId: "", studentsCount: 0, capacity: 0 },
+  { id: "c-sss2", name: "SS 2", section: "Senior Secondary", formTeacher: "Unassigned", formTeacherId: "", studentsCount: 0, capacity: 0 },
+  { id: "c-sss3", name: "SS 3", section: "Senior Secondary", formTeacher: "Unassigned", formTeacherId: "", studentsCount: 0, capacity: 0 },
 ];
 
 // -------------------------------------------------------------
@@ -596,28 +600,28 @@ export const INITIAL_SUBJECT_SCORES: SubjectScoreRecord[] = [];
 export const INITIAL_PSYCHOMOTOR: PsychomotorRecord[] = [];
 export const INITIAL_TIMETABLE: TimetableEntryRecord[] = [];
 
+// Every field below prints on the end-of-term circular that goes home with a pupil, so the
+// school writes it. The previous defaults invented a resumption date, four dated highlights,
+// a fee deadline, the Director's thank-you address and — worst — a Guaranty Trust Bank
+// account number that belongs to nobody. An empty field is a question; a filled-in one is
+// an instruction, and families pay instructions.
 export const DEFAULT_NEWSLETTER: NewsletterRecord = {
   id: "nl-default",
   session: "2025/2026",
   term: "First Term",
   themeColor: "royal",
-  principalName: "Dominic Mark (Principal / Director)",
-  principalMessage: "We express our sincere appreciation to God Almighty and our esteemed parents and guardians for a successful and academically rewarding term. Our students have demonstrated remarkable diligence, discipline, and commitment to excellence across all learning domains.",
-  nextTermResumption: "Monday, January 12, 2026",
-  eventsAndHighlights: [
-    "Resumption & Registration: January 12, 2026",
-    "Inter-House Athletic Sports Competition: February 14, 2026",
-    "Mid-Term Break & Open Day Consultations: February 25 - 27, 2026",
-    "Second Term Examination Period: March 23 - 27, 2026",
-  ],
-  feePolicyAndDeadlines: "Parents are kindly reminded that 100% tuition fees must be cleared on or before the resumption date to ensure uninterrupted academic participation and CBT portal access for your ward.",
+  principalName: "",
+  principalMessage: "",
+  nextTermResumption: "",
+  eventsAndHighlights: [],
+  feePolicyAndDeadlines: "",
   bankAccountDetails: {
-    bankName: "Guaranty Trust Bank (GTBank)",
-    accountName: "Royal Crown Academy Rayfield",
-    accountNumber: "0123456789",
+    bankName: "",
+    accountName: "",
+    accountNumber: "",
   },
-  customNotes: "Please ensure students return with complete academic uniforms, sports kits, and authorized textbooks.",
-  updatedAt: "2026-01-01T00:00:00.000Z",
+  customNotes: "",
+  updatedAt: undefined,
 };
 
 // Helper: Broadcast event across browser tabs
@@ -962,6 +966,46 @@ export function useRealtimeStudents() {
     broadcast("STUDENTS_UPDATED");
   };
 
+  /**
+   * Loads one subject's filed marks into the CA entry grid for one class.
+   *
+   * Every pupil in that class is set, not only the ones with a row: a buffer
+   * left holding the previous subject's numbers would be filed against the
+   * subject now showing when Save is pressed. Nothing is broadcast, because the
+   * grid on another tab may be mid-entry on a different subject.
+   */
+  const overlayFiledScores = (subject: string, className: string, filed: SubjectScoreRecord[]) => {
+    const blank: StudentRecord["caScores"] = { test1: 0, test2: 0, project: 0, midTerm: 0, exam: 0 };
+    const wanted = subject.trim().toLowerCase();
+    const byStudent = new Map(
+      filed
+        .filter((row) => row.subjectName.trim().toLowerCase() === wanted)
+        .map((row) => [
+          row.studentId,
+          { test1: row.test1, test2: row.test2, project: row.project, midTerm: row.midTerm, exam: row.exam },
+        ])
+    );
+
+    const updated = students.map((s) =>
+      s.className === className ? { ...s, caScores: byStudent.get(s.id) ?? blank } : s
+    );
+    setStudents(updated);
+    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updated));
+  };
+
+  /**
+   * Applies a class move to this device after the school records have accepted
+   * it. This does not write: the database row is the roll, and this only keeps
+   * the screen from showing a pupil in the class they were just moved out of.
+   */
+  const moveStudentsToClass = (studentIds: string[], className: string) => {
+    const moved = new Set(studentIds);
+    const updated = students.map((s) => (moved.has(s.id) ? { ...s, className } : s));
+    setStudents(updated);
+    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updated));
+    broadcast("STUDENTS_UPDATED");
+  };
+
   const addStudent = (newStudent: {
     fullName: string;
     gender: "Male" | "Female";
@@ -1103,14 +1147,25 @@ export function useRealtimeStudents() {
   const saveCaScores = (subject: string, roster?: StudentRecord[]) =>
     fileCaScoresOnServer(roster ?? students, subject);
 
-  return { students, updateStudentScore, addStudent, bulkAddStudents, bulkUpdateScores, deleteStudent, clearAllStudents, saveCaScores };
+  return { students, updateStudentScore, overlayFiledScores, moveStudentsToClass, addStudent, bulkAddStudents, bulkUpdateScores, deleteStudent, clearAllStudents, saveCaScores };
 }
 
 // -------------------------------------------------------------
 // Hook: Real-Time Multi-Subject CA & Exam Scores Store
 // -------------------------------------------------------------
-export function useRealtimeSubjectScores() {
+export function useRealtimeSubjectScores(scope?: { session?: string; terms?: string[]; className?: string }) {
   const [subjectScores, setSubjectScores] = useState<SubjectScoreRecord[]>(INITIAL_SUBJECT_SCORES);
+  // True only once the school's own rows for this session/term have arrived.
+  // A screen that overlays them on an entry grid must not do so before then,
+  // or it would blank marks the read has not delivered yet.
+  const [filedLoaded, setFiledLoaded] = useState(false);
+
+  const session = scope?.session ?? "";
+  const terms = scope?.terms ?? [];
+  const className = scope?.className ?? "";
+  // A stable key: the effect must not re-run because a caller rebuilt its
+  // options object on every render.
+  const scopeKey = session && terms.length > 0 ? `${session}|${terms.join(",")}|${className}` : "";
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1138,6 +1193,26 @@ export function useRealtimeSubjectScores() {
       channel?.close();
     };
   }, []);
+
+  useEffect(() => {
+    if (!scopeKey || !isSupabaseConfigured) return;
+
+    setFiledLoaded(false);
+    let cancelled = false;
+    void fetchCaScoresFromSupabase({ session, terms, className: className || undefined }).then((filed) => {
+      // null means the read was refused or failed: keep showing this device's
+      // copy, which the sync notice has already labelled as such.
+      if (cancelled || filed === null) return;
+      setSubjectScores(filed);
+      localStorage.setItem(STORAGE_KEYS.SUBJECT_SCORES, JSON.stringify(filed));
+      setFiledLoaded(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopeKey]);
 
   const saveSubjectScore = (record: Omit<SubjectScoreRecord, "id">) => {
     const total = (record.test1 || 0) + (record.test2 || 0) + (record.project || 0) + (record.midTerm || 0) + (record.exam || 0);
@@ -1233,7 +1308,7 @@ export function useRealtimeSubjectScores() {
     });
   };
 
-  return { subjectScores, saveSubjectScore, bulkSaveSubjectScores, getScoresForStudent };
+  return { subjectScores, filedLoaded, saveSubjectScore, bulkSaveSubjectScores, getScoresForStudent };
 }
 
 // -------------------------------------------------------------
@@ -2457,86 +2532,25 @@ export function useRealtimeAuth() {
     };
   }, []);
 
+  /**
+   * Adopts the person the server just authenticated. There is no fallback
+   * profile: the screen used to invent "Dr. Dominic Mark, RCA/PERS/025" for a
+   * SUPER_ADMIN role when no profile was supplied, and every card, greeting and
+   * audit trail then carried that invented name.
+   */
   const loginWithRole = (
     role: "SUPER_ADMIN" | "EXAM_OFFICER" | "TEACHER" | "ACCOUNTANT" | "STUDENT_PARENT" | "TESTERS",
-    profile?: { username?: string; fullName?: string; staffId?: string; email?: string }
+    profile: { username: string; fullName: string; staffId?: string; email?: string }
   ) => {
-    const roleProfiles: Record<string, AuthUserSession> = {
-      SUPER_ADMIN: {
-        id: "u-025",
-        username: "dominic370",
-        fullName: "Dr. Dominic Mark",
-        role: "SUPER_ADMIN",
-        staffId: "RCA/PERS/025",
-        email: "dominic370@royalcrownacademy.edu.ng",
-        assignedSubject: "Information & Communication Technology",
-        assignedClass: "SS 2",
-        loginTime: new Date().toISOString(),
-      },
-      EXAM_OFFICER: {
-        id: "u-012",
-        username: "exam_officer",
-        fullName: "Prof. Jeremiah Alabi",
-        role: "EXAM_OFFICER",
-        staffId: "RCA/PERS/012",
-        email: "dean.exams@royalcrownacademy.edu.ng",
-        assignedSubject: "General Mathematics",
-        assignedClass: "SS 3",
-        loginTime: new Date().toISOString(),
-      },
-      TEACHER: {
-        id: "u-048",
-        username: "teacher_grace",
-        fullName: "Mrs. Grace Adams",
-        role: "TEACHER",
-        staffId: "RCA/PERS/048",
-        email: "grace.adams@royalcrownacademy.edu.ng",
-        assignedSubject: "English Language & Literacy",
-        assignedClass: "Primary 4",
-        loginTime: new Date().toISOString(),
-      },
-      ACCOUNTANT: {
-        id: "u-008",
-        username: "bursar_accounts",
-        fullName: "Mr. Samuel Danladi",
-        role: "ACCOUNTANT",
-        staffId: "RCA/PERS/008",
-        email: "bursar@royalcrownacademy.edu.ng",
-        assignedSubject: "Accounts & Commercial Studies",
-        assignedClass: "SS 2",
-        loginTime: new Date().toISOString(),
-      },
-      STUDENT_PARENT: {
-        id: "u-104",
-        username: "parent_rca",
-        fullName: "Chief & Mrs. A. Oladipo (Guardian)",
-        role: "STUDENT_PARENT",
-        staffId: "RCA/PAR/104",
-        email: "parent.oladipo@gmail.com",
-        loginTime: new Date().toISOString(),
-      },
-      TESTERS: {
-        id: "u-tst",
-        username: "tester",
-        fullName: "QA Tester",
-        role: "TESTERS",
-        staffId: "RCA/TST/001",
-        email: "",
-        loginTime: new Date().toISOString(),
-      },
+    const targetUser: AuthUserSession = {
+      id: profile.username,
+      username: profile.username,
+      fullName: profile.fullName,
+      role,
+      staffId: profile.staffId ?? "",
+      email: profile.email,
+      loginTime: new Date().toISOString(),
     };
-
-    const targetUser: AuthUserSession = profile
-      ? {
-          id: profile.username ?? role,
-          username: profile.username ?? "",
-          fullName: profile.fullName ?? "",
-          role,
-          staffId: profile.staffId ?? "",
-          email: profile.email,
-          loginTime: new Date().toISOString(),
-        }
-      : roleProfiles[role] || roleProfiles.SUPER_ADMIN;
     setCurrentUser(targetUser);
     if (typeof window !== "undefined") {
       handOverBrowser(targetUser.username);

@@ -1,15 +1,17 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
 import {
   useRealtimeStudents,
   useRealtimeClasses,
-  useRealtimeGradingScales,
-  calculateGradeForClass,
+  useRealtimeSubjectScores,
+  useRealtimeAuth,
 } from "@/lib/realtime-store";
+import { bulkInsertStudentsToSupabase } from "@/lib/supabase/db";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   TrendingUp,
   ArrowLeft,
@@ -20,17 +22,50 @@ import {
   ArrowRight,
 } from "lucide-react";
 
+const PROMOTION_TERMS = ["First Term", "Second Term", "Third Term"] as const;
+const PASS_MARK = 50;
+
 export default function StudentPromotionPage() {
-  const { students } = useRealtimeStudents();
+  const { students, moveStudentsToClass } = useRealtimeStudents();
   const { classes } = useRealtimeClasses();
-  const { gradingTiers } = useRealtimeGradingScales();
+  const { currentUser } = useRealtimeAuth();
 
   const [sourceClass, setSourceClass] = useState<string>(classes[0]?.name || "Primary 1");
   const [targetClass, setTargetClass] = useState<string>(classes[1]?.name || "Primary 2");
   const [promotedIds, setPromotedIds] = useState<string[]>([]);
-  const [isPromotedSuccess, setIsPromotedSuccess] = useState(false);
+  const [resultNote, setResultNote] = useState<{ kind: "ok" | "bad"; text: string } | null>(null);
+  const [isWorking, setIsWorking] = useState(false);
 
-  const filtered = students.filter((s) => s.className === sourceClass);
+  // Moving a pupil up a class rewrites the roll, which is an admissions action.
+  const canPromote = currentUser?.role === "SUPER_ADMIN" || currentUser?.role === "EXAM_OFFICER";
+
+  const filtered = useMemo(() => students.filter((s) => s.className === sourceClass), [students, sourceClass]);
+
+  // Promotion is decided from the marks filed on the school's own tables. The
+  // roster used to carry one subject's numbers per pupil, so a child who had
+  // done well all year could be retained — or, with the buffer empty, shown as
+  // scoring 0% and retained for a term nobody had marked yet.
+  const { subjectScores: filedMarks, filedLoaded } = useRealtimeSubjectScores({
+    session: SCHOOL_INFO.currentSession,
+    terms: [...PROMOTION_TERMS],
+    className: sourceClass,
+  });
+
+  const averages = useMemo(() => {
+    const totalsByStudent = new Map<string, number[]>();
+    for (const row of filedMarks) {
+      const list = totalsByStudent.get(row.studentId);
+      if (list) list.push(row.total);
+      else totalsByStudent.set(row.studentId, [row.total]);
+    }
+
+    const result = new Map<string, { avg: number; subjects: number }>();
+    for (const [studentId, totals] of totalsByStudent) {
+      const sum = totals.reduce((acc, value) => acc + value, 0);
+      result.set(studentId, { avg: Math.round((sum / totals.length) * 10) / 10, subjects: totals.length });
+    }
+    return result;
+  }, [filedMarks]);
 
   const toggleStudent = (id: string) => {
     setPromotedIds((prev) =>
@@ -39,18 +74,68 @@ export default function StudentPromotionPage() {
   };
 
   const selectAllQualified = () => {
+    if (!filedLoaded) {
+      setResultNote({
+        kind: "bad",
+        text: `The filed marks for ${sourceClass} have not arrived from the school records yet, so no pupil can be judged. Reload this screen once the sync notice clears.`,
+      });
+      return;
+    }
+
     const qualifiedIds = filtered
       .filter((s) => {
-        const total = s.caScores.test1 + s.caScores.test2 + s.caScores.project + s.caScores.midTerm + s.caScores.exam;
-        return total >= 50;
+        const record = averages.get(s.id);
+        return record !== undefined && record.avg >= PASS_MARK;
       })
       .map((s) => s.id);
+
     setPromotedIds(qualifiedIds);
+    const unmarked = filtered.length - averages.size;
+    setResultNote({
+      kind: qualifiedIds.length === 0 ? "bad" : "ok",
+      text:
+        qualifiedIds.length === 0
+          ? `No pupil in ${sourceClass} reaches ${PASS_MARK}% on a filed mark. ${unmarked} of ${filtered.length} have no marks filed at all for ${SCHOOL_INFO.currentSession}, so nothing can be decided for them.`
+          : `${qualifiedIds.length} of ${filtered.length} pupils in ${sourceClass} reach ${PASS_MARK}% on filed marks.${unmarked > 0 ? ` ${unmarked} have no marks filed and are not included.` : ""}`,
+    });
   };
 
-  const handlePromote = () => {
-    setIsPromotedSuccess(true);
-    setTimeout(() => setIsPromotedSuccess(false), 4000);
+  const handlePromote = async () => {
+    const moving = filtered
+      .filter((s) => promotedIds.includes(s.id))
+      .map((s) => ({ ...s, className: targetClass }));
+    if (moving.length === 0 || sourceClass === targetClass) return;
+
+    if (!canPromote) {
+      setResultNote({ kind: "bad", text: "Only the school office (Super Admin) or an Exam Officer may move a pupil between classes." });
+      return;
+    }
+    if (!isSupabaseConfigured) {
+      setResultNote({
+        kind: "bad",
+        text: "This device is not connected to the school records, so the promotion would only apply to this browser and vanish on reload. Nothing was changed.",
+      });
+      return;
+    }
+    if (!window.confirm(`Move ${moving.length} pupil(s) from ${sourceClass} to ${targetClass} on the school records?`)) return;
+
+    setIsWorking(true);
+    const saved = await bulkInsertStudentsToSupabase(moving);
+    setIsWorking(false);
+
+    if (saved) {
+      moveStudentsToClass(moving.map((s) => s.id), targetClass);
+      setPromotedIds([]);
+      setResultNote({
+        kind: "ok",
+        text: `${moving.length} pupil${moving.length === 1 ? "" : "s"} moved from ${sourceClass} to ${targetClass} on the school records.`,
+      });
+    } else {
+      setResultNote({
+        kind: "bad",
+        text: `The school records did not accept the move, so ${sourceClass} is unchanged. Read the sync notice above for the reason.`,
+      });
+    }
   };
 
   return (
@@ -88,20 +173,37 @@ export default function StudentPromotionPage() {
 
             <button
               onClick={handlePromote}
-              disabled={promotedIds.length === 0}
+              disabled={promotedIds.length === 0 || isWorking || sourceClass === targetClass || !canPromote}
+              title={
+                !canPromote
+                  ? "Only the school office or an Exam Officer may move a pupil between classes"
+                  : sourceClass === targetClass
+                    ? "Choose a different class to promote into"
+                    : undefined
+              }
               className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 self-start md:self-auto cursor-pointer"
             >
               <TrendingUp className="w-4 h-4" />
-              Promote Selected ({promotedIds.length}) Students
+              {isWorking ? "Saving to the school records…" : `Promote Selected (${promotedIds.length}) Students`}
             </button>
           </div>
         </div>
 
-        {/* Success Alert */}
-        {isPromotedSuccess && (
-          <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl p-4 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-            Selected {promotedIds.length} candidate(s) successfully marked for promotion from {sourceClass} to {targetClass}!
+        {/* Outcome of the last action */}
+        {resultNote && (
+          <div
+            className={`rounded-xl p-4 text-xs font-semibold flex items-start gap-2 animate-in fade-in ${
+              resultNote.kind === "ok"
+                ? "bg-emerald-50 border border-emerald-200 text-emerald-900"
+                : "bg-amber-50 border border-amber-200 text-amber-900"
+            }`}
+          >
+            {resultNote.kind === "ok" ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            )}
+            <span>{resultNote.text}</span>
           </div>
         )}
 
@@ -175,8 +277,7 @@ export default function StudentPromotionPage() {
                 <tbody className="divide-y divide-slate-100">
                   {filtered.map((s) => {
                     const isSelected = promotedIds.includes(s.id);
-                    const total = s.caScores.test1 + s.caScores.test2 + s.caScores.project + s.caScores.midTerm + s.caScores.exam;
-                    const isQualified = total >= 50;
+                    const record = averages.get(s.id);
 
                     return (
                       <tr key={s.id} className="hover:bg-blue-50/20 transition-colors">
@@ -190,15 +291,21 @@ export default function StudentPromotionPage() {
                         </td>
                         <td className="py-3 px-4 font-mono font-bold text-slate-700">{s.admissionNo}</td>
                         <td className="py-3 px-4 font-bold text-slate-900">{s.fullName}</td>
-                        <td className="py-3 px-4 text-center font-bold text-slate-800">{total}%</td>
+                        <td className="py-3 px-4 text-center font-bold text-slate-800">
+                          {record ? `${record.avg}%` : <span title="No mark has been filed for this pupil">—</span>}
+                        </td>
                         <td className="py-3 px-4 text-center">
-                          {isQualified ? (
+                          {!record ? (
+                            <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              No marks filed
+                            </span>
+                          ) : record.avg >= PASS_MARK ? (
                             <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                              Promoted (Qualified)
+                              Qualified on {record.subjects} filed subject{record.subjects === 1 ? "" : "s"}
                             </span>
                           ) : (
                             <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                              Promoted on Trial / Retain
+                              Below {PASS_MARK}% — office decision
                             </span>
                           )}
                         </td>

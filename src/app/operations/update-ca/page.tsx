@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
@@ -9,6 +9,7 @@ import {
   useRealtimeClasses,
   useRealtimeSubjectTemplates,
   useRealtimeGradingScales,
+  useRealtimeSubjectScores,
   useRealtimeAuth,
   calculateGradeForClass,
   StudentRecord,
@@ -36,7 +37,7 @@ import {
 } from "lucide-react";
 
 export default function UpdateCAPage() {
-  const { students, updateStudentScore, bulkUpdateScores, saveCaScores } = useRealtimeStudents();
+  const { students, updateStudentScore, bulkUpdateScores, saveCaScores, overlayFiledScores } = useRealtimeStudents();
   const { classes } = useRealtimeClasses();
   const { templates } = useRealtimeSubjectTemplates();
   const { gradingTiers } = useRealtimeGradingScales();
@@ -74,6 +75,22 @@ export default function UpdateCAPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSaved, setIsSaved] = useState(false);
   const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  // The grid shows one subject's marks at a time, so it is filled from the
+  // marks filed for this class, session and term. Until that read lands the
+  // cells stay blank rather than carrying over whatever this browser held for
+  // the previously selected subject, which Save would then file twice over.
+  const { subjectScores: filedMarks, filedLoaded } = useRealtimeSubjectScores({
+    session: SCHOOL_INFO.currentSession,
+    terms: [SCHOOL_INFO.currentTerm],
+    className: selectedClass,
+  });
+
+  useEffect(() => {
+    if (!filedLoaded) return;
+    overlayFiledScores(selectedSubject, selectedClass, filedMarks);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filedLoaded, selectedSubject, selectedClass, filedMarks]);
 
   // CSV Score Upload Modal
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);

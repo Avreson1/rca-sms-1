@@ -177,11 +177,12 @@ const THEME_STYLES = {
   },
 };
 
+const REPORT_TERMS = ["First Term", "Second Term", "Third Term"] as const;
+
 export default function ScoreCardPage() {
   const { students } = useRealtimeStudents();
   const { classes } = useRealtimeClasses();
   const { gradingTiers } = useRealtimeGradingScales();
-  const { subjectScores } = useRealtimeSubjectScores();
   const { psychomotorList } = useRealtimePsychomotor();
   const { newsletter } = useRealtimeNewsletter();
   const { currentUser } = useRealtimeAuth();
@@ -191,18 +192,12 @@ export default function ScoreCardPage() {
   const isTeacher = currentRole === "TEACHER";
   const isSuperOrExam = currentRole === "SUPER_ADMIN" || currentRole === "EXAM_OFFICER";
 
-  // For Student / Parent, determine their assigned ward
-  const parentWard = useMemo(() => {
-    if (!isParentOrStudent) return null;
-    // Find matching student by guardian phone, guardian name, or admission number
-    const matched = students.find(
-      (s) =>
-        (s.guardianName && s.guardianName.toLowerCase().includes("oladipo")) ||
-        s.admissionNo === "RCA/2026/001" ||
-        s.id === "stu-001"
-    );
-    return matched || students[0] || null;
-  }, [isParentOrStudent, students]);
+  // A parent's children are decided by the `guardian_students` rows behind their
+  // login: /api/students already returns only those pupils. Matching a ward by
+  // looking for the string "oladipo" in a guardian name invented a child for any
+  // parent whose real children were not enrolled yet.
+  const parentWards = useMemo(() => (isParentOrStudent ? students : []), [isParentOrStudent, students]);
+  const parentWard = parentWards[0] ?? null;
 
   // Classes accessible to the current user
   const accessibleClasses = useMemo(() => {
@@ -230,6 +225,16 @@ export default function ScoreCardPage() {
     isParentOrStudent && parentWard ? parentWard.id : ""
   );
 
+  // The marks on a card are the ones filed on the school's own tables, read for
+  // the class on screen. All three terms come in one request because the
+  // cumulative view needs the other two, and a card built from this browser's
+  // copy showed a full result in the staff room and an empty one in the office.
+  const { subjectScores } = useRealtimeSubjectScores({
+    session: selectedSession,
+    terms: [...REPORT_TERMS],
+    className: selectedClass,
+  });
+
   // Synchronize when parent ward or teacher role is initialized
   useEffect(() => {
     if (isParentOrStudent && parentWard) {
@@ -255,23 +260,21 @@ export default function ScoreCardPage() {
 
   // Filter students in selected class
   const classStudents = useMemo(() => {
-    if (isParentOrStudent && parentWard) {
-      return [parentWard];
-    }
+    if (isParentOrStudent) return parentWards;
     return students.filter((s) => s.className === selectedClass);
-  }, [students, selectedClass, isParentOrStudent, parentWard]);
+  }, [students, selectedClass, isParentOrStudent, parentWards]);
 
   // Current selected student
   const currentStudent = useMemo(() => {
-    if (isParentOrStudent && parentWard) {
-      return parentWard;
+    if (isParentOrStudent) {
+      return parentWards.find((s) => s.id === selectedStudentId) ?? parentWards[0] ?? null;
     }
     if (selectedStudentId) {
       const found = classStudents.find((s) => s.id === selectedStudentId);
       if (found) return found;
     }
     return classStudents[0] || null;
-  }, [classStudents, selectedStudentId, isParentOrStudent, parentWard]);
+  }, [classStudents, selectedStudentId, isParentOrStudent, parentWards]);
 
   // Auto-adapt template layout when class changes
   const activeTierKey = useMemo(() => {
@@ -303,52 +306,48 @@ export default function ScoreCardPage() {
   }, [activeTierKey]);
 
   // Compute student results for single term and cumulative
+  //
+  // A subject with no filed mark for this session and term has no number to show.
+  // This used to interpolate one from the neighbouring subject — and from the two
+  // terms nobody has run yet — so a printed card carried marks no person entered.
+  // Every figure below is now either read from a filed row or rendered as a dash.
   const computeStudentResults = (student: StudentRecord) => {
-    const baseCA =
-      student.caScores.test1 + student.caScores.test2 + student.caScores.project + student.caScores.midTerm;
-    const baseExam = student.caScores.exam;
-    const baseTotal = baseCA + baseExam;
+    return subjectsList.map((subjectName) => {
+      const filedFor = (term: string) =>
+        subjectScores.find(
+          (s) =>
+            s.studentId === student.id &&
+            s.subjectName.toLowerCase() === subjectName.toLowerCase() &&
+            s.session === selectedSession &&
+            s.term === term
+        );
 
-    return subjectsList.map((subjectName, idx) => {
-      const storedScore = subjectScores.find(
-        (s) =>
-          s.studentId === student.id &&
-          s.subjectName.toLowerCase() === subjectName.toLowerCase() &&
-          s.session === selectedSession &&
-          s.term === selectedTerm
-      );
+      const termRows = REPORT_TERMS.map(filedFor);
+      const current = filedFor(selectedTerm);
+      const allTermsFiled = termRows.every((row) => Boolean(row));
 
-      const term1Total = storedScore
-        ? storedScore.total
-        : idx === 0
-        ? baseTotal
-        : Math.min(100, Math.max(45, baseTotal - (idx % 4) * 3 + (idx % 2) * 4));
+      const termTotals = termRows.map((row) => (row ? row.total : null));
+      const cumulativeTotal = allTermsFiled ? termTotals.reduce<number>((s, v) => s + (v ?? 0), 0) : null;
+      const cumulativeAvg = allTermsFiled ? Number((cumulativeTotal! / 3).toFixed(1)) : null;
 
-      const term1CA = storedScore
-        ? storedScore.test1 + storedScore.test2 + storedScore.project + storedScore.midTerm
-        : Math.round(term1Total * 0.4);
-      const term1Exam = storedScore ? storedScore.exam : term1Total - term1CA;
-
-      const term2Total = Math.min(100, Math.max(40, term1Total + ((idx % 3) - 1) * 4));
-      const term3Total = Math.min(100, Math.max(42, term1Total + (idx % 2 === 0 ? 3 : -2)));
-
-      const cumulativeTotal = term1Total + term2Total + term3Total;
-      const cumulativeAvg = Number((cumulativeTotal / 3).toFixed(1));
-
-      const activeTotal = reportMode === "single" ? term1Total : cumulativeAvg;
-      const gradeInfo = calculateGradeForClass(activeTotal, student.className, gradingTiers);
+      const activeTotal = reportMode === "single" ? termTotals[REPORT_TERMS.indexOf(selectedTerm as never)] : cumulativeAvg;
+      const gradeInfo =
+        activeTotal === null
+          ? { grade: "—", remark: "Not filed", color: "bg-slate-100 text-slate-400" }
+          : calculateGradeForClass(activeTotal, student.className, gradingTiers);
 
       return {
         subject: subjectName,
-        test1: storedScore ? storedScore.test1 : Math.round(term1CA * 0.25),
-        test2: storedScore ? storedScore.test2 : Math.round(term1CA * 0.25),
-        project: storedScore ? storedScore.project : Math.round(term1CA * 0.25),
-        midTerm: storedScore ? storedScore.midTerm : term1CA - Math.round(term1CA * 0.75),
-        caScore: term1CA,
-        examScore: term1Exam,
-        term1Total,
-        term2Total,
-        term3Total,
+        entered: activeTotal !== null,
+        test1: current ? current.test1 : null,
+        test2: current ? current.test2 : null,
+        project: current ? current.project : null,
+        midTerm: current ? current.midTerm : null,
+        caScore: current ? current.test1 + current.test2 + current.project + current.midTerm : null,
+        examScore: current ? current.exam : null,
+        term1Total: termTotals[0],
+        term2Total: termTotals[1],
+        term3Total: termTotals[2],
         cumulativeTotal,
         cumulativeAvg,
         total: activeTotal,
@@ -359,66 +358,23 @@ export default function ScoreCardPage() {
     });
   };
 
-  // Psychomotor & Attendance for current student
-  const currentPsychomotor = useMemo((): PsychomotorRecord => {
-    if (!currentStudent) {
-      return {
-        id: "",
-        studentId: "",
-        admissionNo: "",
-        className: selectedClass,
-        session: selectedSession,
-        term: selectedTerm,
-        affectiveRatings: { "tr-punc": 5, "tr-neat": 4, "tr-hone": 5, "tr-lead": 4 },
-        psychomotorRatings: { "tr-hand": 4, "tr-verb": 5, "tr-spor": 4, "tr-craf": 4 },
-        attendance: { daysOpened: 115, daysPresent: 112, daysAbsent: 3 },
-        formTeacherRemark: "An exceptionally diligent, brilliant, and well-behaved student with commendable character.",
-        principalRemark: "Outstanding academic accomplishment and exemplary conduct. Highly commended.",
-        nextTermBegins: newsletter.nextTermResumption || "January 12, 2026",
-      };
-    }
+  type StudentResult = ReturnType<typeof computeStudentResults>[number];
 
-    const found = psychomotorList.find(
-      (p) => p.studentId === currentStudent.id && p.session === selectedSession && p.term === selectedTerm
+  const dash = (value: number | string | null | undefined) =>
+    value === null || value === undefined || value === "" ? "—" : String(value);
+
+  // Psychomotor & attendance come only from a record somebody assessed. The
+  // defaults used to be praise ("exceptionally diligent"), 112 days present out of
+  // 115, and top ratings on every trait for every child — printed on cards that go
+  // home, for pupils who were never assessed.
+  const currentPsychomotor = useMemo((): PsychomotorRecord | null => {
+    if (!currentStudent) return null;
+    return (
+      psychomotorList.find(
+        (p) => p.studentId === currentStudent.id && p.session === selectedSession && p.term === selectedTerm
+      ) ?? null
     );
-
-    if (found) return found;
-
-    return {
-      id: `psy-${currentStudent.id}`,
-      studentId: currentStudent.id,
-      admissionNo: currentStudent.admissionNo,
-      className: currentStudent.className,
-      session: selectedSession,
-      term: selectedTerm,
-      affectiveRatings: {
-        "Punctuality & Regularity": 5,
-        "Neatness & Uniform Compliance": 4,
-        "Honesty & Moral Integrity": 5,
-        "Politeness & Courteousness": 5,
-        "Leadership & Responsibility": 4,
-        "Emotional Stability & Self-Control": 4,
-        "Relationship with Peers": 5,
-        "Attentiveness & Class Participation": 5,
-      },
-      psychomotorRatings: {
-        "Handwriting & Calligraphy": 4,
-        "Verbal Expression & Fluency": 5,
-        "Sports & Physical Agility": 4,
-        "Drawing, Crafts & Visual Arts": 4,
-        "Musical & Performing Arts": 4,
-        "Laboratory & Practical Dexterity": 5,
-      },
-      attendance: {
-        daysOpened: 115,
-        daysPresent: 112,
-        daysAbsent: 3,
-      },
-      formTeacherRemark: "An exceptionally diligent, brilliant, and well-behaved student with commendable character.",
-      principalRemark: "Outstanding academic accomplishment and exemplary conduct. Approved for promotion.",
-      nextTermBegins: newsletter.nextTermResumption || "January 12, 2026",
-    };
-  }, [currentStudent, psychomotorList, selectedSession, selectedTerm, selectedClass, newsletter]);
+  }, [currentStudent, psychomotorList, selectedSession, selectedTerm]);
 
   // Student navigation
   const currentStudentIndex = classStudents.findIndex((s) => s.id === currentStudent?.id);
@@ -440,27 +396,35 @@ export default function ScoreCardPage() {
   };
 
   // Render Score Card
+  const filedResults = (student: StudentRecord) =>
+    computeStudentResults(student).filter((r): r is StudentResult & { total: number } => r.total !== null);
+
+  // The mean over a pupil's filed subjects, or -1 when the set is incomplete: a
+  // position is a comparison, and ranking a full card against a half-filled one is
+  // how a child ends up bottom of the class on paper nobody finished marking.
+  const rankableMean = (student: StudentRecord) => {
+    const all = computeStudentResults(student);
+    const filed = filedResults(student);
+    return all.length > 0 && filed.length === all.length ? filed.reduce((sum, r) => sum + r.total, 0) / all.length : -1;
+  };
+
   const renderScoreCard = (student: StudentRecord, isBatchItem: boolean = false) => {
     const results = computeStudentResults(student);
-    const total = results.reduce((sum, r) => sum + r.total, 0);
-    const avg = (total / (results.length || 1)).toFixed(1);
+    const filed = filedResults(student);
+    const total = filed.reduce((sum, r) => sum + r.total, 0);
+    const avg = results.length > 0 && filed.length === results.length ? (total / results.length).toFixed(1) : null;
 
-    let pos = "1st";
-    if (classStudents.length > 1) {
-      const allAvgs = classStudents.map((s) => {
-        const res = computeStudentResults(s);
-        const sTot = res.reduce((sum, r) => sum + r.total, 0);
-        return { id: s.id, avg: sTot / (res.length || 1) };
-      });
-      allAvgs.sort((a, b) => b.avg - a.avg);
-      const rk = allAvgs.findIndex((x) => x.id === student.id) + 1;
-      pos = `${formatOrdinal(rk)} of ${classStudents.length}`;
-    }
+    const classMeans = classStudents.map((s) => ({ id: s.id, mean: rankableMean(s) }));
+    const ranked = classMeans.filter((c) => c.mean >= 0).sort((a, b) => b.mean - a.mean);
+    const pos =
+      classMeans.length > 1 && ranked.length === classMeans.length
+        ? `${formatOrdinal(ranked.findIndex((c) => c.id === student.id) + 1)} of ${classMeans.length}`
+        : "—";
 
     const psy =
       psychomotorList.find(
         (p) => p.studentId === student.id && p.session === selectedSession && p.term === selectedTerm
-      ) || currentPsychomotor;
+      ) ?? null;
 
     return (
       <div
@@ -532,7 +496,7 @@ export default function ScoreCardPage() {
           </div>
           <div>
             <span className="text-[10px] uppercase font-bold text-slate-400 block">Terminal Average</span>
-            <strong className="text-emerald-700 font-bold text-sm">{avg}%</strong>
+            <strong className="text-emerald-700 font-bold text-sm">{avg === null ? "Incomplete" : `${avg}%`}</strong>
           </div>
           <div>
             <span className="text-[10px] uppercase font-bold text-slate-400 block">Class Position</span>
@@ -540,9 +504,26 @@ export default function ScoreCardPage() {
           </div>
           <div>
             <span className="text-[10px] uppercase font-bold text-slate-400 block">Promotional Standing</span>
-            <strong className="text-emerald-600 font-bold">Good Standing / Promoted</strong>
+            {/* Promotion is a decision the school records at end of term; until that decision exists
+                for this class there is nothing honest to print here. */}
+            <strong className="text-slate-600 font-bold">Not decided</strong>
           </div>
         </div>
+
+        {results.length === 0 ? (
+          <div className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-[11px] text-slate-700">
+            No subjects are configured for {student.className}, so this card has nothing to show.
+          </div>
+        ) : filed.length < results.length ? (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[11px] text-amber-900">
+            <strong>
+              {results.length - filed.length} of {results.length} subjects have no mark filed for{" "}
+              {selectedTerm}, {selectedSession}.
+            </strong>{" "}
+            A dash means nobody entered a score. Nothing on this card is estimated: once it is printed it
+            goes home with the family.
+          </div>
+        ) : null}
 
         {/* Academic Performance Table */}
         <div className="border border-slate-200 rounded-xl overflow-x-auto shadow-2xs">
@@ -587,15 +568,15 @@ export default function ScoreCardPage() {
                     <>
                       {printLayout === "waec" && (
                         <>
-                          <td className="py-2 px-1 text-center font-mono text-slate-500 text-[11px]">{sub.test1}</td>
-                          <td className="py-2 px-1 text-center font-mono text-slate-500 text-[11px]">{sub.test2}</td>
-                          <td className="py-2 px-1 text-center font-mono text-slate-500 text-[11px]">{sub.project}</td>
-                          <td className="py-2 px-1 text-center font-mono text-slate-500 text-[11px]">{sub.midTerm}</td>
+                          <td className="py-2 px-1 text-center font-mono text-slate-500 text-[11px]">{dash(sub.test1)}</td>
+                          <td className="py-2 px-1 text-center font-mono text-slate-500 text-[11px]">{dash(sub.test2)}</td>
+                          <td className="py-2 px-1 text-center font-mono text-slate-500 text-[11px]">{dash(sub.project)}</td>
+                          <td className="py-2 px-1 text-center font-mono text-slate-500 text-[11px]">{dash(sub.midTerm)}</td>
                         </>
                       )}
-                      <td className="py-2 px-2 text-center font-mono text-slate-700 font-medium">{sub.caScore}</td>
-                      <td className="py-2 px-2 text-center font-mono text-slate-700 font-medium">{sub.examScore}</td>
-                      <td className="py-2 px-2 text-center font-mono font-bold text-slate-900 bg-slate-50">{sub.total}</td>
+                      <td className="py-2 px-2 text-center font-mono text-slate-700 font-medium">{dash(sub.caScore)}</td>
+                      <td className="py-2 px-2 text-center font-mono text-slate-700 font-medium">{dash(sub.examScore)}</td>
+                      <td className="py-2 px-2 text-center font-mono font-bold text-slate-900 bg-slate-50">{dash(sub.total)}</td>
                       <td className="py-2 px-2 text-center">
                         <span className={`inline-block px-2 py-0.5 rounded font-extrabold text-[11px] border ${sub.colorBadge}`}>
                           {sub.grade}
@@ -605,11 +586,13 @@ export default function ScoreCardPage() {
                     </>
                   ) : (
                     <>
-                      <td className="py-2 px-2 text-center font-mono text-slate-600">{sub.term1Total}</td>
-                      <td className="py-2 px-2 text-center font-mono text-slate-600">{sub.term2Total}</td>
-                      <td className="py-2 px-2 text-center font-mono text-slate-600">{sub.term3Total}</td>
-                      <td className="py-2 px-2 text-center font-mono font-bold text-slate-900 bg-slate-50">{sub.cumulativeTotal}</td>
-                      <td className="py-2 px-2 text-center font-mono font-bold text-slate-950 bg-blue-50">{sub.cumulativeAvg}%</td>
+                      <td className="py-2 px-2 text-center font-mono text-slate-600">{dash(sub.term1Total)}</td>
+                      <td className="py-2 px-2 text-center font-mono text-slate-600">{dash(sub.term2Total)}</td>
+                      <td className="py-2 px-2 text-center font-mono text-slate-600">{dash(sub.term3Total)}</td>
+                      <td className="py-2 px-2 text-center font-mono font-bold text-slate-900 bg-slate-50">{dash(sub.cumulativeTotal)}</td>
+                      <td className="py-2 px-2 text-center font-mono font-bold text-slate-950 bg-blue-50">
+                        {sub.cumulativeAvg === null ? "—" : `${sub.cumulativeAvg}%`}
+                      </td>
                       <td className="py-2 px-2 text-center">
                         <span className={`inline-block px-2 py-0.5 rounded font-extrabold text-[11px] border ${sub.colorBadge}`}>
                           {sub.grade}
@@ -628,23 +611,25 @@ export default function ScoreCardPage() {
                 {reportMode === "single" ? (
                   <>
                     <td className="py-2.5 px-2 text-center font-mono">
-                      {results.reduce((sum, r) => sum + r.caScore, 0)}
+                      {filed.reduce((sum, r) => sum + (r.caScore ?? 0), 0)}
                     </td>
                     <td className="py-2.5 px-2 text-center font-mono">
-                      {results.reduce((sum, r) => sum + r.examScore, 0)}
+                      {filed.reduce((sum, r) => sum + (r.examScore ?? 0), 0)}
                     </td>
                     <td className="py-2.5 px-2 text-center font-mono font-extrabold text-blue-950 bg-blue-100">
-                      {total} / {results.length * 100}
+                      {total} / {filed.length * 100}
                     </td>
                     <td colSpan={2} className="py-2.5 px-3 text-emerald-800">
-                      Average: {avg}%
+                      {avg === null ? `Average needs all ${results.length} subjects filed (${filed.length} so far)` : `Average: ${avg}%`}
                     </td>
                   </>
                 ) : (
                   <>
                     <td colSpan={3} className="py-2.5 px-3 text-center">Three-Term Performance Aggregate</td>
                     <td className="py-2.5 px-2 text-center font-mono font-extrabold text-blue-950 bg-blue-100">
-                      {results.reduce((sum, r) => sum + r.cumulativeTotal, 0)}
+                      {results.every((r) => r.cumulativeTotal !== null)
+                        ? results.reduce((sum, r) => sum + (r.cumulativeTotal ?? 0), 0)
+                        : "—"}
                     </td>
                     <td className="py-2.5 px-2 text-center font-mono font-extrabold text-blue-950 bg-blue-200">
                       {avg}%
@@ -660,7 +645,7 @@ export default function ScoreCardPage() {
         </div>
 
         {/* Psychomotor & Affective Domain Grid */}
-        {showPsychomotor && (
+        {showPsychomotor && psy && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-1">
             <div className="border border-slate-200 rounded-xl p-3 bg-slate-50/50 space-y-2">
               <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
@@ -704,8 +689,17 @@ export default function ScoreCardPage() {
           </div>
         )}
 
+        {showAttendanceRemarks && !psy && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[11px] text-amber-900">
+            <strong>No character assessment on file for this pupil.</strong> Attendance, the affective and
+            psychomotor ratings, and the form teacher&apos;s and principal&apos;s remarks print only for a
+            pupil somebody assessed in Traits &amp; Psychomotor for {selectedTerm}, {selectedSession}. The
+            praise this panel used to carry for every child was a template, not an observation.
+          </div>
+        )}
+
         {/* Attendance Summary */}
-        {showAttendanceRemarks && (
+        {showAttendanceRemarks && psy && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 border border-slate-200 p-3 rounded-xl text-center text-xs">
             <div>
               <span className="text-[10px] uppercase font-bold text-slate-400 block">Days School Opened</span>
@@ -722,40 +716,32 @@ export default function ScoreCardPage() {
           </div>
         )}
 
-        {/* Universal Approved Grading Key Table (Standard Scale) */}
-        <div className="border border-slate-200 rounded-xl p-3 bg-slate-50/70 text-[11px] space-y-1.5">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-1">
-            <span className="font-extrabold text-[10px] uppercase tracking-wider text-slate-700">
-              Universal Approved Grading Criteria &amp; Pass Mark Benchmark
-            </span>
-            <span className="font-bold text-[10px] text-[#0000FF]">Pass Mark: 45% (D)</span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-[10px]">
-            <div className="bg-white p-1 rounded border border-blue-200">
-              <strong className="text-[#0000FF] block font-black">A: 70 - 100%</strong>
-              <span className="text-slate-500">Distinction (4.0)</span>
+        {/* The scale belongs to this class's tier. One fixed "Pass Mark: 45% (D)" key used
+            to print on every card, including nursery, whatever the school had configured. */}
+        {(gradingTiers[activeTierKey]?.brackets?.length ?? 0) > 0 && (
+          <div className="border border-slate-200 rounded-xl p-3 bg-slate-50/70 text-[11px] space-y-1.5">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-1">
+              <span className="font-extrabold text-[10px] uppercase tracking-wider text-slate-700">
+                Grading criteria &mdash; {gradingTiers[activeTierKey].tierTitle}
+              </span>
             </div>
-            <div className="bg-white p-1 rounded border border-cyan-200">
-              <strong className="text-cyan-800 block font-black">B: 60 - 69%</strong>
-              <span className="text-slate-500">Very Good (3.0)</span>
-            </div>
-            <div className="bg-white p-1 rounded border border-sky-200">
-              <strong className="text-sky-800 block font-black">C: 50 - 59%</strong>
-              <span className="text-slate-500">Credit (2.0)</span>
-            </div>
-            <div className="bg-white p-1 rounded border border-amber-300 ring-1 ring-amber-400/40">
-              <strong className="text-amber-800 block font-black">D: 45 - 49%</strong>
-              <span className="text-amber-700 font-bold">Pass Mark (1.0)</span>
-            </div>
-            <div className="bg-white p-1 rounded border border-red-200">
-              <strong className="text-red-700 block font-black">F: 0 - 44%</strong>
-              <span className="text-red-600">Fail / Retake</span>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-[10px]">
+              {gradingTiers[activeTierKey].brackets.map((bracket) => (
+                <div key={bracket.grade} className="bg-white p-1 rounded border border-blue-200">
+                  <strong className="text-[#0000FF] block font-black">
+                    {bracket.grade}: {bracket.minScore} - {bracket.maxScore}%
+                  </strong>
+                  <span className="text-slate-500">
+                    {bracket.classification} ({bracket.gradePoint.toFixed(1)})
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
+        )}
 
         {/* Endorsements & Signatures */}
-        {showAttendanceRemarks && (
+        {showAttendanceRemarks && psy && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 pt-4 border-t-2 border-slate-300 text-xs">
             <div className="space-y-3">
               <div>
@@ -801,8 +787,12 @@ export default function ScoreCardPage() {
             <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-xs space-y-3">
               <div>
                 <h4 className="font-bold text-slate-900 mb-1">Director&apos;s End-of-Term Address:</h4>
-                <p className="text-slate-700 leading-relaxed italic">&quot;{newsletter.principalMessage}&quot;</p>
-                <p className="text-[11px] font-bold text-slate-900 mt-1">— {newsletter.principalName}</p>
+                <p className="text-slate-700 leading-relaxed italic">
+                  {newsletter.principalMessage ? `"${newsletter.principalMessage}"` : "Not written for this term."}
+                </p>
+                {newsletter.principalName && (
+                  <p className="text-[11px] font-bold text-slate-900 mt-1">— {newsletter.principalName}</p>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200">
@@ -811,12 +801,18 @@ export default function ScoreCardPage() {
                     <Calendar className="w-3.5 h-3.5 text-blue-600" />
                     Upcoming Term Schedule:
                   </h4>
-                  <p className="text-[#0000FF] font-bold text-xs mb-1">Resumption: {newsletter.nextTermResumption}</p>
-                  <ul className="list-disc list-inside space-y-0.5 text-[11px] text-slate-700">
-                    {newsletter.eventsAndHighlights.map((ev, idx) => (
-                      <li key={idx}>{ev}</li>
-                    ))}
-                  </ul>
+                  <p className="text-[#0000FF] font-bold text-xs mb-1">
+                    {newsletter.nextTermResumption
+                      ? `Resumption: ${newsletter.nextTermResumption}`
+                      : "Resumption date not announced."}
+                  </p>
+                  {newsletter.eventsAndHighlights.length > 0 && (
+                    <ul className="list-disc list-inside space-y-0.5 text-[11px] text-slate-700">
+                      {newsletter.eventsAndHighlights.map((ev, idx) => (
+                        <li key={idx}>{ev}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
 
                 <div>
@@ -825,11 +821,18 @@ export default function ScoreCardPage() {
                     Tuition &amp; Bank Payment Details:
                   </h4>
                   <p className="text-[11px] text-slate-700 leading-snug mb-2">{newsletter.feePolicyAndDeadlines}</p>
-                  <div className="bg-white border border-slate-300 p-2 rounded-lg text-[11px] font-mono">
-                    <p className="text-slate-500">Bank: <strong className="text-slate-900">{newsletter.bankAccountDetails.bankName}</strong></p>
-                    <p className="text-slate-500">Account: <strong className="text-slate-900">{newsletter.bankAccountDetails.accountName}</strong></p>
-                    <p className="text-slate-500">Number: <strong className="text-[#0000FF] font-bold">{newsletter.bankAccountDetails.accountNumber}</strong></p>
-                  </div>
+                  {newsletter.bankAccountDetails.accountNumber ? (
+                    <div className="bg-white border border-slate-300 p-2 rounded-lg text-[11px] font-mono">
+                      <p className="text-slate-500">Bank: <strong className="text-slate-900">{newsletter.bankAccountDetails.bankName}</strong></p>
+                      <p className="text-slate-500">Account: <strong className="text-slate-900">{newsletter.bankAccountDetails.accountName}</strong></p>
+                      <p className="text-slate-500">Number: <strong className="text-[#0000FF] font-bold">{newsletter.bankAccountDetails.accountNumber}</strong></p>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] italic text-slate-500">
+                      No bank account has been entered for the school, so none is printed. A printed
+                      account number sends families money, so it is never guessed.
+                    </p>
+                  )}
                 </div>
               </div>
 
