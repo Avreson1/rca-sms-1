@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/auth/guard";
+import { requireRole, requireRoleSession } from "@/lib/auth/guard";
+import { guardianScope } from "@/lib/auth/guardian-links";
 import { databaseUnavailable, getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-// Invoices carry every family's balances, so a parent is not on this list: the
-// route has no per-child filter yet. Giving STUDENT_PARENT access here would
-// expose the whole school's finances.
-const READ_INVOICES = ["SUPER_ADMIN", "ACCOUNTANT", "TESTERS"] as const;
+// Invoices carry every family's balances, so a parent reaching this route is
+// served only the invoices of the pupils linked to their login. Recording a
+// payment stays with the bursary.
+const READ_INVOICES = ["SUPER_ADMIN", "ACCOUNTANT", "TESTERS", "STUDENT_PARENT"] as const;
 const WRITE_INVOICES = ["SUPER_ADMIN", "ACCOUNTANT"] as const;
 
 type InvoicePayload = {
@@ -45,13 +46,38 @@ function sanitizeInvoice(raw: InvoicePayload) {
 }
 
 export async function GET() {
-  const denied = await requireRole(READ_INVOICES);
-  if (denied) return denied;
+  const access = await requireRoleSession(READ_INVOICES);
+  if (access.denied) return access.denied;
 
   const supabase = getSupabaseServerClient();
   if (!supabase) return databaseUnavailable();
 
-  const { data, error } = await supabase.from("invoices").select("*").order("created_at", { ascending: false });
+  const scope = await guardianScope(access.session);
+  if (scope.error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: `The guardian link table could not be read: ${scope.error}.`,
+        reason: scope.error,
+      },
+      { status: 502 }
+    );
+  }
+  if (scope.admissionNos !== null && scope.admissionNos.length === 0) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "No pupil is linked to this login yet, so there are no invoices to show. The school office links a parent login to its children in Settings → User Access.",
+      },
+      { status: 403 }
+    );
+  }
+
+  let query = supabase.from("invoices").select("*").order("created_at", { ascending: false });
+  if (scope.admissionNos) query = query.in("admission_no", scope.admissionNos);
+
+  const { data, error } = await query;
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 502 });
   return NextResponse.json({ success: true, data: data ?? [] });
 }

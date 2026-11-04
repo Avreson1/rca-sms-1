@@ -63,10 +63,16 @@ Settings → **User Access** (super admin only). For each account you can:
 - **Create Login** — pick the role, optional username (auto-generated from the name if left
   blank), staff/admission ID and email. The password is generated for you and shown **once**;
   copy it before closing the panel. Only a salted scrypt hash is stored, never the password.
+- **Link children** — when the role is *Student / Parent*, the form also asks for admission
+  numbers. Those pairs are written to `guardian_students` and decide what that login may read.
+  An existing parent row shows its children; click the numbers to change the whole set (leave it
+  empty to unlink every child). Only a Parent login can hold children — the API refuses admission
+  numbers for any other role.
 - **New Password** — issues a replacement and signs out every device already using that account.
 - **Suspend / Restore** — a suspended account cannot sign in, and an existing session stops
   working on its next request.
-- **Delete** — removes the row outright.
+- **Delete** — removes the row outright, and with it every child linked to that username. Leaving
+  the links behind would hand those pupils to whoever takes the username next.
 
 Revocation works because the signed cookie carries the account's `token_epoch`. Suspending,
 restoring or resetting advances that counter in the database, so a cookie issued before the
@@ -100,9 +106,15 @@ Run these in the Supabase SQL editor, in order:
    this, app-managed logins cannot be created and User Access reports *Database not configured*.
 4. [`supabase/harden-rls.sql`](supabase/harden-rls.sql) — drops the old permissive public
    policies and enables RLS on the student, staff and finance tables
+5. [`supabase/guardian_students.sql`](supabase/guardian_students.sql) — the table that pairs a
+   Parent login with its pupils. Until you run it, app-managed logins still sign in and every
+   staff screen works, but a parent's data calls fail with *The guardian link table could not be
+   read* (or, once the table exists but holds no row for them, *No pupil is linked to this login
+   yet*).
 
-`app_accounts` deliberately has RLS enabled with **no** policies, so only the server (holding
-the service-role key) can read it. The browser's anon key sees nothing, including the hashes.
+`app_accounts` and `guardian_students` deliberately have RLS enabled with **no** policies, so
+only the server (holding the service-role key) can read them. The browser's anon key sees
+nothing, including the hashes.
 
 ## Public and protected routes
 
@@ -116,11 +128,29 @@ Inside that, each data route also checks the role:
 | Route | Read | Write |
 | --- | --- | --- |
 | `/api/staff` | Super admin, exam officer, QA tester | Super admin |
-| `/api/students` | Super admin, exam officer, teacher, bursar, QA tester | Super admin, exam officer (enrol, and `DELETE` to unenrol) |
-| `/api/invoices` | Super admin, bursar, QA tester | Super admin, bursar (one invoice or a batch) |
+| `/api/students` | Super admin, exam officer, teacher, bursar, QA tester, parent (**own children only**) | Super admin, exam officer (enrol, and `DELETE` to unenrol) |
+| `/api/invoices` | Super admin, bursar, QA tester, parent (**own children only**) | Super admin, bursar (one invoice or a batch) |
 | `/api/ca` | — | Super admin, exam officer, teacher |
 | `/api/accounts` | Super admin | Super admin |
 | `/api/presence` | any signed-in role | any signed-in role |
+
+**What a parent may read.** `/api/students` and `/api/invoices` take the username from the signed
+cookie, look it up in `guardian_students` (`guardianScope` in `src/lib/auth/guardian-links.ts`) and
+add `admission_no IN (their children)` to the query — the row filter is never taken from the
+browser. A parent with no row linked gets a `403` that says so instead of an unexplained empty
+table, and a staff role is untouched by the lookup. Admission numbers are matched against the
+`students` table before a link is saved and stored with the spelling the database has, because the
+read filter is case-sensitive while the office types whatever case it likes.
+
+**A shared laptop does not pass the last person's data on.** Every screen paints itself from this
+browser's own copy before the server has answered, so a Parent login opened on a staff laptop would
+show the roster the member of staff left there for a second or two. When a sign-in belongs to a
+different username than the one that last held the browser, `handOverBrowser`
+(`src/lib/realtime-store.ts`) empties the cached pupils, invoices, subject scores, psychomotor and
+traits records and tells the open tabs to repaint. It fires on sign-in, not on signing out: if the
+server cannot reach the database, that browser's copy is the only copy there is, so a logged-out
+browser keeps it. The owner marker lives beside the data, not in the session, which is why the wipe
+still happens after the previous person signed out properly.
 
 The screens use them: enrolling one pupil or a CSV class list, unenroling a pupil, recording a fee
 payment, generating invoices, and saving CA scores all post to the server. `POST /api/invoices`
@@ -202,10 +232,17 @@ Be aware of what this system does **not** do today:
   tiers fall back to the built-in defaults without a notice — the one call the notice does not
   cover. Settings, subject templates, timetable and the rest of the `localStorage` keys have no
   route behind them at all.
-- **A parent cannot fetch their own child's records from those routes.** `/api/students` and
-  `/api/invoices` return the whole school, so `STUDENT_PARENT` is deliberately excluded until
-  they filter by admission number. Parents still see their child's results through the pages
-  they can reach.
+- **A parent's view is only as deep as the pupil record.** `/api/students` now returns their
+  children (with the CA row attached to each pupil) and `/api/invoices` their balances, but the
+  per-subject score list, psychomotor and traits records have no read route at all — they live in
+  this browser's copy. A parent on a device that staff never used therefore opens an empty
+  scorecard detail; the summary marks come from the pupil record. Give those tables a route (the
+  same `guardianScope` filter applies) before telling parents the portal shows full continuous
+  assessment.
+- **The invoicing page is reachable by a Parent role.** It lists only their own children's
+  invoices now, but recording a payment on it is a bursar write, so the call is refused with `403`
+  and the notice says why. The page should be split into a parent view before parents are onboarded
+  in quantity.
 - **Grading maths still runs in the browser.** `/api/ca` records the `grade` the caller sends
   instead of deriving it from `total_score`, so a crafted request can file any letter grade under
   a passing or failing total. Server-side grading is the next change.

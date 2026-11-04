@@ -24,6 +24,7 @@ interface Account {
   created_by: string;
   created_at: string;
   last_login_at: string | null;
+  guardian_of?: string[];
   password?: string; // present only right after create or reset
 }
 
@@ -37,6 +38,20 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const ROLE_ORDER = ["TEACHER", "EXAM_OFFICER", "ACCOUNTANT", "STUDENT_PARENT", "TESTERS", "SUPER_ADMIN"];
+
+// Admission numbers are typed from the fee sheet, so commas, semicolons and
+// newlines all separate them.
+function parseAdmissionNos(value: string): string[] {
+  const seen = new Set<string>();
+  const numbers: string[] = [];
+  for (const item of value.split(/[,;\n]+/)) {
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed.toUpperCase())) continue;
+    seen.add(trimmed.toUpperCase());
+    numbers.push(trimmed);
+  }
+  return numbers;
+}
 
 export function UserAccess() {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -52,6 +67,8 @@ export function UserAccess() {
   const [freshCredentials, setFreshCredentials] = useState<Account | null>(null);
   const [copied, setCopied] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [childNumbers, setChildNumbers] = useState("");
+  const [linkDraft, setLinkDraft] = useState<{ id: string; value: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -84,6 +101,7 @@ export function UserAccess() {
     setUsername("");
     setStaffId("");
     setEmail("");
+    setChildNumbers("");
   };
 
   const createAccount = async () => {
@@ -99,11 +117,17 @@ export function UserAccess() {
           role,
           staffId: staffId || undefined,
           email: email || undefined,
+          admissionNos: role === "STUDENT_PARENT" ? parseAdmissionNos(childNumbers) : undefined,
         }),
       });
       const payload = await response.json();
       if (!response.ok) {
         setActionError(payload?.error || "Failed to create the account.");
+        if (payload?.data) {
+          setFreshCredentials(payload.data);
+          setCopied(false);
+          await load();
+        }
         return;
       }
       setFreshCredentials(payload.data);
@@ -258,6 +282,24 @@ export function UserAccess() {
           </div>
         </div>
 
+        {role === "STUDENT_PARENT" && (
+          <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-3 space-y-1.5">
+            <label className="block text-[11px] font-black text-blue-900 uppercase tracking-wider">
+              Children — admission numbers
+            </label>
+            <input
+              value={childNumbers}
+              onChange={(e) => setChildNumbers(e.target.value)}
+              placeholder="RCA/2025/001, RCA/2025/014"
+              className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-slate-800 text-sm font-semibold outline-none focus:border-[#0000FF] font-mono"
+            />
+            <p className="text-[11px] text-slate-600">
+              Separate them with commas. This login will only ever see these pupils&rsquo; scorecards and invoices, and
+              an unlinked parent sees an empty portal.
+            </p>
+          </div>
+        )}
+
         <button
           onClick={createAccount}
           disabled={creating || !fullName.trim()}
@@ -281,6 +323,9 @@ export function UserAccess() {
           ) : (
             accounts.map((account) => {
               const suspended = account.status !== "Active";
+              const isParent = account.role === "STUDENT_PARENT";
+              const draft = linkDraft?.id === account.id ? linkDraft.value : null;
+              const linked = account.guardian_of ?? [];
               return (
                 <div
                   key={account.id}
@@ -305,6 +350,41 @@ export function UserAccess() {
                         ? ` · last login ${new Date(account.last_login_at).toLocaleDateString()}`
                         : " · never logged in"}
                     </p>
+                    {isParent &&
+                      (draft === null ? (
+                        <button
+                          onClick={() => setLinkDraft({ id: account.id, value: linked.join(", ") })}
+                          className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 hover:text-[#0000FF] cursor-pointer"
+                        >
+                          <Users className="w-3 h-3" />
+                          {linked.length > 0 ? linked.join(", ") : "No child linked yet — add admission numbers"}
+                        </button>
+                      ) : (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <input
+                            value={draft}
+                            onChange={(e) => setLinkDraft((current) => (current ? { ...current, value: e.target.value } : current))}
+                            placeholder="RCA/2025/001, RCA/2025/014"
+                            className="flex-1 min-w-[200px] p-2 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs font-semibold outline-none focus:border-[#0000FF] font-mono"
+                          />
+                          <button
+                            onClick={() => {
+                              void patch(account.id, { admissionNos: parseAdmissionNos(draft) });
+                              setLinkDraft(null);
+                            }}
+                            disabled={busyId === account.id}
+                            className="px-3 py-1.5 text-[11px] font-black bg-[#0000FF] hover:bg-blue-600 text-white rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            Save children
+                          </button>
+                          <button
+                            onClick={() => setLinkDraft(null)}
+                            className="px-3 py-1.5 text-[11px] font-bold bg-white border border-slate-200 rounded-lg text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ))}
                   </div>
                   <div className="ml-auto flex items-center gap-2 flex-wrap">
                     <button

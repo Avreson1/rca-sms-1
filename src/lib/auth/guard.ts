@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import type { UserRole } from "@/lib/rbac";
 import { getSessionSecret, SESSION_COOKIE, verifySessionToken } from "./session";
+import type { SessionUser } from "./session";
 
-export async function getSessionUser() {
+export async function getSessionUser(): Promise<SessionUser | null> {
   const secret = getSessionSecret();
   if (!secret) return null;
   const cookieStore = await cookies();
@@ -22,12 +23,30 @@ export async function requireSuperAdmin(): Promise<boolean> {
  * read a table it has no business seeing.
  */
 export async function requireRole(roles: readonly UserRole[]): Promise<NextResponse | null> {
+  const access = await requireRoleSession(roles);
+  return access.denied;
+}
+
+/**
+ * Same gate, but also hands the route the session it authorised. Routes that
+ * serve less than the whole school to the person asking — a parent sees their
+ * own children — need to know whose scope to apply.
+ */
+export async function requireRoleSession(
+  roles: readonly UserRole[]
+): Promise<{ session: SessionUser; denied: null } | { session: null; denied: NextResponse }> {
   const session = await getSessionUser();
   if (!session) {
-    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+    return {
+      session: null,
+      denied: NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 }),
+    };
   }
   if (!roles.includes(session.role)) {
-    return NextResponse.json({ success: false, error: "Your role cannot access this data." }, { status: 403 });
+    return {
+      session: null,
+      denied: NextResponse.json({ success: false, error: "Your role cannot access this data." }, { status: 403 }),
+    };
   }
-  return null;
+  return { session, denied: null };
 }

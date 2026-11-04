@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getSessionUser, requireSuperAdmin } from "@/lib/auth/guard";
+import { allGuardianLinks, replaceGuardianLinks } from "@/lib/auth/guardian-links";
 import {
   ASSIGNABLE_ROLES,
   createAppAccount,
@@ -31,7 +32,16 @@ export async function GET() {
     const status = error === "Database not configured" ? 503 : 502;
     return NextResponse.json({ success: false, error }, { status });
   }
-  return NextResponse.json({ success: true, data: accounts });
+
+  // Which pupils sit behind each parent login. A missing link table only costs
+  // the column, not the list: the manager stays usable.
+  const { links } = await allGuardianLinks();
+  const withChildren = accounts.map((account) => ({
+    ...account,
+    guardian_of: links[account.username.toLowerCase()] ?? [],
+  }));
+
+  return NextResponse.json({ success: true, data: withChildren });
 }
 
 export async function POST(request: Request) {
@@ -39,7 +49,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { displayName?: string; username?: string; role?: string; staffId?: string; email?: string };
+  let body: {
+    displayName?: string;
+    username?: string;
+    role?: string;
+    staffId?: string;
+    email?: string;
+    admissionNos?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -74,6 +91,17 @@ export async function POST(request: Request) {
   }
 
   const session = await getSessionUser();
+  const admissionNos = Array.isArray(body.admissionNos)
+    ? body.admissionNos.filter((item): item is string => typeof item === "string")
+    : [];
+
+  if (admissionNos.length > 0 && role !== "STUDENT_PARENT") {
+    return NextResponse.json(
+      { success: false, error: "Only a Student / Parent login links pupils. Leave the admission numbers empty for other roles." },
+      { status: 400 }
+    );
+  }
+
   const { account, error } = await createAppAccount({
     username,
     displayName,
@@ -93,6 +121,23 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { success: false, error: status === 409 ? `“${username}” is already taken.` : (error ?? "Failed to create account") },
       { status }
+    );
+  }
+
+  if (admissionNos.length > 0) {
+    const { unknownAdmissionNos, error: linkError } = await replaceGuardianLinks(
+      account.username,
+      admissionNos,
+      session?.username ?? ""
+    );
+    const reason = linkError ?? `unknown pupil: ${unknownAdmissionNos.slice(0, 5).join(", ")}`;
+    return NextResponse.json(
+      {
+        success: false,
+        error: `Login “${account.username}” was created with its password, but no pupil was linked to it — ${reason}. Link the children from the account row before the parent signs in.`,
+        data: account,
+      },
+      { status: 400 }
     );
   }
 

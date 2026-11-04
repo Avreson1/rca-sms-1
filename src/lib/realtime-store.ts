@@ -38,6 +38,7 @@ const STORAGE_KEYS = {
   NEWSLETTER: "rca_newsletter_store_v6",
   GRADING_SCALES: "rca_grading_scales_store_v6",
   ACTIVE_RBAC_ROLE: "rca_active_rbac_role_v6",
+  BROWSER_OWNER: "rca_portal_browser_owner_v1",
   CA_STRUCTURES: "rca_ca_structures_store_v7",
   ACTIVITY_TEMPLATES: "rca_activity_templates_store_v7",
   AUTH_SESSION: "rca_auth_session_store_v7",
@@ -627,6 +628,48 @@ function broadcast(eventType: string, payload?: any) {
       channel.postMessage({ type: eventType, payload });
       channel.close();
     } catch (e) {}
+  }
+}
+
+// Screens fill themselves from this browser's own copy of the data before the
+// server has answered, so whoever signed in here last leaves their cached roster
+// on the machine. When a different person signs in — a parent on a staff laptop —
+// that copy must go, or the new person sees it on screen until the server's
+// filtered answer replaces it. Emptying the keys and broadcasting makes
+// already-mounted screens drop it at once, without a page reload.
+//
+// The wipe waits for a sign-in rather than firing at logout: if the server
+// cannot reach the database, this browser's copy is the only one that exists, so
+// an anonymous browser is left holding it.
+const PUPIL_DATA_KEYS: [storageKey: string, eventType: string][] = [
+  [STORAGE_KEYS.STUDENTS, "STUDENTS_UPDATED"],
+  [STORAGE_KEYS.INVOICES, "INVOICES_UPDATED"],
+  [STORAGE_KEYS.SUBJECT_SCORES, "SUBJECT_SCORES_UPDATED"],
+  [STORAGE_KEYS.PSYCHOMOTOR, "PSYCHOMOTOR_UPDATED"],
+  [STORAGE_KEYS.TRAITS, "TRAITS_UPDATED"],
+];
+
+function clearPupilDataFromThisBrowser() {
+  if (typeof window === "undefined") return;
+  for (const [storageKey, eventType] of PUPIL_DATA_KEYS) {
+    localStorage.setItem(storageKey, JSON.stringify([]));
+    broadcast(eventType);
+  }
+}
+
+/** Wipes the cached pupil data when the browser changes hands. */
+function handOverBrowser(nextUsername: string) {
+  if (typeof window === "undefined" || !nextUsername) return;
+  const previousOwner = localStorage.getItem(STORAGE_KEYS.BROWSER_OWNER) ?? storedSessionUsername();
+  if (previousOwner && previousOwner !== nextUsername) clearPupilDataFromThisBrowser();
+  localStorage.setItem(STORAGE_KEYS.BROWSER_OWNER, nextUsername);
+}
+
+function storedSessionUsername(): string | undefined {
+  try {
+    return (JSON.parse(localStorage.getItem(STORAGE_KEYS.AUTH_SESSION) || "null") as AuthUserSession | null)?.username;
+  } catch {
+    return undefined;
   }
 }
 
@@ -2378,6 +2421,7 @@ export function useRealtimeAuth() {
               email: payload.user.email,
               loginTime: new Date().toISOString(),
             };
+            handOverBrowser(session.username);
             localStorage.setItem(STORAGE_KEYS.AUTH_SESSION, JSON.stringify(session));
             localStorage.setItem(STORAGE_KEYS.ACTIVE_RBAC_ROLE, session.role);
             setCurrentUser(session);
@@ -2488,6 +2532,7 @@ export function useRealtimeAuth() {
       : roleProfiles[role] || roleProfiles.SUPER_ADMIN;
     setCurrentUser(targetUser);
     if (typeof window !== "undefined") {
+      handOverBrowser(targetUser.username);
       localStorage.setItem(STORAGE_KEYS.AUTH_SESSION, JSON.stringify(targetUser));
       localStorage.setItem(STORAGE_KEYS.ACTIVE_RBAC_ROLE, targetUser.role);
       broadcast("AUTH_SESSION_UPDATED");

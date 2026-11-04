@@ -31,7 +31,10 @@ async function serverReason(response: Response): Promise<string> {
     // `reason` names the setting that is missing, which is the part an operator
     // can act on; the status text alone only says the database was unreachable.
     const detail = [payload?.error, payload?.reason].filter(Boolean).join(" — ");
-    return detail ? `${detail} (${statusText})` : statusText;
+    // When the server explained itself, its sentence is the whole message.
+    // Appending "your role is not allowed to do this" underneath a parent's
+    // "no pupil is linked to this login yet" reads like an accusation.
+    return detail || statusText;
   } catch {
     return statusText;
   }

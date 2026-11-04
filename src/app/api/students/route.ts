@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/auth/guard";
+import { requireRole, requireRoleSession } from "@/lib/auth/guard";
+import { guardianScope } from "@/lib/auth/guardian-links";
 import { databaseUnavailable, getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 // Teachers and the bursary need the roll; enrolling a student is an admissions
-// action. A parent's own child is not served here — this route returns the whole
-// school, so STUDENT_PARENT stays off the read list until it filters by admission
-// number.
-const READ_STUDENTS = ["SUPER_ADMIN", "EXAM_OFFICER", "TEACHER", "ACCOUNTANT", "TESTERS"] as const;
+// action. A parent is on the read list but never sees the whole school: the row
+// set is narrowed to the pupils linked to their login in guardian_students,
+// which the server looks up from the signed session cookie.
+const READ_STUDENTS = ["SUPER_ADMIN", "EXAM_OFFICER", "TEACHER", "ACCOUNTANT", "TESTERS", "STUDENT_PARENT"] as const;
 const WRITE_STUDENTS = ["SUPER_ADMIN", "EXAM_OFFICER"] as const;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -46,16 +47,41 @@ function sanitizeStudent(raw: StudentPayload) {
 }
 
 export async function GET() {
-  const denied = await requireRole(READ_STUDENTS);
-  if (denied) return denied;
+  const access = await requireRoleSession(READ_STUDENTS);
+  if (access.denied) return access.denied;
 
   const supabase = getSupabaseServerClient();
   if (!supabase) return databaseUnavailable();
 
-  const { data, error } = await supabase
+  const scope = await guardianScope(access.session);
+  if (scope.error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: `The guardian link table could not be read: ${scope.error}.`,
+        reason: scope.error,
+      },
+      { status: 502 }
+    );
+  }
+  if (scope.admissionNos !== null && scope.admissionNos.length === 0) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "No pupil is linked to this login yet, so there is nothing to show. The school office links a parent login to its children in Settings → User Access.",
+      },
+      { status: 403 }
+    );
+  }
+
+  let query = supabase
     .from("students")
     .select("*, ca_scores(test1, test2, project, mid_term, exam)")
     .order("created_at", { ascending: false });
+  if (scope.admissionNos) query = query.in("admission_no", scope.admissionNos);
+
+  const { data, error } = await query;
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 502 });
   return NextResponse.json({ success: true, data: data ?? [] });
 }
