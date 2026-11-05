@@ -36,8 +36,14 @@
 -- The seeded array is the fourteen traits the portal has always shipped
 -- (src/lib/realtime-store.ts, DEFAULT_TRAITS) — not marks, not a child's data,
 -- and the school can edit or remove any of them from Operations → Traits &
--- Psychomotor. ON CONFLICT DO NOTHING means re-running this file never overwrites
+-- Psychomotor. The WHERE NOT EXISTS means re-running this file never overwrites
 -- the list the school has since changed.
+--
+-- Built with jsonb_build_object rather than one long '[…]' string on purpose: the
+-- first version of this file put all fourteen traits inside a single quoted
+-- literal spanning sixteen lines, and a paste that lost the final ]'::jsonb came
+-- back as "unterminated quoted string" with the whole script rolled back. One
+-- short quoted value per line cannot fail that way.
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.traits_config (
     id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
@@ -46,26 +52,24 @@ CREATE TABLE IF NOT EXISTS public.traits_config (
     updated_by VARCHAR(100) NOT NULL DEFAULT ''
 );
 
-INSERT INTO public.traits_config (id, traits) VALUES (
-    1,
-    '[
-      {"id":"tr-punc","name":"Punctuality & Regularity","category":"Affective (Behavioral)","scale":"1 - 5 Scale","description":"Timeliness to morning assemblies, roll-call, and lectures."},
-      {"id":"tr-neat","name":"Neatness & Uniform Compliance","category":"Affective (Behavioral)","scale":"1 - 5 Scale","description":"Personal hygiene, haircut, and school uniform compliance."},
-      {"id":"tr-hone","name":"Honesty & Moral Integrity","category":"Affective (Behavioral)","scale":"1 - 5 Scale","description":"Trustworthiness, truthfulness, and character in interactions."},
-      {"id":"tr-poli","name":"Politeness & Courteousness","category":"Affective (Behavioral)","scale":"1 - 5 Scale","description":"Respectful conduct towards teachers, elders, and visitors."},
-      {"id":"tr-lead","name":"Leadership & Sense of Responsibility","category":"Affective (Behavioral)","scale":"1 - 5 Scale","description":"Initiative, prefect duties, and group project leadership."},
-      {"id":"tr-emot","name":"Emotional Stability & Self-Control","category":"Affective (Behavioral)","scale":"1 - 5 Scale","description":"Maturity, anger management, and emotional composure."},
-      {"id":"tr-peer","name":"Relationship with Peers","category":"Affective (Behavioral)","scale":"1 - 5 Scale","description":"Cooperation, friendliness, and anti-bullying mindset."},
-      {"id":"tr-attent","name":"Attentiveness & Class Participation","category":"Affective (Behavioral)","scale":"1 - 5 Scale","description":"Focus, active listening, and contributing in discussions."},
-      {"id":"tr-hand","name":"Handwriting & Calligraphy","category":"Psychomotor (Physical / Skill)","scale":"1 - 5 Scale","description":"Legibility, neatness, and precision in written work."},
-      {"id":"tr-verb","name":"Verbal Expression & Fluency","category":"Psychomotor (Physical / Skill)","scale":"1 - 5 Scale","description":"Clarity of speech, debates, and public presentation."},
-      {"id":"tr-spor","name":"Sports & Physical Agility","category":"Psychomotor (Physical / Skill)","scale":"1 - 5 Scale","description":"Participation and coordination in inter-house sports and games."},
-      {"id":"tr-craf","name":"Drawing, Crafts & Visual Arts","category":"Psychomotor (Physical / Skill)","scale":"1 - 5 Scale","description":"Creative illustrations, technical drawings, and craft projects."},
-      {"id":"tr-musi","name":"Music, Rhythm & Performing Arts","category":"Psychomotor (Physical / Skill)","scale":"1 - 5 Scale","description":"Musical instrument performance, singing, and drama."},
-      {"id":"tr-lab","name":"Laboratory & Workshop Dexterity","category":"Psychomotor (Physical / Skill)","scale":"1 - 5 Scale","description":"Handling scientific apparatus, computers, and practical tools."}
-    ]'::jsonb
+INSERT INTO public.traits_config (id, traits)
+SELECT 1, jsonb_build_array(
+    jsonb_build_object('id', 'tr-punc',  'name', 'Punctuality & Regularity',                'category', 'Affective (Behavioral)',        'scale', '1 - 5 Scale', 'description', 'Timeliness to morning assemblies, roll-call, and lectures.'),
+    jsonb_build_object('id', 'tr-neat',  'name', 'Neatness & Uniform Compliance',           'category', 'Affective (Behavioral)',        'scale', '1 - 5 Scale', 'description', 'Personal hygiene, haircut, and school uniform compliance.'),
+    jsonb_build_object('id', 'tr-hone',  'name', 'Honesty & Moral Integrity',               'category', 'Affective (Behavioral)',        'scale', '1 - 5 Scale', 'description', 'Trustworthiness, truthfulness, and character in interactions.'),
+    jsonb_build_object('id', 'tr-poli',  'name', 'Politeness & Courteousness',              'category', 'Affective (Behavioral)',        'scale', '1 - 5 Scale', 'description', 'Respectful conduct towards teachers, elders, and visitors.'),
+    jsonb_build_object('id', 'tr-lead',  'name', 'Leadership & Sense of Responsibility',    'category', 'Affective (Behavioral)',        'scale', '1 - 5 Scale', 'description', 'Initiative, prefect duties, and group project leadership.'),
+    jsonb_build_object('id', 'tr-emot',  'name', 'Emotional Stability & Self-Control',      'category', 'Affective (Behavioral)',        'scale', '1 - 5 Scale', 'description', 'Maturity, anger management, and emotional composure.'),
+    jsonb_build_object('id', 'tr-peer',  'name', 'Relationship with Peers',                 'category', 'Affective (Behavioral)',        'scale', '1 - 5 Scale', 'description', 'Cooperation, friendliness, and anti-bullying mindset.'),
+    jsonb_build_object('id', 'tr-attent','name', 'Attentiveness & Class Participation',     'category', 'Affective (Behavioral)',        'scale', '1 - 5 Scale', 'description', 'Focus, active listening, and contributing in discussions.'),
+    jsonb_build_object('id', 'tr-hand',  'name', 'Handwriting & Calligraphy',               'category', 'Psychomotor (Physical / Skill)','scale', '1 - 5 Scale', 'description', 'Legibility, neatness, and precision in written work.'),
+    jsonb_build_object('id', 'tr-verb',  'name', 'Verbal Expression & Fluency',             'category', 'Psychomotor (Physical / Skill)','scale', '1 - 5 Scale', 'description', 'Clarity of speech, debates, and public presentation.'),
+    jsonb_build_object('id', 'tr-spor',  'name', 'Sports & Physical Agility',               'category', 'Psychomotor (Physical / Skill)','scale', '1 - 5 Scale', 'description', 'Participation and coordination in inter-house sports and games.'),
+    jsonb_build_object('id', 'tr-craf',  'name', 'Drawing, Crafts & Visual Arts',           'category', 'Psychomotor (Physical / Skill)','scale', '1 - 5 Scale', 'description', 'Creative illustrations, technical drawings, and craft projects.'),
+    jsonb_build_object('id', 'tr-musi',  'name', 'Music, Rhythm & Performing Arts',         'category', 'Psychomotor (Physical / Skill)','scale', '1 - 5 Scale', 'description', 'Musical instrument performance, singing, and drama.'),
+    jsonb_build_object('id', 'tr-lab',   'name', 'Laboratory & Workshop Dexterity',         'category', 'Psychomotor (Physical / Skill)','scale', '1 - 5 Scale', 'description', 'Handling scientific apparatus, computers, and practical tools.')
 )
-ON CONFLICT (id) DO NOTHING;
+WHERE NOT EXISTS (SELECT 1 FROM public.traits_config WHERE id = 1);
 
 ALTER TABLE public.traits_config ENABLE ROW LEVEL SECURITY;
 

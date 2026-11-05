@@ -50,6 +50,12 @@ export async function GET() {
     success: true,
     data: {
       traits,
+      // The table existing and the school having a rubric are different facts. A
+      // migration that created the table but lost its seed row would otherwise
+      // answer `[]`, and every machine would then empty its trait grid — the
+      // opposite of what "the school's list" means. `configured: false` says the
+      // school simply has no list yet, and the device keeps the one it has.
+      configured: Boolean(data),
       updatedAt: data?.updated_at ?? null,
       updatedBy: data?.updated_by ?? "",
     },

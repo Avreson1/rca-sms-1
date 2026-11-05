@@ -1097,6 +1097,7 @@ export async function setPublicationsOnServer(
 
 interface TraitsConfigPayload {
   traits: TraitConfigItem[] | null;
+  configured?: boolean;
 }
 
 /**
@@ -1104,10 +1105,19 @@ interface TraitsConfigPayload {
  *
  * null means the read failed or was refused, and the caller keeps this device's
  * copy — which the on-screen sync notice has already labelled as such. An empty
- * array is a real answer: the office has cleared the list.
+ * array is a real answer: the office has cleared the list. A school whose
+ * migration stopped short of the seed row is neither: it has no list at all, so
+ * this says so and keeps the device's own copy rather than printing an empty
+ * grid of traits under every child's name.
  */
 export async function fetchTraitsConfigFromSupabase(): Promise<TraitConfigItem[] | null> {
   const payload = await requestJson<TraitsConfigPayload>("/api/traits-config", "The trait list");
+  if (payload && payload.configured === false) {
+    reportSyncFailure(
+      "The school's records have no trait list yet. Run supabase/traits_assessments.sql, or save the list from Setup → Traits to put this one on the school's records."
+    );
+    return null;
+  }
   return Array.isArray(payload?.traits) ? payload.traits : null;
 }
 
