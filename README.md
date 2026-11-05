@@ -83,14 +83,16 @@ be live without anyone deciding it should be.
 A clerk's entry now reaches every other machine for: pupils, staff and logins, invoices, the fee
 schedule, payments and receipts, CA and exam marks, the grading scales, the school's own name /
 session / term, published results, closed terms, the list of rated traits, what the school owns and
-every unit of stock that moved in or out of its stores, and — once the form teacher presses *File
+every unit of stock that moved in or out of its stores, the timetable with the number of periods and
+breaks a school day actually has, and — once the form teacher presses *File
 this class into the school's records* on *Traits & Psychomotor* — the character, psychomotor and
 attendance ratings that fill the other half of a child's card. That was the `P0`–`P2` work and it
-depends on `supabase/operations_state.sql`, `supabase/traits_assessments.sql` and
-`supabase/inventory.sql` having been run. Still browser-local: the class list, subject list
-and packages, the calendar, the timetable, the CA component structure, the report theme and
-newsletter, CBT questions and scores, and Inmail — each of those ten screens carries a
-*Kept on this browser* notice so nobody mistakes it for a record. See
+depends on `supabase/operations_state.sql`, `supabase/traits_assessments.sql`,
+`supabase/inventory.sql` and `supabase/timetable.sql` having been run. Still browser-local: the
+class list, subject list and packages, the calendar, the CA component structure, the report theme
+and newsletter, CBT questions and scores, and Inmail — each of those ten screens carries a
+*Kept on this browser* notice so nobody mistakes it for a record (the timetable screen keeps one,
+because it groups the filed lessons by the class arms that are still only on this device). See
 *Current limitations* and the `P0`–`P4` order in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ### Cloning this repository for the live school
@@ -98,7 +100,8 @@ newsletter, CBT questions and scores, and Inmail — each of those ten screens c
 Everything that must change, in the order that avoids surprises:
 
 1. New Supabase project → run every file in *Database setup* below, in that order, including
-   `supabase/operations_state.sql`, `supabase/traits_assessments.sql` and `supabase/inventory.sql`.
+   `supabase/operations_state.sql`, `supabase/traits_assessments.sql`, `supabase/inventory.sql`
+   and `supabase/timetable.sql`.
    The `GRANT` block at the
    end of each is what lets the server touch the new tables (privileges belong to the
    `service_role`, so a new project needs them again); a clone that skips it shows
@@ -254,10 +257,23 @@ Run these in the Supabase SQL editor, in order:
    answers the `503` that names this file. The view is revoked from `anon` and `authenticated`
    along with the tables: a plain view runs with its owner's rights, so it would otherwise be the
    one door the browser key could walk through while every other table stays shut.
+9. [`supabase/timetable.sql`](supabase/timetable.sql) — the school's timetable. It creates
+   `timetable_entries` (one lesson per class, day and period, for one session and term) and
+   `timetable_periods` (how many periods that term's day has, where the breaks fall and which
+   weekdays are taught), then grants both to `service_role`. Two rules live in the database rather
+   than in a screen's hopes: `UNIQUE (session, term, class_name, day, period_index)` means a slot
+   holds one lesson, and a `CHECK` means a row cannot be filed under a term the portal does not
+   recognise. Whether one teacher is in two classes at once is decided by
+   [`src/lib/timetable/clashes.ts`](src/lib/timetable/clashes.ts), imported by the save route and
+   the grid so both use the same test — two rules is how a double-booking sits unnoticed until a
+   class arrives empty. It seeds one day shape (`2026/2027`, First Term, the six periods the portal
+   always printed) behind `WHERE NOT EXISTS`, so a re-run never overwrites a day the school chose.
+   Until you run it, *Operations → Academics & Timetable* answers *The timetable could not be read*
+   and `/api/timetable` returns the `503` that names this file.
 
-`app_accounts`, `guardian_students` and both inventory tables deliberately have RLS enabled with
-**no** policies, so only the server (holding the service-role key) can read them. The browser's anon
-key sees nothing, including the hashes.
+`app_accounts`, `guardian_students`, both inventory tables and both timetable tables deliberately
+have RLS enabled with **no** policies, so only the server (holding the service-role key) can read
+them. The browser's anon key sees nothing, including the hashes.
 
 ## Public and protected routes
 
@@ -285,6 +301,8 @@ Inside that, each data route also checks the role:
 | `/api/payments` | receipts for one pupil: super admin, bursar, QA tester, parent (**own children only**); the whole ledger: super admin, bursar, QA tester | super admin, bursar |
 | `/api/inventory` | super admin, bursar, QA tester | super admin, bursar (`DELETE` refused once the line has a movement) |
 | `/api/inventory/movements` | super admin, bursar, QA tester | super admin, bursar (an issue larger than the shelf is refused) |
+| `/api/timetable` | super admin, exam officer, teacher, QA tester | super admin, exam officer (a lesson is filed into one empty slot; a teacher already in another class then is refused) |
+| `/api/timetable/periods` | super admin, exam officer, teacher, QA tester | super admin, exam officer (a day shape that would strand lessons already filed is refused) |
 
 `/api/payments` POST is the money path. The receipt is filed first and the invoice balance moved
 second; if the balance cannot be moved, the receipt that was just written is withdrawn and the
@@ -399,15 +417,18 @@ cannot break the build. Nothing in `rca-sms/` reaches production.
 
 Be aware of what this system does **not** do today:
 
-- **Ten screens still keep their work in the browser.** Each one now says so on screen, with a
-  *Kept on this browser* notice: CBT (question bank and score), Inmail, the timetable
-  (*Academics*), the CBT lockdown switch in Settings, the CA component structure, the school
+- **Nine screens still keep their work in the browser.** Each one now says so on screen, with a
+  *Kept on this browser* notice: CBT (question bank and score), Inmail, the CBT lockdown switch in
+  Settings, the CA component structure, the school
   calendar and activity templates, the class list, the report-card theme and terminal newsletter,
   the subject packages and the subject list. None of them has a route behind it, so a second
-  machine cannot see the typing and the data is lost if the device is cleared. What *is*
+  machine cannot see the typing and the data is lost if the device is cleared. (*Academics* keeps a
+  tenth notice: the lessons are on the school's records, but the grid groups them by the class list
+  that is still only on this device.) What *is*
   multi-machine: pupils, staff, logins, invoices, fee payments and receipts, CA/exam marks and
   grades, the grading scales, the fee schedule, the school's own name / session / term, published
-  results, closed terms, the trait rubric, the stores register and its movement log, and the
+  results, closed terms, the trait rubric, the stores register and its movement log, the timetable
+  and its day shape, and the
   character assessments once they are filed. The
   CBT-to-CA path (`syncCBTScoreToCA`) writes this device's copy, so a CBT mark only reaches the
   database when *Update CA* files it.
@@ -426,12 +447,16 @@ Be aware of what this system does **not** do today:
   `/api/result-publications`, `/api/students`, `/api/staff` and `/api/accounts` all answer from the
   database instead of naming a missing table). What has not been driven end-to-end against those
   live tables is the write path — Fee Structure → Bill → Record Payment → receipt in Transactions.
-- **Two migrations are still not run on this project, and both screens say so.**
+- **Three migrations are still not run on this project, and each screen says so.**
   `supabase/traits_assessments.sql` ran successfully on 2026-11-05 after a first paste failed
   mid-file, but no signed-in browser has re-read `/api/traits` since, so its routes are recorded as
   *expected to work*, not as checked. `supabase/inventory.sql` has not been run at all: until it
   is, `/api/inventory` answers `503` naming the file and *Accounts → Inventory* prints *The store
-  register could not be read* rather than an empty table it cannot prove.
+  register could not be read* rather than an empty table it cannot prove. `supabase/timetable.sql`
+  has not been run either: until it is, `/api/timetable` answers the same `503` and
+  *Operations → Academics & Timetable* prints *The timetable could not be read* — and refuses to
+  show an empty week, because a grid that looks unfilled when the read failed is how a class is sent
+  to the wrong room.
 - **A parent's view is only as deep as the pupil record.** `/api/students` returns their children,
   `/api/invoices` their balances, `/api/ca` the per-subject marks, `/api/payments` the receipts and
   `/api/traits` the behaviour, attendance and remark half of the card — each filtered by

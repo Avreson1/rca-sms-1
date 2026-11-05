@@ -178,6 +178,42 @@ const SOP_MANUAL_DATA: SOPItem[] = [
     ],
     expectedOutput: "The named session and term with the listed class arms released on the school's records, visible as released on every machine, and each release reversible by 'Withdraw'.",
   },
+  {
+    id: "sop-2-3",
+    code: "SOP-EXM-003",
+    title: "Master Timetable Building, Clash Refusal and Teacher Workload",
+    role: "Exam Officer / Dean of Studies",
+    category: "Exam Officer",
+    badgeColor: "bg-blue-100 text-blue-800 border-blue-200",
+    minRoleTier: "EXAM_OFFICER",
+    summary: "Procedure for building the term's timetable on the school's records: one lesson in one labelled slot, a teacher who is already booked refused with the other class named, and the workload read off the same grid a family's schedule is printed from.",
+    prerequisites: [
+      "A SUPER_ADMIN or EXAM_OFFICER login — a teacher, bursar, parent or QA login can read the grid but the Schedule / Assign / Clear controls are not shown and the server refuses the write",
+      "supabase/timetable.sql run on this project. Until it is, the screen prints 'The timetable could not be read' and names that file, and refuses to show an empty week in its place",
+      "The class arms and staff list on this machine — both are still browser-held, and the screen says so above the grid",
+    ],
+    procedureSteps: [
+      "Navigate to Operations → Academics (/operations/academics). The header reads 'Academic Operations & Master Timetable' and names the session and term the grid is being read for.",
+      "Check the green or amber line under the header. 'n lesson(s) read from the school's records' means the grid is what every machine sees. 'The timetable could not be read' means nothing below is a schedule — run the migration and press 'Refresh'.",
+      "Choose the term in the selector beside 'Refresh'. A timetable is a term's document: the session comes from the school's own Settings record, and if that record could not be read the screen says it is using the values compiled into the portal.",
+      "If a banner appears saying 'This browser is still holding n period(s)', that is the copy the older version of this screen saved to nothing but itself. Press 'Carry these n period(s) into the school's records'. Rows the school refuses are named one by one — the banner does not claim a save it did not make.",
+      "Press 'Schedule Class Period', or any empty cell's 'Assign' button, to open one slot. Pick the subject, choose the teacher from the staff list (or leave 'Not named yet'), and set the room; blank room means the class's own room.",
+      "Press 'File On The School's Timetable'. If that teacher already holds another class in the same slot, the save is refused and the message names the other class, day and period. Move one of the two lessons; do not rename a teacher to get past it.",
+      "Read the line under the grid: 'Day shape: n teaching period(s) × m days = k slots a week, as the school filed it' — or 'the n periods the portal ships with … the school has not filed its own'. Only the first is the school's day; a period count nobody chose still prints on a family's schedule.",
+      "If that line says the periods come from the portal, press 'Set the school's day'. Tick the weekdays the school actually teaches on, name each entry ('Period 1 (08:00 - 08:45 AM)'), use 'Add period' / 'Add break', and press 'File this day on the school's records'. The panel says which shape it opened with, so a saved six-period day is known to be the office's choice and not the portal's default.",
+      "A period cannot be removed while a lesson still sits in it: the school refuses that save and names the lessons that would keep existing with no period to print them in. Move those lessons first, or clear the arm.",
+      "Use 'Class Arm Timetable' for one arm ('n filled of m' and 'Assign' in every empty cell), 'Master Institutional Schedule' for every arm at once (each row shows 'n of m' and 'slot(s) empty'), and 'Faculty Workload Matrix' for periods per teacher.",
+      "In the workload tab, a count flagged 'by name, not staff id' means the lesson carries a typed name rather than a staff reference — two spellings of one person read as two people there. 'Awaiting Schedule' is a teacher with no filed lesson, not an idle one.",
+      "'Clear Class Schedule' takes every lesson off one arm for the named session and term, after naming how many it is about to remove. There is no undo.",
+    ],
+    safetyRules: [
+      "A slot holding two lessons is stopped by the database, not by this screen's good behaviour: one lesson per class, day and period is a rule in supabase/timetable.sql.",
+      "If the panel says 'n teacher(s) are in two classes at the same time on this timetable', fix it before the schedule is printed. Those lessons came in through an older browser copy or a name that does not match the staff file.",
+      "Do not file a timetable into a term the school is not in. The term selector and the header are the only date on the grid — a schedule printed under the wrong term is worse than no schedule.",
+      "The class arms and staff names you are grouping by are still this browser's lists. If another machine's arm is missing from the dropdown, the lessons filed for it are still on the school's records; only the grouping is incomplete here.",
+    ],
+    expectedOutput: "A timetable for one named session and term on the school's records, with no teacher double-booked, every unfilled slot shown as unfilled, and a workload count that matches what the grid prints.",
+  },
 
   // 3. Faculty / Teacher
   {

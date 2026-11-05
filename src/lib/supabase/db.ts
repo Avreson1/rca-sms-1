@@ -8,6 +8,7 @@ import {
   PsychomotorRecord,
   TraitConfigItem,
 } from "../realtime-store";
+import { DEFAULT_TIMETABLE_DAYS, DEFAULT_TIMETABLE_PERIODS, type TimetablePeriod } from "../timetable/day-shape";
 
 // All reads and writes go through the authenticated API routes. The browser no
 // longer touches student/staff/invoice tables directly, so the anon key cannot
@@ -1364,5 +1365,219 @@ export async function recordInventoryMovementOnServer(movement: {
   } catch (error) {
     console.warn("API /api/inventory/movements write failed", error);
     return { ok: false, quantityOnHand: null, reason: "the portal server did not answer" };
+  }
+}
+
+
+// ============================================================================
+// 12. THE TIMETABLE, ON THE SCHOOL'S RECORDS
+//
+// The grid used to be this browser's own copy, which made it the one document
+// every adult in the school acts on and none of them could check. A form teacher's
+// Tuesday was not the office's Tuesday, the workload matrix counted the periods one
+// machine had typed, and clearing the browser lost a term's planning with no
+// warning. Every read and write here goes to /api/timetable, and a read that failed
+// is shown as a failed read — never as a free week.
+// ============================================================================
+
+export interface TimetableLessonRow {
+  id: string;
+  session: string;
+  term: string;
+  className: string;
+  day: string;
+  periodIndex: number;
+  periodLabel: string;
+  subject: string;
+  teacherName: string;
+  teacherId: string;
+  room: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+}
+
+/** A lesson being filed. The slot it lands in is decided by class, day and period. */
+export interface TimetableLessonDraft {
+  session: string;
+  term: string;
+  className: string;
+  day: string;
+  periodIndex: number;
+  periodLabel?: string;
+  subject: string;
+  teacherName?: string;
+  teacherId?: string;
+  room?: string;
+}
+
+export interface TimetableDayShape {
+  session: string;
+  term: string;
+  periods: TimetablePeriod[];
+  days: string[];
+  /** False when the school has filed no shape and the one the portal ships with is being shown. */
+  fromSchoolRecords: boolean;
+}
+
+/** The grid for one session and term. `rows: null` is a failed read, not an empty week. */
+export function fetchTimetableFromSupabase(scope: { session: string; term: string; className?: string }) {
+  const params = new URLSearchParams({ session: scope.session, term: scope.term });
+  if (scope.className) params.set("class_name", scope.className);
+  return readList<TimetableLessonRow>(`/api/timetable?${params}`);
+}
+
+/**
+ * The shape of the school day — how many periods, on which days, at what times.
+ *
+ * A school that has never filed one is told so (`fromSchoolRecords: false`) and
+ * shown the six periods the portal ships with, rather than the screen presenting a
+ * default as though the office had chosen it.
+ */
+export async function fetchTimetableDayShape(session: string, term: string): Promise<TimetableDayShape> {
+  const fallback: TimetableDayShape = {
+    session,
+    term,
+    periods: DEFAULT_TIMETABLE_PERIODS,
+    days: DEFAULT_TIMETABLE_DAYS,
+    fromSchoolRecords: false,
+  };
+  try {
+    const response = await fetch(
+      `/api/timetable/periods?session=${encodeURIComponent(session)}&term=${encodeURIComponent(term)}`,
+      { cache: "no-store", headers: { "Content-Type": "application/json" } }
+    );
+    if (!response.ok) {
+      reportSyncFailure(
+        `The school's day structure could not be read: ${await serverReason(response)}. The grid is showing the periods the portal ships with instead.`
+      );
+      return fallback;
+    }
+    const payload = (await response.json()) as { data?: { periods?: TimetablePeriod[]; days?: string[]; configured?: boolean } };
+    const periods = Array.isArray(payload?.data?.periods) ? payload.data.periods : [];
+    if (payload?.data?.configured === false || periods.length === 0) return fallback;
+    return {
+      session,
+      term,
+      periods,
+      days: Array.isArray(payload?.data?.days) && payload.data.days.length > 0 ? payload.data.days : DEFAULT_TIMETABLE_DAYS,
+      fromSchoolRecords: true,
+    };
+  } catch (error) {
+    console.warn("API /api/timetable/periods read failed", error);
+    reportSyncFailure(
+      "The school's day structure could not be read: the portal server did not answer. The grid is showing the periods the portal ships with instead."
+    );
+    return fallback;
+  }
+}
+
+/** Files one lesson into one slot, and carries back the refusal when that teacher is elsewhere at that time. */
+export async function saveTimetableLessonOnServer(
+  lesson: TimetableLessonDraft
+): Promise<{ ok: boolean; id: string | null; replaced: boolean; reason: string | null }> {
+  try {
+    const response = await fetch("/api/timetable", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(lesson),
+    });
+    if (!response.ok) return { ok: false, id: null, replaced: false, reason: await serverReason(response) };
+    const payload = (await response.json().catch(() => null)) as { data?: { id?: string; replaced?: boolean } } | null;
+    return { ok: true, id: payload?.data?.id ?? null, replaced: Boolean(payload?.data?.replaced), reason: null };
+  } catch (error) {
+    console.warn("API /api/timetable write failed", error);
+    return { ok: false, id: null, replaced: false, reason: "the portal server did not answer" };
+  }
+}
+
+export interface TimetableBatchRefusal {
+  className: string;
+  day: string;
+  periodIndex: number;
+  subject: string;
+  reason: string;
+}
+
+/**
+ * Files a grid in one call — the copy an older browser was holding, or a generated
+ * draft a person has approved.
+ *
+ * The answer is the server's own count of what landed plus its reason for every row
+ * it would not take. "Saved" would be the wrong word for a partial file, so the
+ * screen prints the refused rows by name.
+ */
+export async function fileTimetableBatchOnServer(
+  scope: { session: string; term: string },
+  entries: TimetableLessonDraft[]
+): Promise<{ ok: boolean; filed: number; refused: TimetableBatchRefusal[]; reason: string | null }> {
+  try {
+    const response = await fetch("/api/timetable", {
+      method: "PUT",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...scope, entries }),
+    });
+    const payload = (await response.json().catch(() => null)) as {
+      data?: { filed?: number; refused?: TimetableBatchRefusal[] };
+      error?: string;
+    } | null;
+    if (!response.ok) {
+      return {
+        ok: false,
+        filed: payload?.data?.filed ?? 0,
+        refused: payload?.data?.refused ?? [],
+        reason: (await serverReason(response)) ?? payload?.error ?? "the portal server refused the grid",
+      };
+    }
+    return { ok: true, filed: payload?.data?.filed ?? 0, refused: payload?.data?.refused ?? [], reason: null };
+  } catch (error) {
+    console.warn("API /api/timetable batch write failed", error);
+    return { ok: false, filed: 0, refused: [], reason: "the portal server did not answer" };
+  }
+}
+
+export function removeTimetableLessonOnServer(id: string) {
+  return writeOnce("/api/timetable", "DELETE", { id });
+}
+
+/** Empties one class arm's grid for one session and term, and reports how many lessons went. */
+export async function clearClassTimetableOnServer(scope: { session: string; term: string; className: string }) {
+  try {
+    const response = await fetch("/api/timetable", {
+      method: "DELETE",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(scope),
+    });
+    if (!response.ok) return { ok: false, removed: 0, reason: await serverReason(response) };
+    const payload = (await response.json().catch(() => null)) as { data?: { removed?: number } } | null;
+    return { ok: true, removed: payload?.data?.removed ?? 0, reason: null };
+  } catch (error) {
+    console.warn("API /api/timetable clear failed", error);
+    return { ok: false, removed: 0, reason: "the portal server did not answer" };
+  }
+}
+
+/** Saves the school's own day shape, so a seven-period day stops being a rebuild. */
+export async function saveTimetableDayShapeOnServer(shape: {
+  session: string;
+  term: string;
+  periods: TimetablePeriod[];
+  days: string[];
+}): Promise<{ ok: boolean; reason: string | null }> {
+  try {
+    const response = await fetch("/api/timetable/periods", {
+      method: "PUT",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(shape),
+    });
+    if (!response.ok) return { ok: false, reason: await serverReason(response) };
+    return { ok: true, reason: null };
+  } catch (error) {
+    console.warn("API /api/timetable/periods write failed", error);
+    return { ok: false, reason: "the portal server did not answer" };
   }
 }

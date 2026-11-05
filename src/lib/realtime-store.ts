@@ -57,6 +57,8 @@ const STORAGE_KEYS = {
   CA_STRUCTURES: "rca_ca_structures_store_v7",
   ACTIVITY_TEMPLATES: "rca_activity_templates_store_v7",
   AUTH_SESSION: "rca_auth_session_store_v7",
+  // The timetable is on the school records now (/api/timetable). The key stays so the
+  // settings purge can still clear a device copy that was never filed.
   TIMETABLE: "rca_timetable_store_v7",
   CBT_CONFIG: "rca_cbt_config_store_v7",
 };
@@ -316,18 +318,6 @@ export interface AuthUserSession {
   assignedSubject?: string;
   assignedClass?: string;
   loginTime: string;
-}
-
-export interface TimetableEntryRecord {
-  id: string;
-  className: string;
-  day: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday";
-  periodIndex: number; // 0..5
-  periodLabel: string;
-  subject: string;
-  teacherName: string;
-  teacherId?: string;
-  room?: string;
 }
 
 export interface InmailMessage {
@@ -616,7 +606,6 @@ export const INITIAL_CBT_QUESTIONS: CBTQuestionRecord[] = [];
 export const INITIAL_INMAIL: InmailMessage[] = [];
 export const INITIAL_SUBJECT_SCORES: SubjectScoreRecord[] = [];
 export const INITIAL_PSYCHOMOTOR: PsychomotorRecord[] = [];
-export const INITIAL_TIMETABLE: TimetableEntryRecord[] = [];
 
 // Every field below prints on the end-of-term circular that goes home with a pupil, so the
 // school writes it. The previous defaults invented a resumption date, four dated highlights,
@@ -2878,84 +2867,6 @@ export function useRealtimeAuth() {
     purgeAllSessions,
     isAuthenticated: !!currentUser,
   };
-}
-
-// -------------------------------------------------------------
-// Hook: Real-Time Timetable Store (Flushed of all dummy data)
-// -------------------------------------------------------------
-export function useRealtimeTimetable() {
-  const [timetable, setTimetable] = useState<TimetableEntryRecord[]>(INITIAL_TIMETABLE);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem(STORAGE_KEYS.TIMETABLE);
-      if (stored) {
-        try {
-          setTimetable(JSON.parse(stored));
-        } catch {}
-      } else {
-        localStorage.setItem(STORAGE_KEYS.TIMETABLE, JSON.stringify(INITIAL_TIMETABLE));
-      }
-    }
-
-    let channel: BroadcastChannel | null = null;
-    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
-      channel = new BroadcastChannel(CHANNEL_NAME);
-      channel.onmessage = (event) => {
-        if (event.data?.type === "TIMETABLE_UPDATED") {
-          const stored = localStorage.getItem(STORAGE_KEYS.TIMETABLE);
-          if (stored) setTimetable(JSON.parse(stored));
-        }
-      };
-    }
-    return () => {
-      channel?.close();
-    };
-  }, []);
-
-  const addEntry = (entry: Omit<TimetableEntryRecord, "id">) => {
-    const newEntry: TimetableEntryRecord = {
-      ...entry,
-      id: `tt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-    };
-    const filtered = timetable.filter(
-      (item) => !(item.className === entry.className && item.day === entry.day && item.periodIndex === entry.periodIndex)
-    );
-    const updated = [...filtered, newEntry];
-    setTimetable(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.TIMETABLE, JSON.stringify(updated));
-      broadcast("TIMETABLE_UPDATED");
-    }
-  };
-
-  const removeEntry = (id: string) => {
-    const updated = timetable.filter((t) => t.id !== id);
-    setTimetable(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.TIMETABLE, JSON.stringify(updated));
-      broadcast("TIMETABLE_UPDATED");
-    }
-  };
-
-  const clearClassTimetable = (className: string) => {
-    const updated = timetable.filter((t) => t.className !== className);
-    setTimetable(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.TIMETABLE, JSON.stringify(updated));
-      broadcast("TIMETABLE_UPDATED");
-    }
-  };
-
-  const purgeAllTimetable = () => {
-    setTimetable([]);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.TIMETABLE, JSON.stringify([]));
-      broadcast("TIMETABLE_UPDATED");
-    }
-  };
-
-  return { timetable, addEntry, removeEntry, clearClassTimetable, purgeAllTimetable };
 }
 
 // -------------------------------------------------------------

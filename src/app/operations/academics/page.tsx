@@ -1,117 +1,353 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
+import { useSchoolConfig } from "@/lib/school-config";
 import {
   useRealtimeStaff,
   useRealtimeClasses,
-  useRealtimeTimetable,
-  useRealtimeAuth,
   useRealtimeSubjects,
+  useRealtimeAuth,
+  type StaffRecord,
 } from "@/lib/realtime-store";
+import {
+  clearClassTimetableOnServer,
+  fetchTimetableDayShape,
+  fetchTimetableFromSupabase,
+  fileTimetableBatchOnServer,
+  removeTimetableLessonOnServer,
+  saveTimetableDayShapeOnServer,
+  saveTimetableLessonOnServer,
+  type TimetableDayShape,
+  type TimetableLessonDraft,
+  type TimetableLessonRow,
+} from "@/lib/supabase/db";
+import { findAllClashes, isUnassigned, sameTeacher, slotLabel, type TimetableLesson } from "@/lib/timetable/clashes";
+import {
+  DEFAULT_TIMETABLE_DAYS,
+  DEFAULT_TIMETABLE_PERIODS,
+  teachablePeriods,
+  type TimetablePeriod,
+} from "@/lib/timetable/day-shape";
 import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   ArrowLeft,
+  CheckCircle2,
   Clock,
-  Users,
   Printer,
   Plus,
+  RefreshCw,
+  TriangleAlert,
   Trash2,
+  Upload,
+  Users,
+  X,
 } from "lucide-react";
+
+type Day = "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday";
+const TERMS = ["First Term", "Second Term", "Third Term"];
+const ALL_DAYS: Day[] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+/** The key the timetable lived under while it was only ever this browser's copy. */
+const LEGACY_TIMETABLE_KEY = "rca_timetable_store_v7";
+
+const NO_PERIODS: TimetablePeriod[] = [];
+const NO_DAYS: string[] = [];
+
+interface LegacyLesson {
+  className?: string;
+  day?: string;
+  periodIndex?: number;
+  periodLabel?: string;
+  subject?: string;
+  teacherName?: string;
+  teacherId?: string;
+  room?: string;
+}
+
+/**
+ * Reads a timetable this browser may still be holding from the version of the
+ * screen that saved nothing to the school.
+ *
+ * It is read once, offered up for filing, and cleared when it lands — so nobody
+ * loses a term of planning to an upgrade, and the screen never ends up with two
+ * timetables to choose between.
+ */
+function readLegacyCopy(): LegacyLesson[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = window.localStorage.getItem(LEGACY_TIMETABLE_KEY);
+    const parsed = stored ? (JSON.parse(stored) as unknown) : null;
+    return Array.isArray(parsed) ? (parsed as LegacyLesson[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+interface DraftSlot {
+  day: Day;
+  periodIndex: number;
+  periodLabel: string;
+}
 
 export default function OperationsAcademicsPage() {
   const { staff } = useRealtimeStaff();
   const { classes } = useRealtimeClasses();
   const { subjects } = useRealtimeSubjects();
-  const { timetable, addEntry, removeEntry, clearClassTimetable } = useRealtimeTimetable();
   const { currentUser } = useRealtimeAuth();
+  const { config, usingDefaults } = useSchoolConfig();
 
-  const [selectedClass, setSelectedClass] = useState<string>(classes[0]?.name || "Primary 1");
+  const session = (config?.current_session ?? "").trim() || SCHOOL_INFO.currentSession;
+  const schoolTerm = (config?.current_term ?? "").trim() || SCHOOL_INFO.currentTerm;
+
+  const [term, setTerm] = useState<string>(schoolTerm);
+  const [selectedClass, setSelectedClass] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"class" | "master" | "workload">("class");
 
-  // Modal State for Adding Timetable Period Entry
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [dayInput, setDayInput] = useState<"Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday">("Monday");
-  const [periodIdxInput, setPeriodIdxInput] = useState<number>(0);
-  const [subjectInput, setSubjectInput] = useState<string>("");
-  const [teacherInput, setTeacherInput] = useState<string>("");
-  const [roomInput, setRoomInput] = useState<string>("");
+  const [lessons, setLessons] = useState<TimetableLessonRow[] | null>(null);
+  const [readProblem, setReadProblem] = useState<string | null>(null);
+  const [dayShape, setDayShape] = useState<TimetableDayShape | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [outcome, setOutcome] = useState<{ tone: "ok" | "warn"; message: string } | null>(null);
 
-  const isSuperOrExamOfficer =
-    currentUser?.role === "SUPER_ADMIN" || currentUser?.role === "EXAM_OFFICER";
+  const [slot, setSlot] = useState<DraftSlot | null>(null);
+  const [subjectInput, setSubjectInput] = useState("");
+  const [teacherInput, setTeacherInput] = useState("");
+  const [roomInput, setRoomInput] = useState("");
 
-  const standardPeriods = [
-    { index: 0, label: "Period 1 (08:00 - 08:45 AM)" },
-    { index: 1, label: "Period 2 (08:45 - 09:30 AM)" },
-    { index: -1, label: "Short Break (09:30 - 10:00 AM)", isBreak: true },
-    { index: 2, label: "Period 3 (10:00 - 10:45 AM)" },
-    { index: 3, label: "Period 4 (10:45 - 11:30 AM)" },
-    { index: -2, label: "Long Break & Lunch (11:30 - 12:15 PM)", isBreak: true },
-    { index: 4, label: "Period 5 (12:15 - 01:00 PM)" },
-    { index: 5, label: "Period 6 (01:00 - 01:45 PM)" },
-  ];
+  const [legacyCopy, setLegacyCopy] = useState<LegacyLesson[]>([]);
 
-  const days: ("Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday")[] = [
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-  ];
+  const [shapeDraft, setShapeDraft] = useState<{ periods: TimetablePeriod[]; days: Day[] } | null>(null);
 
-  // Filter entries for selected class
-  const classEntries = timetable.filter((t) => t.className === selectedClass);
+  const canWrite = currentUser?.role === "SUPER_ADMIN" || currentUser?.role === "EXAM_OFFICER";
 
-  const getEntryForSlot = (day: string, periodIndex: number) => {
-    return classEntries.find((e) => e.day === day && e.periodIndex === periodIndex);
-  };
+  // The screen opens on whatever term the school's own record says it is in, and
+  // keeps following that record until the person reading the grid picks a different
+  // term themselves. The compiled value is only reached when the record could not
+  // be read, and the banner below says which of the two is being used — a timetable
+  // printed under the wrong term is worse than no timetable.
+  const [termTouched, setTermTouched] = useState(false);
+  useEffect(() => {
+    if (!termTouched && schoolTerm) setTerm(schoolTerm);
+  }, [schoolTerm, termTouched]);
 
-  const handleOpenAddModal = (day?: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday", periodIndex?: number) => {
-    if (day) setDayInput(day);
-    if (periodIndex !== undefined) setPeriodIdxInput(periodIndex);
-    setSubjectInput(subjects[0]?.name || "General Mathematics");
-    setTeacherInput(staff[0]?.fullName || "Unassigned");
+  useEffect(() => {
+    if (!selectedClass && classes.length > 0) setSelectedClass(classes[0].name);
+  }, [classes, selectedClass]);
+
+  useEffect(() => {
+    setLegacyCopy(readLegacyCopy());
+  }, []);
+
+  const load = useCallback(async () => {
+    if (!term) return;
+    setLoading(true);
+    const [grid, shape] = await Promise.all([fetchTimetableFromSupabase({ session, term }), fetchTimetableDayShape(session, term)]);
+    setLessons(grid.rows);
+    setReadProblem(grid.reason);
+    setDayShape(shape);
+    setLoading(false);
+  }, [session, term]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const periods = dayShape?.periods ?? NO_PERIODS;
+  const days = (dayShape?.days ?? NO_DAYS) as Day[];
+  const slots = useMemo(() => teachablePeriods(periods), [periods]);
+
+  const classLessons = useMemo(
+    () => (lessons ?? []).filter((lesson) => lesson.className === selectedClass),
+    [lessons, selectedClass]
+  );
+
+  const lessonFor = (day: Day, periodIndex: number) =>
+    classLessons.find((lesson) => lesson.day === day && lesson.periodIndex === periodIndex);
+
+  const openSlot = (day: Day, periodIndex: number) => {
+    const label = periods.find((period) => period.index === periodIndex)?.label ?? `Period ${periodIndex + 1}`;
+    setSlot({ day, periodIndex, periodLabel: label });
+    setSubjectInput("");
+    setTeacherInput("");
     setRoomInput(selectedClass);
-    setIsAddModalOpen(true);
   };
 
-  const handleSaveEntry = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!subjectInput.trim()) return;
+  const handleFileLesson = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!slot || !selectedClass) return;
+    setBusy(true);
 
-    const periodObj = standardPeriods.find((p) => p.index === periodIdxInput);
-    addEntry({
+    const draft: TimetableLessonDraft = {
+      session,
+      term,
       className: selectedClass,
-      day: dayInput,
-      periodIndex: periodIdxInput,
-      periodLabel: periodObj?.label || `Period ${periodIdxInput + 1}`,
+      day: slot.day,
+      periodIndex: slot.periodIndex,
+      periodLabel: slot.periodLabel,
       subject: subjectInput.trim(),
-      teacherName: teacherInput.trim() || "Unassigned",
-      room: roomInput.trim() || selectedClass,
-    });
-
-    setIsAddModalOpen(false);
-  };
-
-  const handlePrint = () => {
-    window.print();
-  };
-
-  // Compute live workload metrics per staff member from timetable + assigned subjects
-  const staffWorkload = staff.map((s) => {
-    const scheduledPeriods = timetable.filter(
-      (t) => t.teacherName.toLowerCase() === s.fullName.toLowerCase() || (t.teacherId && t.teacherId === s.staffId)
-    ).length;
-
-    return {
-      staffMember: s,
-      assignedSubjectsCount: s.assignedSubjects.length,
-      scheduledPeriodsCount: scheduledPeriods,
-      formClass: s.assignedClass || "None",
+      teacherName: teacherInput.trim(),
+      teacherId: staff.find((member) => member.fullName === teacherInput)?.staffId ?? "",
+      room: roomInput.trim(),
     };
-  });
+
+    const result = await saveTimetableLessonOnServer(draft);
+    if (result.ok) {
+      setOutcome({
+        tone: "ok",
+        message: `${selectedClass} · ${slot.day} · ${slot.periodLabel}: ${draft.subject}${
+          draft.teacherName && !isUnassigned(draft.teacherName, draft.teacherId) ? ` with ${draft.teacherName}` : " (no teacher named yet)"
+        } is on the school's timetable${result.replaced ? " (replacing what was in that slot)" : ""}.`,
+      });
+      setSlot(null);
+      await load();
+    } else {
+      setOutcome({ tone: "warn", message: result.reason ?? "The school's records did not take the lesson." });
+    }
+    setBusy(false);
+  };
+
+  const handleRemoveLesson = async (lesson: TimetableLessonRow) => {
+    if (!window.confirm(`Remove ${lesson.subject} from ${lesson.className}, ${lesson.day}, ${lesson.periodLabel || `Period ${lesson.periodIndex + 1}`}?`)) return;
+    setBusy(true);
+    const result = await removeTimetableLessonOnServer(lesson.id);
+    if (result.ok) {
+      setOutcome({ tone: "ok", message: `That slot in ${lesson.className} is empty again on the school's timetable.` });
+      await load();
+    } else {
+      setOutcome({ tone: "warn", message: result.reason ?? "The school's records did not remove the lesson." });
+    }
+    setBusy(false);
+  };
+
+  const handleClearClass = async () => {
+    if (!selectedClass) return;
+    const count = classLessons.length;
+    if (!window.confirm(`Clear all ${count} scheduled period(s) for ${selectedClass} in ${term}, ${session}? The lessons come off the school's timetable and cannot be brought back.`)) return;
+    setBusy(true);
+    const result = await clearClassTimetableOnServer({ session, term, className: selectedClass });
+    if (result.ok) {
+      setOutcome({ tone: "ok", message: `${result.removed} lesson(s) were taken off ${selectedClass}'s timetable.` });
+      await load();
+    } else {
+      setOutcome({ tone: "warn", message: result.reason ?? "The school's records did not clear that class." });
+    }
+    setBusy(false);
+  };
+
+  /**
+   * Files the copy this browser is holding, into the school's timetable.
+   *
+   * The server answers with what landed and a reason for every row it would not
+   * take, so a double-booked teacher in the old copy stops that one lesson and
+   * names it instead of losing the rest of the term's work.
+   */
+  const handleCarryOver = async () => {
+    if (legacyCopy.length === 0) return;
+    setBusy(true);
+    const entries: TimetableLessonDraft[] = legacyCopy.map((lesson) => ({
+      session,
+      term,
+      className: (lesson.className ?? "").trim(),
+      day: (lesson.day ?? "").trim(),
+      periodIndex: Number(lesson.periodIndex) || 0,
+      periodLabel: lesson.periodLabel ?? "",
+      subject: (lesson.subject ?? "").trim(),
+      teacherName: lesson.teacherName ?? "",
+      teacherId: lesson.teacherId ?? "",
+      room: lesson.room ?? "",
+    }));
+
+    const result = await fileTimetableBatchOnServer({ session, term }, entries);
+    if (result.filed > 0) {
+      window.localStorage.removeItem(LEGACY_TIMETABLE_KEY);
+      setLegacyCopy([]);
+    }
+
+    const refusedText =
+      result.refused.length > 0
+        ? ` ${result.refused.length} could not be filed: ${result.refused
+            .slice(0, 3)
+            .map((row) => `${row.className || "?"} · ${row.day || "?"} · ${row.subject || "?"} — ${row.reason}`)
+            .join(" / ")}${result.refused.length > 3 ? ` (and ${result.refused.length - 3} more)` : ""}`
+        : "";
+
+    setOutcome({
+      tone: result.filed > 0 && result.refused.length === 0 ? "ok" : "warn",
+      message: result.filed > 0
+        ? `${result.filed} of ${entries.length} period(s) from this browser are now on the school's timetable for ${term}, ${session}.${refusedText}`
+        : `Nothing was filed from this browser's copy: ${result.reason ?? result.refused[0]?.reason ?? "the school's records refused every row."}${refusedText}`,
+    });
+    await load();
+    setBusy(false);
+  };
+
+  /**
+   * Opens the day the school teaches, prefilled from what is on the record — or,
+   * when nothing is on the record, from the shape the portal prints by default,
+   * which the panel itself says out loud rather than passing off as a choice.
+   */
+  const openShapeEditor = () => {
+    setShapeDraft({
+      periods: (dayShape?.periods ?? DEFAULT_TIMETABLE_PERIODS).map((period) => ({ ...period })),
+      days: ((dayShape?.days?.length ? dayShape.days : DEFAULT_TIMETABLE_DAYS) as Day[]).map((day) => day),
+    });
+  };
+
+  const handleFileDayShape = async () => {
+    if (!shapeDraft) return;
+    setBusy(true);
+    const result = await saveTimetableDayShapeOnServer({ session, term, periods: shapeDraft.periods, days: shapeDraft.days });
+    if (result.ok) {
+      const teaching = shapeDraft.periods.filter((period) => !period.is_break).length;
+      setOutcome({
+        tone: "ok",
+        message: `${term}, ${session} now runs ${teaching} teaching period(s) on ${shapeDraft.days.join(", ")} — ${teaching * shapeDraft.days.length} slots a week, filed as the school's own day.`,
+      });
+      setShapeDraft(null);
+      await load();
+    } else {
+      setOutcome({ tone: "warn", message: result.reason ?? "The school's records did not take that day." });
+    }
+    setBusy(false);
+  };
+
+  // The clash list is computed by the school's own rule, imported rather than
+  // re-typed here, so the warning printed under a grid is the same test the save
+  // button is judged by. Two rules is how a clash sits unnoticed until a class
+  // arrives empty.
+  const clashes = useMemo(() => {
+    if (!lessons) return [];
+    const shaped: TimetableLesson[] = lessons.map((lesson) => ({
+      session: lesson.session,
+      term: lesson.term,
+      class_name: lesson.className,
+      day: lesson.day,
+      period_index: lesson.periodIndex,
+      period_label: lesson.periodLabel,
+      subject: lesson.subject,
+      teacher_name: lesson.teacherName,
+      teacher_ref: lesson.teacherId || null,
+    }));
+    return findAllClashes(shaped);
+  }, [lessons]);
+
+  const workload = useMemo(
+    () =>
+      staff.map((member: StaffRecord) => {
+        const held = (lessons ?? []).filter((lesson) =>
+          sameTeacher({ teacher_name: lesson.teacherName, teacher_ref: lesson.teacherId || null }, { teacher_name: member.fullName, teacher_ref: member.staffId })
+        );
+        const byName = held.some((lesson) => !lesson.teacherId);
+        return { member, periods: held.length, matchedByName: byName };
+      }),
+    [staff, lessons]
+  );
+
+  const unassignedCount = classLessons.filter((lesson) => isUnassigned(lesson.teacherName, lesson.teacherId || null)).length;
 
   return (
     <DashboardShell>
@@ -133,23 +369,68 @@ export default function OperationsAcademicsPage() {
               Academic Operations &amp; Master Timetable
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Curriculum schedules, faculty workloads, and class timetables for {SCHOOL_INFO.name}. The timetable below
-              is built from this browser&apos;s own copy.
+              Class schedules and faculty workloads for {config?.school_name?.trim() || SCHOOL_INFO.name}.{" "}
+              {readProblem
+                ? "The grid below could not be read from the school's records, so nothing is being shown in its place."
+                : (
+                  <>
+                    Every lesson below was read from the school&apos;s own records for{" "}
+                    <strong className="text-slate-700">
+                      {session}, {term}
+                    </strong>
+                    .
+                  </>
+                )}
             </p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={term}
+              onChange={(event) => {
+                setTermTouched(true);
+                setTerm(event.target.value);
+              }}
+              className="text-xs p-2 bg-white border border-slate-200 rounded-lg font-bold text-blue-900 outline-none cursor-pointer"
+              title="A timetable is a term's document. This one is filed under the term chosen here."
+            >
+              {TERMS.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
             <button
-              onClick={handlePrint}
+              onClick={() => void load()}
+              disabled={loading}
+              className="px-3.5 py-2 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 text-blue-600 ${loading ? "animate-spin" : ""}`} />
+              {loading ? "Reading…" : "Refresh"}
+            </button>
+            <button
+              onClick={() => window.print()}
               className="px-3.5 py-2 text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Printer className="w-4 h-4 text-blue-600" />
               Print Schedule
             </button>
-            {isSuperOrExamOfficer && (
+            {canWrite && (
               <button
-                onClick={() => handleOpenAddModal()}
-                className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                onClick={openShapeEditor}
+                disabled={busy}
+                className="px-3.5 py-2 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                title="How many periods a school day has, where the breaks sit and which weekdays are taught."
+              >
+                <Clock className="w-4 h-4 text-purple-600" />
+                Set the school&apos;s day
+              </button>
+            )}
+            {canWrite && (
+              <button
+                onClick={() => selectedClass && openSlot(days[0] ?? "Monday", slots[0]?.index ?? 0)}
+                disabled={!selectedClass || slots.length === 0}
+                className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 Schedule Class Period
@@ -158,74 +439,323 @@ export default function OperationsAcademicsPage() {
           </div>
         </div>
 
-        <DeviceOnlyNotice what="The timetable" />
+        {/* Whether the grid could be read at all, and which day shape is being printed. */}
+        <div className="grid gap-2">
+          <div
+            className={`rounded-xl border p-3 text-[11px] leading-snug flex items-start gap-2 print:hidden ${
+              readProblem
+                ? "bg-amber-50 border-amber-300 text-amber-950"
+                : "bg-emerald-50 border-emerald-200 text-emerald-950"
+            }`}
+            role="status"
+          >
+            {readProblem ? <TriangleAlert className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" /> : <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />}
+            <p>
+              {readProblem ? (
+                <>
+                  <strong>The timetable could not be read.</strong> {readProblem}. Nothing is printed below in place of
+                  it — a schedule that showed an empty week because the read failed would send a whole class to the wrong
+                  room. Run <code className="font-mono">supabase/timetable.sql</code> if this project has never had the
+                  grid set up.
+                </>
+              ) : (
+                <>
+                  <strong>{lessons?.length ?? 0} lesson(s) read from the school&apos;s records.</strong> This is the grid
+                  every machine sees, not this browser&apos;s copy of it. An empty slot is a slot nobody has filled.
+                </>
+              )}
+            </p>
+          </div>
 
-        {/* View Selection Tabs */}
+          {dayShape && (
+            <p className="text-[11px] text-slate-500">
+              {dayShape.fromSchoolRecords ? (
+                <>
+                  Day shape: <strong>{slots.length} teaching period(s) × {dayShape.days.length} days</strong> ={" "}
+                  {slots.length * dayShape.days.length} slots a week, as the school filed it for {term}.
+                </>
+              ) : (
+                <>
+                  Day shape: the {slots.length} periods the portal ships with, over {dayShape.days.length} days — the
+                  school has not filed its own. Nothing here claims the office chose them.
+                </>
+              )}
+            </p>
+          )}
+
+          {shapeDraft && (
+            <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 print:hidden">
+              <div className="flex items-start gap-2 text-[11px] leading-snug text-slate-700">
+                <Clock className="w-4 h-4 text-purple-600 flex-shrink-0 mt-0.5" />
+                <p>
+                  <strong>The day {term} is taught on.</strong> This decides how many lessons a class can hold and what
+                  the printed grid looks like.{" "}
+                  {dayShape?.fromSchoolRecords
+                    ? "It opened with the day the school filed for this term."
+                    : "It opened with the periods the portal ships with, because the school has not filed a day yet — changing nothing and saving would put that shape on the record under the school's name."}{" "}
+                  A period cannot be removed while a lesson still sits in it; the school refuses that save and names the
+                  lessons.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="font-bold text-slate-700">Weekdays taught:</span>
+                {ALL_DAYS.map((day) => {
+                  const on = shapeDraft.days.includes(day);
+                  return (
+                    <label key={day} className="flex items-center gap-1 text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={(event) =>
+                          setShapeDraft({
+                            ...shapeDraft,
+                            days: event.target.checked
+                              ? ALL_DAYS.filter((name) => shapeDraft.days.includes(name) || name === day)
+                              : shapeDraft.days.filter((name) => name !== day),
+                          })
+                        }
+                      />
+                      {day}
+                    </label>
+                  );
+                })}
+                <span className="text-[11px] text-slate-500">
+                  {shapeDraft.days.length === 0
+                    ? "No weekday is ticked, so nothing can be saved."
+                    : `${shapeDraft.days.length} day(s) a week`}
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                {shapeDraft.periods.map((period, position) => (
+                  <div key={`${period.index}-${position}`} className="flex flex-wrap items-center gap-2 text-xs">
+                    <input
+                      type="number"
+                      min={period.is_break ? undefined : 0}
+                      max={period.is_break ? undefined : 11}
+                      value={period.index}
+                      disabled={period.is_break}
+                      onChange={(event) => {
+                        const periods = [...shapeDraft.periods];
+                        periods[position] = { ...period, index: Math.trunc(Number(event.target.value)) };
+                        setShapeDraft({ ...shapeDraft, periods });
+                      }}
+                      className="w-16 p-1.5 bg-slate-50 border border-slate-200 rounded font-mono text-center disabled:text-slate-400"
+                      title={period.is_break ? "A break is not a slot, so its position does not matter" : "Position in the day, from 0"}
+                    />
+                    <input
+                      type="text"
+                      value={period.label}
+                      onChange={(event) => {
+                        const periods = [...shapeDraft.periods];
+                        periods[position] = { ...period, label: event.target.value };
+                        setShapeDraft({ ...shapeDraft, periods });
+                      }}
+                      className="flex-1 min-w-40 p-1.5 bg-slate-50 border border-slate-200 rounded font-semibold"
+                      placeholder="Period 1 (08:00 - 08:45 AM)"
+                    />
+                    <label className="flex items-center gap-1 text-slate-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(period.is_break)}
+                        onChange={(event) => {
+                          const periods = [...shapeDraft.periods];
+                          const isBreak = event.target.checked;
+                          periods[position] = isBreak
+                            ? { index: -1 - position, label: period.label, is_break: true }
+                            : { index: periods.filter((row) => !row.is_break && row !== period).length, label: period.label };
+                          setShapeDraft({ ...shapeDraft, periods });
+                        }}
+                      />
+                      break
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShapeDraft({ ...shapeDraft, periods: shapeDraft.periods.filter((_, i) => i !== position) })}
+                      className="p-1 text-rose-600 hover:text-rose-800 cursor-pointer"
+                      title="Take this entry out of the day"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShapeDraft({
+                      ...shapeDraft,
+                      periods: [
+                        ...shapeDraft.periods,
+                        { index: shapeDraft.periods.filter((row) => !row.is_break).length, label: "" },
+                      ],
+                    })
+                  }
+                  className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add period
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShapeDraft({
+                      ...shapeDraft,
+                      periods: [...shapeDraft.periods, { index: -1 - shapeDraft.periods.length, label: "Break", is_break: true }],
+                    })
+                  }
+                  className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add break
+                </button>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShapeDraft(null)}
+                  className="px-3.5 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold text-xs cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleFileDayShape()}
+                  disabled={busy || shapeDraft.days.length === 0}
+                  className="px-4 py-2 text-xs font-bold bg-purple-700 hover:bg-purple-800 disabled:bg-slate-300 text-white rounded-lg transition-colors shadow-xs cursor-pointer"
+                >
+                  {busy ? "Filing…" : "File this day on the school's records"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {usingDefaults && (
+            <p className="text-[11px] text-amber-800">
+              The school&apos;s current session and term could not be read, so the grid is opened at{" "}
+              <strong>
+                {session}, {term}
+              </strong>{" "}
+              from the values compiled into the portal. Check that before filing anything into it.
+            </p>
+          )}
+
+          {legacyCopy.length > 0 && (
+            <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-[11px] leading-snug text-sky-950 flex items-start gap-2 print:hidden">
+              <Upload className="w-4 h-4 text-sky-700 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 space-y-2">
+                <p>
+                  <strong>This browser is still holding {legacyCopy.length} period(s)</strong> from the version of this
+                  screen that saved to nothing but itself. They are not on the school&apos;s timetable yet. File them
+                  under <strong>{term}, {session}</strong> — the school&apos;s rule that a teacher is in one class at a
+                  time will be applied, and anything that clashes is named rather than dropped.
+                </p>
+                <button
+                  onClick={() => void handleCarryOver()}
+                  disabled={busy}
+                  className="px-3.5 py-2 text-xs font-bold bg-sky-700 hover:bg-sky-800 disabled:bg-slate-300 text-white rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Upload className="w-4 h-4" />
+                  {busy ? "Filing…" : `Carry these ${legacyCopy.length} period(s) into the school's records`}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* The arms themselves are still typed into this browser, so the grid can
+              only be grouped by names the school has not filed. */}
+          <DeviceOnlyNotice what="The class-arm list" />
+
+          {clashes.length > 0 && (
+            <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 text-[11px] leading-snug text-rose-950 space-y-1 print:hidden">
+              <p className="flex items-start gap-2">
+                <TriangleAlert className="w-4 h-4 text-rose-700 flex-shrink-0 mt-0.5" />
+                <strong>{clashes.length} teacher(s) are in two classes at the same time on this timetable.</strong> The
+                school saves a lesson into one empty slot at a time, so these came in through the older browser copy or
+                a name that does not match the staff file. Fix them before the schedule is printed.
+              </p>
+              <ul className="list-disc pl-6 space-y-0.5">
+                {clashes.slice(0, 8).map((pair, index) => (
+                  <li key={index}>
+                    {pair[0].teacher_name || pair[0].teacher_ref}: {slotLabel(pair[0])} and {slotLabel(pair[1])}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {outcome && (
+            <div
+              className={`rounded-xl border p-3 text-xs font-semibold flex items-start gap-2 print:hidden ${
+                outcome.tone === "ok" ? "bg-emerald-50 border-emerald-300 text-emerald-950" : "bg-amber-50 border-amber-300 text-amber-950"
+              }`}
+              role="status"
+            >
+              {outcome.tone === "ok" ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+              ) : (
+                <TriangleAlert className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
+              )}
+              <p>{outcome.message}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Tabs */}
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2 print:hidden">
           <button
             onClick={() => setActiveTab("class")}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeTab === "class"
-                ? "bg-slate-900 text-white shadow-xs"
-                : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+              activeTab === "class" ? "bg-slate-900 text-white shadow-xs" : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
             }`}
           >
-            Class Arm Timetable ({classEntries.length} Scheduled)
+            Class Arm Timetable ({classLessons.length} scheduled)
           </button>
-          {isSuperOrExamOfficer && (
+          {canWrite && (
             <button
               onClick={() => setActiveTab("master")}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                activeTab === "master"
-                  ? "bg-slate-900 text-white shadow-xs"
-                  : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+                activeTab === "master" ? "bg-slate-900 text-white shadow-xs" : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
               }`}
             >
-              🏛️ Master Institutional Schedule ({timetable.length} Total)
+              Master Institutional Schedule ({lessons?.length ?? 0} lessons)
             </button>
           )}
           <button
             onClick={() => setActiveTab("workload")}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeTab === "workload"
-                ? "bg-slate-900 text-white shadow-xs"
-                : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+              activeTab === "workload" ? "bg-slate-900 text-white shadow-xs" : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
             }`}
           >
-            Faculty Workload Matrix ({staff.length} Instructors)
+            Faculty Workload Matrix ({staff.length} instructors)
           </button>
         </div>
 
-        {/* Tab 1: Class Arm Timetable */}
+        {/* Tab 1: one class arm */}
         {activeTab === "class" && (
           <div className="space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-white p-4 border border-slate-200 rounded-xl shadow-xs print:hidden">
               <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                <span className="text-xs font-bold text-slate-700">Select Class Arm:</span>
+                <span className="text-xs font-bold text-slate-700">Class arm:</span>
                 <select
                   value={selectedClass}
-                  onChange={(e) => setSelectedClass(e.target.value)}
+                  onChange={(event) => setSelectedClass(event.target.value)}
                   className="min-w-0 max-w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-blue-900 outline-none"
                 >
-                  {classes.map((c) => (
-                    <option key={c.id} value={c.name}>
-                      {c.name} ({c.section})
+                  {classes.map((arm) => (
+                    <option key={arm.id} value={arm.name}>
+                      {arm.name} ({arm.section})
                     </option>
                   ))}
                 </select>
 
-                {isSuperOrExamOfficer && classEntries.length > 0 && (
+                {canWrite && classLessons.length > 0 && (
                   <button
-                    onClick={() => {
-                      if (
-                        confirm(
-                          `Clear all scheduled periods for ${selectedClass}? This empties the timetable held on this browser only, and the periods cannot be brought back.`
-                        )
-                      ) {
-                        clearClassTimetable(selectedClass);
-                      }
-                    }}
-                    className="text-xs text-rose-600 hover:text-rose-700 font-semibold flex items-center gap-1 ml-2"
+                    onClick={() => void handleClearClass()}
+                    disabled={busy}
+                    className="text-xs text-rose-600 hover:text-rose-700 font-semibold flex items-center gap-1 ml-2 cursor-pointer disabled:opacity-50"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     Clear Class Schedule
@@ -234,98 +764,126 @@ export default function OperationsAcademicsPage() {
               </div>
 
               <div className="text-xs text-slate-500">
-                Session: <strong className="text-slate-800">{SCHOOL_INFO.currentSession}</strong> • Term:{" "}
-                <strong className="text-blue-700">{SCHOOL_INFO.currentTerm}</strong>
+                Session: <strong className="text-slate-800">{session}</strong> • Term:{" "}
+                <strong className="text-blue-700">{term}</strong>
+                {unassignedCount > 0 && (
+                  <span className="ml-2 text-amber-700 font-semibold">
+                    {unassignedCount} slot{unassignedCount === 1 ? "" : "s"} with no teacher named
+                  </span>
+                )}
               </div>
             </div>
 
-            {/* Printable Class Table */}
             <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden print:border-none print:shadow-none">
               <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                 <div>
-                  <h3 className="font-bold text-sm text-slate-800">
-                    Official Timetable: {selectedClass}
-                  </h3>
-                  <p className="text-[11px] text-slate-500">{SCHOOL_INFO.name} • Academic Year {SCHOOL_INFO.currentSession}</p>
+                  <h3 className="font-bold text-sm text-slate-800">Official Timetable: {selectedClass || "no class chosen"}</h3>
+                  <p className="text-[11px] text-slate-500">
+                    {config?.school_name?.trim() || SCHOOL_INFO.name} • {session}, {term}
+                  </p>
                 </div>
                 <span className="text-xs bg-emerald-50 text-emerald-800 font-bold px-2.5 py-0.5 rounded-full border border-emerald-200">
-                  {classEntries.length} Active Slots
+                  {readProblem
+                    ? "not read"
+                    : `${classLessons.length} filled of ${slots.length * (days.length || 5)}`}
                 </span>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-100/70 border-b border-slate-200 text-slate-700 font-bold">
-                      <th className="py-3 px-4 w-48">Period / Time</th>
-                      {days.map((day) => (
-                        <th key={day} className="py-3 px-3">{day}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {standardPeriods.map((p, pIdx) => {
-                      if (p.isBreak) {
+              {readProblem ? (
+                <div className="p-8 text-center">
+                  <p className="text-xs font-bold text-slate-700">The lessons for {term} could not be read</p>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    An empty grid would read the same as an unfilled week and send a class to the wrong room, so
+                    nothing is printed here until the read works. {readProblem}.
+                  </p>
+                </div>
+              ) : slots.length === 0 ? (
+                <div className="p-8 text-center">
+                  <p className="text-xs font-bold text-slate-700">No day structure to print</p>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    The school has filed no periods for this term, and the fallback shape came back empty.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100/70 border-b border-slate-200 text-slate-700 font-bold">
+                        <th className="py-3 px-4 w-48">Period / Time</th>
+                        {days.map((day) => (
+                          <th key={day} className="py-3 px-3">
+                            {day}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {periods.map((period) => {
+                        if (period.is_break) {
+                          return (
+                            <tr key={period.index} className="bg-amber-50/50 font-semibold text-amber-900 text-center">
+                              <td className="py-2.5 px-4 font-mono text-left">{period.label}</td>
+                              <td colSpan={days.length || 5} className="py-2.5 px-3 uppercase tracking-wider text-[11px] font-bold text-amber-800">
+                                Intermission / Break
+                              </td>
+                            </tr>
+                          );
+                        }
+
                         return (
-                          <tr key={pIdx} className="bg-amber-50/50 font-semibold text-amber-900 text-center">
-                            <td className="py-2.5 px-4 font-mono text-left">{p.label}</td>
-                            <td colSpan={5} className="py-2.5 px-3 uppercase tracking-wider text-[11px] font-bold text-amber-800">
-                              Intermission / Break
-                            </td>
+                          <tr key={period.index} className="hover:bg-blue-50/20">
+                            <td className="py-3 px-4 font-mono font-semibold text-slate-600">{period.label}</td>
+                            {days.map((day) => {
+                              const lesson = lessonFor(day, period.index);
+                              return (
+                                <td key={day} className="py-2.5 px-3">
+                                  {lesson ? (
+                                    <div className="p-2 rounded-lg bg-blue-50/80 border border-blue-200/80 space-y-0.5 relative group">
+                                      <p className="font-bold text-blue-950 text-xs">{lesson.subject}</p>
+                                      <p className="text-[10px] text-slate-600 font-medium">
+                                        {lesson.teacherName || <span className="text-amber-700">no teacher named</span>}
+                                      </p>
+                                      {lesson.room && <p className="text-[10px] text-slate-400">{lesson.room}</p>}
+                                      {canWrite && (
+                                        <button
+                                          onClick={() => void handleRemoveLesson(lesson)}
+                                          className="absolute top-1 right-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 text-rose-600 hover:text-rose-800 transition-opacity cursor-pointer"
+                                          title="Take this lesson off the timetable"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  ) : canWrite ? (
+                                    <button
+                                      onClick={() => openSlot(day, period.index)}
+                                      className="w-full py-2 border border-dashed border-slate-200 rounded-lg text-slate-400 hover:text-blue-600 hover:border-blue-400 hover:bg-blue-50/30 text-[11px] transition-all flex items-center justify-center gap-1 cursor-pointer"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                      <span>Assign</span>
+                                    </button>
+                                  ) : (
+                                    <span className="text-slate-300 font-mono text-[11px]">—</span>
+                                  )}
+                                </td>
+                              );
+                            })}
                           </tr>
                         );
-                      }
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
-                      return (
-                        <tr key={pIdx} className="hover:bg-blue-50/20">
-                          <td className="py-3 px-4 font-mono font-semibold text-slate-600">{p.label}</td>
-                          {days.map((day) => {
-                            const entry = getEntryForSlot(day, p.index);
-                            return (
-                              <td key={day} className="py-2.5 px-3">
-                                {entry ? (
-                                  <div className="p-2 rounded-lg bg-blue-50/80 border border-blue-200/80 space-y-0.5 relative group">
-                                    <p className="font-bold text-blue-950 text-xs">{entry.subject}</p>
-                                    <p className="text-[10px] text-slate-600 font-medium">{entry.teacherName}</p>
-                                    {isSuperOrExamOfficer && (
-                                      <button
-                                        onClick={() => removeEntry(entry.id)}
-                                        className="absolute top-1 right-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 text-rose-600 hover:text-rose-800 transition-opacity"
-                                        title="Remove period"
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                      </button>
-                                    )}
-                                  </div>
-                                ) : isSuperOrExamOfficer ? (
-                                  <button
-                                    onClick={() => handleOpenAddModal(day, p.index)}
-                                    className="w-full py-2 border border-dashed border-slate-200 rounded-lg text-slate-400 hover:text-blue-600 hover:border-blue-400 hover:bg-blue-50/30 text-[11px] transition-all flex items-center justify-center gap-1 cursor-pointer"
-                                  >
-                                    <Plus className="w-3 h-3" />
-                                    <span>Assign</span>
-                                  </button>
-                                ) : (
-                                  <span className="text-slate-300 font-mono text-[11px]">—</span>
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {classEntries.length === 0 && (
+              {classLessons.length === 0 && slots.length > 0 && !readProblem && (
                 <div className="p-8 text-center bg-slate-50/50 border-t border-slate-100">
                   <Clock className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                  <p className="text-xs font-bold text-slate-700">No Timetable Periods Configured for {selectedClass}</p>
+                  <p className="text-xs font-bold text-slate-700">Nothing is scheduled for {selectedClass} this term</p>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    {isSuperOrExamOfficer
-                      ? "Click on any empty slot or use the Schedule Class Period button above to build this class schedule."
-                      : "No periods have been scheduled for this class on this browser yet."}
+                    {canWrite
+                      ? "Pick any empty slot above, or use Schedule Class Period. The grid is read from the school's records, so this really is an unfilled week."
+                      : "No lessons have been filed for this class on the school's timetable."}
                   </p>
                 </div>
               )}
@@ -333,23 +891,21 @@ export default function OperationsAcademicsPage() {
           </div>
         )}
 
-        {/* Tab 2: Master Institutional Schedule (Super Admin & Exam Officer) */}
-        {activeTab === "master" && isSuperOrExamOfficer && (
+        {/* Tab 2: every class arm at once */}
+        {activeTab === "master" && canWrite && (
           <div className="space-y-4">
             <div className="bg-slate-900 text-white p-5 rounded-2xl border border-slate-800 flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400 bg-purple-500/20 px-2 py-0.5 rounded border border-purple-500/30">
                   Institutional Master Schedule
                 </span>
-                <h3 className="text-lg font-bold text-white mt-1">
-                  Master Allocation Matrix Across All Class Arms
-                </h3>
+                <h3 className="text-lg font-bold text-white mt-1">Master Allocation Matrix Across All Class Arms</h3>
                 <p className="text-xs text-slate-300 mt-0.5">
-                  Universal timetable view across Creche, Nursery, Primary 1-5, JSS 1-3, and SS 1-3 for {SCHOOL_INFO.name}.
+                  Every lesson filed for {term}, {session}, counted per class arm on the school&apos;s records.
                 </p>
               </div>
               <button
-                onClick={handlePrint}
+                onClick={() => window.print()}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
               >
                 <Printer className="w-4 h-4" />
@@ -366,42 +922,60 @@ export default function OperationsAcademicsPage() {
                       <th className="py-3 px-3">Section Tier</th>
                       <th className="py-3 px-3">Assigned Form Master</th>
                       <th className="py-3 px-3 text-center">Scheduled Periods</th>
-                      <th className="py-3 px-3">Primary Subjects Scheduled</th>
+                      <th className="py-3 px-3">Subjects Scheduled</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {classes.map((c) => {
-                      const cEntries = timetable.filter((t) => t.className === c.name);
-                      const uniqueSubjects = Array.from(new Set(cEntries.map((e) => e.subject)));
-
+                    {lessons === null && (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-8 text-center text-xs text-slate-500">
+                          The school&apos;s lessons for {term}, {session} could not be read, so no class arm is counted
+                          here. A column of zeroes would look like a school with no timetable.
+                        </td>
+                      </tr>
+                    )}
+                    {lessons !== null &&
+                      classes.map((arm) => {
+                      const own = (lessons ?? []).filter((lesson) => lesson.className === arm.name);
+                      const uniqueSubjects = Array.from(new Set(own.map((lesson) => lesson.subject)));
+                      const unfilled = slots.length * (days.length || 5) - own.length;
                       return (
-                        <tr key={c.id} className="hover:bg-blue-50/20">
-                          <td className="py-3 px-4 font-bold text-blue-900">{c.name}</td>
-                          <td className="py-3 px-3 text-slate-600">{c.section}</td>
-                          <td className="py-3 px-3 font-medium text-slate-800">{c.formTeacher}</td>
+                        <tr key={arm.id} className="hover:bg-blue-50/20">
+                          <td className="py-3 px-4 font-bold text-blue-900">{arm.name}</td>
+                          <td className="py-3 px-3 text-slate-600">{arm.section}</td>
+                          <td className="py-3 px-3 font-medium text-slate-800">{arm.formTeacher || <span className="text-slate-400">none named</span>}</td>
                           <td className="py-3 px-3 text-center font-bold font-mono">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] ${
-                              cEntries.length > 0 ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500"
-                            }`}>
-                              {cEntries.length} Periods
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] ${own.length > 0 ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500"}`}>
+                              {own.length} of {slots.length * (days.length || 5)}
                             </span>
+                            {own.length > 0 && unfilled > 0 && (
+                              <span className="block text-[10px] text-slate-400 font-normal mt-0.5">{unfilled} slot(s) empty</span>
+                            )}
                           </td>
                           <td className="py-3 px-3 text-slate-700">
                             {uniqueSubjects.length > 0 ? (
                               <div className="flex flex-wrap gap-1">
-                                {uniqueSubjects.map((sub, i) => (
-                                  <span key={i} className="text-[10px] bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded border border-slate-200">
-                                    {sub}
+                                {uniqueSubjects.map((subject) => (
+                                  <span key={subject} className="text-[10px] bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded border border-slate-200">
+                                    {subject}
                                   </span>
                                 ))}
                               </div>
                             ) : (
-                              <span className="text-slate-400 text-[11px] italic">No periods assigned yet</span>
+                              <span className="text-slate-400 text-[11px] italic">No lessons filed for this arm</span>
                             )}
                           </td>
                         </tr>
                       );
                     })}
+                    {lessons !== null && classes.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-8 text-center text-xs text-slate-500">
+                          This browser holds no class-arm list, so there is nothing to line the filed lessons up against.
+                          Whatever is on the school&apos;s timetable still saves — it just cannot be grouped here.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -409,24 +983,26 @@ export default function OperationsAcademicsPage() {
           </div>
         )}
 
-        {/* Tab 3: Faculty Workload Matrix */}
+        {/* Tab 3: workload, read off the same grid */}
         {activeTab === "workload" && (
           <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <h3 className="font-bold text-sm text-slate-800">
-                Staff Workload &amp; Classroom Allocations ({staff.length} Instructors)
-              </h3>
-              <span className="text-xs bg-slate-200 text-slate-700 font-bold px-2.5 py-0.5 rounded-full">
-                {SCHOOL_INFO.currentSession} Session
-              </span>
+              <h3 className="font-bold text-sm text-slate-800">Staff Workload &amp; Classroom Allocations ({staff.length} instructors)</h3>
+              <span className="text-xs bg-slate-200 text-slate-700 font-bold px-2.5 py-0.5 rounded-full">{session} session</span>
             </div>
+            <p className="px-4 pt-3 text-[11px] text-slate-500">
+              {lessons === null
+                ? `The school's timetable for ${term} could not be read, so no teacher is counted below. A column of "Awaiting Schedule" would look like a staff nobody has booked.`
+                : `These counts are the lessons on the school's timetable for ${term}, added up per teacher — not the periods one browser remembers. A teacher matched by a typed name rather than a staff id is flagged, because two spellings of one person read as two people here.`}
+            </p>
 
-            {staff.length === 0 ? (
+            {lessons === null ? null : staff.length === 0 ? (
               <div className="py-12 text-center text-slate-400 space-y-2">
                 <Users className="w-10 h-10 mx-auto text-slate-300 stroke-1" />
-                <div className="text-sm font-semibold text-slate-600">No Staff Workloads Active</div>
+                <div className="text-sm font-semibold text-slate-600">No staff file to count against</div>
                 <p className="text-xs text-slate-400">
-                  Onboard staff members in <Link href="/operations/staff" className="text-blue-600 font-bold">Staff Management</Link> to view dynamic workloads.
+                  Onboard staff members in <Link href="/operations/staff" className="text-blue-600 font-bold">Staff Management</Link> to
+                  see how many periods each one is holding.
                 </p>
               </div>
             ) : (
@@ -443,23 +1019,21 @@ export default function OperationsAcademicsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {staffWorkload.map(({ staffMember: s, scheduledPeriodsCount, formClass }) => (
-                      <tr key={s.id} className="hover:bg-blue-50/20">
+                    {workload.map(({ member, periods: held, matchedByName }) => (
+                      <tr key={member.id} className="hover:bg-blue-50/20">
                         <td className="py-3 px-4 font-bold text-slate-900">
-                          {s.fullName}
-                          <span className="block text-[10px] text-slate-400 font-mono">{s.staffId}</span>
+                          {member.fullName}
+                          <span className="block text-[10px] text-slate-400 font-mono">{member.staffId}</span>
                         </td>
                         <td className="py-3 px-3">
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
-                            {s.role}
-                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">{member.role}</span>
                         </td>
                         <td className="py-3 px-4">
                           <div className="flex flex-wrap gap-1">
-                            {s.assignedSubjects.length > 0 ? (
-                              s.assignedSubjects.map((sub, i) => (
-                                <span key={i} className="text-[10px] bg-slate-50 border border-slate-200 text-slate-700 px-1.5 py-0.5 rounded">
-                                  {sub}
+                            {member.assignedSubjects.length > 0 ? (
+                              member.assignedSubjects.map((subject) => (
+                                <span key={subject} className="text-[10px] bg-slate-50 border border-slate-200 text-slate-700 px-1.5 py-0.5 rounded">
+                                  {subject}
                                 </span>
                               ))
                             ) : (
@@ -467,21 +1041,20 @@ export default function OperationsAcademicsPage() {
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-3 font-medium text-slate-800">{formClass}</td>
+                        <td className="py-3 px-3 font-medium text-slate-800">{member.assignedClass || "None"}</td>
                         <td className="py-3 px-3 text-center font-mono font-bold text-slate-800">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] ${
-                            scheduledPeriodsCount > 0 ? "bg-blue-100 text-blue-800" : "bg-slate-100 text-slate-500"
-                          }`}>
-                            {scheduledPeriodsCount} Periods
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] ${held > 0 ? "bg-blue-100 text-blue-800" : "bg-slate-100 text-slate-500"}`}>
+                            {held} period{held === 1 ? "" : "s"}
                           </span>
+                          {matchedByName && <span className="block text-[10px] text-amber-700 font-normal mt-0.5">by name, not staff id</span>}
                         </td>
                         <td className="py-3 px-3 text-center">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                            scheduledPeriodsCount > 0
-                              ? "text-emerald-700 bg-emerald-50 border-emerald-200"
-                              : "text-amber-700 bg-amber-50 border-amber-200"
-                          }`}>
-                            {scheduledPeriodsCount > 0 ? "Allocated" : "Awaiting Schedule"}
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              held > 0 ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-amber-700 bg-amber-50 border-amber-200"
+                            }`}
+                          >
+                            {held > 0 ? "Allocated" : "Awaiting Schedule"}
                           </span>
                         </td>
                       </tr>
@@ -493,89 +1066,83 @@ export default function OperationsAcademicsPage() {
           </div>
         )}
 
-        {/* Modal: Schedule Class Period */}
-        {isAddModalOpen && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto border border-slate-200 space-y-4">
+        {/* Modal: one lesson into one slot */}
+        {slot && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+            <form onSubmit={handleFileLesson} className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto border border-slate-200 space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h3 className="text-base font-bold text-slate-900">Schedule Class Period</h3>
-                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">
-                  {selectedClass}
-                </span>
+                <button type="button" onClick={() => setSlot(null)} className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer">
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              <form onSubmit={handleSaveEntry} className="space-y-3.5 text-xs">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Weekday</label>
-                  <select
-                    value={dayInput}
-                    onChange={(e) => setDayInput(e.target.value as any)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-semibold"
-                  >
-                    {days.map((d) => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
-                </div>
+              <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                <strong>{selectedClass}</strong> • {slot.day} • {slot.periodLabel} • {term}, {session}
+              </p>
 
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Period Slot</label>
-                  <select
-                    value={periodIdxInput}
-                    onChange={(e) => setPeriodIdxInput(parseInt(e.target.value, 10))}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-semibold"
-                  >
-                    {standardPeriods.filter((p) => !p.isBreak).map((p) => (
-                      <option key={p.index} value={p.index}>{p.label}</option>
-                    ))}
-                  </select>
-                </div>
+              <label className="block">
+                <span className="block font-bold text-slate-700 mb-1 text-xs">Subject</span>
+                <input
+                  type="text"
+                  value={subjectInput}
+                  onChange={(event) => setSubjectInput(event.target.value)}
+                  list="academics-subject-options"
+                  placeholder="e.g. English Language, Mathematics, ICT"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-semibold text-xs"
+                  required
+                />
+                <datalist id="academics-subject-options">
+                  {subjects.map((subject) => (
+                    <option key={subject.id} value={subject.name} />
+                  ))}
+                </datalist>
+              </label>
 
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Curricular Subject</label>
-                  <input
-                    type="text"
-                    value={subjectInput}
-                    onChange={(e) => setSubjectInput(e.target.value)}
-                    placeholder="e.g. English Language, Mathematics, ICT"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-semibold"
-                    required
-                  />
-                </div>
+              <label className="block">
+                <span className="block font-bold text-slate-700 mb-1 text-xs">Teacher</span>
+                <select
+                  value={teacherInput}
+                  onChange={(event) => setTeacherInput(event.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-semibold text-xs"
+                >
+                  <option value="">Not named yet</option>
+                  {staff.map((member) => (
+                    <option key={member.id} value={member.fullName}>
+                      {member.fullName} ({member.role})
+                    </option>
+                  ))}
+                </select>
+                <span className="block text-[10px] text-slate-500 mt-1">
+                  A named teacher is checked against the rest of the grid: if they already hold another class in this
+                  slot, the save is refused and says where.
+                </span>
+              </label>
 
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Assigned Instructor / Teacher</label>
-                  <select
-                    value={teacherInput}
-                    onChange={(e) => setTeacherInput(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-semibold"
-                  >
-                    <option value="Unassigned">Unassigned / Subject Teacher</option>
-                    {staff.map((s) => (
-                      <option key={s.id} value={s.fullName}>
-                        {s.fullName} ({s.role})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <label className="block">
+                <span className="block font-bold text-slate-700 mb-1 text-xs">Room</span>
+                <input
+                  type="text"
+                  value={roomInput}
+                  onChange={(event) => setRoomInput(event.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-semibold text-xs"
+                  placeholder="Leave blank to mean the class's own room"
+                />
+              </label>
 
-                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => setIsAddModalOpen(false)}
-                    className="px-3.5 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-xs"
-                  >
-                    Save Period
-                  </button>
-                </div>
-              </form>
-            </div>
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button type="button" onClick={() => setSlot(null)} className="px-3.5 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold text-xs cursor-pointer">
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-lg font-bold shadow-xs text-xs cursor-pointer"
+                >
+                  {busy ? "Filing…" : "File On The School's Timetable"}
+                </button>
+              </div>
+            </form>
           </div>
         )}
       </div>
