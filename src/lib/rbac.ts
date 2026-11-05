@@ -116,6 +116,7 @@ export const ROLE_ROUTE_ACCESS: Record<UserRole, RoleAccessRule> = {
       "/operations/send-email",
       "/accounts/payment",
       "/accounts/transactions",
+      "/accounts/inventory",
       "/reports",
       "/settings",
       "/video-guides",

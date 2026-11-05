@@ -69,11 +69,11 @@ graph TD
      not to go editing code. Note that privileges belong to the role, not to the key string, so
      **rotating an API key never requires re-running this step.**
 
-5. **Run the four migrations the app's own screens need** (do not skip — this is the step that
+5. **Run the five migrations the app's own screens need** (do not skip — this is the step that
    makes Settings, Publish Results, End of Term, Fee Structure, Invoicing, the Transactions
-   ledger and the character assessment real instead of a browser-local performance). Open a new
-   query for each file and run it in order; all four are idempotent, so re-running after an
-   upgrade is safe:
+   ledger, the character assessment and the stores register real instead of a browser-local
+   performance). Open a new query for each file and run it in order; all five are idempotent, so
+   re-running after an upgrade is safe:
 
    - [`supabase/app_accounts.sql`](supabase/app_accounts.sql) — the logins that Settings → User
      Access and *Register Staff* create. Until it runs, app-managed accounts cannot be created and
@@ -95,6 +95,15 @@ graph TD
      answer the same `503`, naming this file, and a family's card prints *No character assessment
      on file for this pupil.* The seed is `ON CONFLICT DO NOTHING`, so an edited rubric survives
      a re-run; ratings that were typed but never filed live only in that one browser.
+   - [`supabase/inventory.sql`](supabase/inventory.sql) — `inventory_items` (what the school owns,
+     where it is kept, who is answerable for it), `inventory_movements` (every receipt and issue,
+     with the party and purpose) and the `inventory_stock` view that adds the log up into the
+     quantity on hand. Until it runs, *Accounts → Inventory* reports *The stores register could not
+     be read* and `/api/inventory` answers the same `503` naming this file. The screen never lets
+     anyone type a current stock figure: the only quantity a person enters is the opening one, and
+     an issue larger than the shelf is refused with the real number in the sentence. The view is
+     revoked from `anon` and `authenticated` like the tables, because a plain view runs with its
+     owner's rights and would otherwise be a door the browser key could walk through.
 
 6. **(Optional) Seed Official Baseline School Configuration**:
    - Open a new query in the **SQL Editor**.
@@ -194,9 +203,9 @@ by someone who did not write the code.
 | --- | --- | --- | --- |
 | **P0** | Backup job running green, keep-warm, branch protection, push approved fixes | Code and workflows are in; the **nightly backup is blocked until the five secrets exist**, the pinger interval is still undecided, and branch protection is a click in GitHub. | A nightly dump exists in the bucket and `pg_restore --list` opens it. |
 | **P1** | No screen may print a figure nobody entered; no button may claim an action it did not perform | **Done in code**, for every screen: ungraded subjects print a dash, unassessed pupils open a blank form, CBT question banks start empty, invoices price themselves only from the filed fee schedule, and *Send SMS* / *Send Email* report what actually happened instead of claiming delivery. | Open a report card for a pupil with no stored marks and confirm it says *not entered* rather than showing numbers. |
-| **P2** | School configuration gets a server: fees, the school's own name/session/term, publish flags, term closures, payment receipts, per-subject CA reads back, the trait rubric and the child's character assessment, cross-tab sync | **Mostly done, and honest about the rest.** Server-backed now: `school_config`, `fee_components`, receipts on `transactions`, `result_publications`, `closed_terms`, grading scales, CA marks, `traits_config` and `traits_assessments`. `supabase/operations_state.sql` **was run on this project and each of those routes was verified against it on 2026-11-05**; `supabase/traits_assessments.sql` still answers `503` until it is run. Still browser-only — each with a *Kept on this browser* notice: classes, subjects and packages, calendar, timetable, CA component structure, report theme and newsletter, CBT, Inmail. Ratings also stay on the form teacher's own machine until that screen's **File this class into the school's records** button is pressed. | Enter a setting on machine A, see it on machine B. |
+| **P2** | School configuration gets a server: fees, the school's own name/session/term, publish flags, term closures, payment receipts, per-subject CA reads back, the trait rubric and the child's character assessment, the stores register, cross-tab sync | **Mostly done, and honest about the rest.** Server-backed now: `school_config`, `fee_components`, receipts on `transactions`, `result_publications`, `closed_terms`, grading scales, CA marks, `traits_config`, `traits_assessments`, and the inventory ledger (`inventory_items`, `inventory_movements`, the `inventory_stock` view). `supabase/operations_state.sql` **was run on this project and each of those routes was verified against it on 2026-11-05**; `supabase/traits_assessments.sql` **was run by the school on 2026-11-05** (the run succeeded; the routes were not re-checked from a signed-in browser, so confirm *Setup → Traits* prints *The school's records have no trait list yet* is no longer shown); `supabase/inventory.sql` has not been run, so *Accounts → Inventory* answers `503` until it is. Still browser-only — each with a *Kept on this browser* notice: classes, subjects and packages, calendar, timetable, CA component structure, report theme and newsletter, CBT, Inmail. Ratings also stay on the form teacher's own machine until that screen's **File this class into the school's records** button is pressed. | Enter a setting on machine A, see it on machine B. |
 | **P3** | Real roster enrolled, one real parent link, one mock term run end-to-end on the deployed site | Not started — `students` and `invoices` on this project are still empty. | Two browsers, same data, no fabricated numbers on the printed report. |
-| **P4** | Features the school has asked for but not named yet | Not scoped. Ask before any of it is built; nothing here is a substitute for P2 and P3. | Planned after P3, not before. |
+| **P4** | The three features the school asked for: a stores register, timetable generation, and staff designation with daily duties in each workspace | **Inventory is built** (register + movement log + refusal of an over-issue, at `/accounts/inventory`); the migration still has to be run. **Timetable is next**: it is still browser-only, so it is put on the school's records before anything generates it. Then generation (a clash-free draft a human adjusts and files), then designation and an assigned duty roster. | Each one: act on machine A, see the same result on machine B, and confirm the screen cannot report a figure nobody entered. |
 
 The full state of every screen — which ones reach Postgres and which ones are browser-only — is listed
 under *Current limitations* in [README.md](README.md).

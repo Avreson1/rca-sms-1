@@ -1227,3 +1227,142 @@ export async function saveAssessmentOnServer(
   });
 }
 
+
+// ============================================================================
+// 11. INVENTORY: THE STORES REGISTER AND ITS MOVEMENT LOG
+//
+// Nothing here is kept on this device. An inventory list that lives in one
+// browser's localStorage is a rumour about the school's property: the person
+// standing in the store with a clipboard has no way to check it, and clearing
+// that machine loses the only copy of what was bought. So every read goes to
+// /api/inventory and every write goes through it, and a failed read is shown as
+// a failed read rather than as an empty store.
+// ============================================================================
+
+export interface InventoryItem {
+  id: string;
+  asset_ref: string | null;
+  item_name: string;
+  category: string;
+  unit: string;
+  opening_quantity: number;
+  quantity_in: number;
+  quantity_out: number;
+  quantity_on_hand: number;
+  location: string;
+  custodian: string;
+  condition: string;
+  acquired_on: string | null;
+  purchase_value: string | number | null;
+  reorder_level: number | null;
+  notes: string;
+  created_by: string;
+  updated_at: string;
+}
+
+export interface InventoryMovement {
+  id: string;
+  item_id: string;
+  direction: "in" | "out";
+  quantity: number;
+  party: string;
+  purpose: string;
+  moved_on: string;
+  recorded_by: string;
+  inventory_items: { item_name: string } | null;
+}
+
+/** The register. `rows: null` means it could not be read — which is not the same as an empty store. */
+export function fetchInventoryRegister(scope: { category?: string; location?: string; q?: string } = {}) {
+  const params = new URLSearchParams();
+  if (scope.category) params.set("category", scope.category);
+  if (scope.location) params.set("location", scope.location);
+  if (scope.q) params.set("q", scope.q);
+  return readList<InventoryItem>(`/api/inventory${params.toString() ? `?${params}` : ""}`);
+}
+
+export function fetchInventoryMovements(itemId?: string) {
+  return readList<InventoryMovement>(`/api/inventory/movements${itemId ? `?item_id=${encodeURIComponent(itemId)}` : ""}`);
+}
+
+/**
+ * A register line as the form holds it.
+ *
+ * Counts and money travel as the text that was typed. Turning them into numbers
+ * here would mean a figure this browser mis-read still got filed; the server
+ * parses and refuses, so one rule decides what a quantity is.
+ */
+export interface InventoryItemDraft {
+  id?: string;
+  item_name: string;
+  asset_ref: string | null;
+  category: string;
+  unit: string;
+  opening_quantity: string | null;
+  location: string;
+  custodian: string;
+  condition: string;
+  acquired_on: string | null;
+  purchase_value: string | null;
+  reorder_level: string | null;
+  notes: string;
+}
+
+/**
+ * Adds or corrects one register line, and hands back the server's own sentence
+ * when it refuses — including the duplicate-label answer, which names the label
+ * the school already holds rather than failing with a constraint nobody reads.
+ */
+export async function saveInventoryItemOnServer(
+  item: InventoryItemDraft
+): Promise<{ ok: boolean; id: string | null; reason: string | null }> {
+  try {
+    const response = await fetch("/api/inventory", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(item),
+    });
+    if (!response.ok) return { ok: false, id: null, reason: await serverReason(response) };
+    const payload = (await response.json().catch(() => null)) as { data?: { id?: string } } | null;
+    return { ok: true, id: payload?.data?.id ?? null, reason: null };
+  } catch (error) {
+    console.warn("API /api/inventory write failed", error);
+    return { ok: false, id: null, reason: "the portal server did not answer" };
+  }
+}
+
+export function removeInventoryItemOnServer(id: string) {
+  return writeOnce("/api/inventory", "DELETE", { id });
+}
+
+/**
+ * Files one movement and returns the shelf figure the school now holds.
+ *
+ * The number comes back from the server rather than being worked out here, so
+ * the screen cannot show one quantity while the ledger says another — which is
+ * how a hand-kept store card ends up two chairs ahead of the truth.
+ */
+export async function recordInventoryMovementOnServer(movement: {
+  item_id: string;
+  direction: "in" | "out";
+  quantity: number;
+  party?: string;
+  purpose?: string;
+  moved_on?: string;
+}): Promise<{ ok: boolean; quantityOnHand: number | null; reason: string | null }> {
+  try {
+    const response = await fetch("/api/inventory/movements", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(movement),
+    });
+    if (!response.ok) return { ok: false, quantityOnHand: null, reason: await serverReason(response) };
+    const payload = (await response.json().catch(() => null)) as { data?: { quantityOnHand?: number } } | null;
+    return { ok: true, quantityOnHand: payload?.data?.quantityOnHand ?? null, reason: null };
+  } catch (error) {
+    console.warn("API /api/inventory/movements write failed", error);
+    return { ok: false, quantityOnHand: null, reason: "the portal server did not answer" };
+  }
+}

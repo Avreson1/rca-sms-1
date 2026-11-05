@@ -90,6 +90,7 @@ const navItems: NavItem[] = [
       { title: "Invoicing", href: "/accounts/invoicing" },
       { title: "Payment", href: "/accounts/payment" },
       { title: "Transactions", href: "/accounts/transactions" },
+      { title: "Inventory", href: "/accounts/inventory" },
     ],
   },
   {

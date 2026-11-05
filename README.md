@@ -82,11 +82,12 @@ be live without anyone deciding it should be.
 
 A clerk's entry now reaches every other machine for: pupils, staff and logins, invoices, the fee
 schedule, payments and receipts, CA and exam marks, the grading scales, the school's own name /
-session / term, published results, closed terms, the list of rated traits and — once the form
-teacher presses *File this class into the school's records* on *Traits & Psychomotor* — the
-character, psychomotor and attendance ratings that fill the other half of a child's card. That was
-the `P0`–`P2` work and it depends on `supabase/operations_state.sql` and
-`supabase/traits_assessments.sql` having been run. Still browser-local: the class list, subject list
+session / term, published results, closed terms, the list of rated traits, what the school owns and
+every unit of stock that moved in or out of its stores, and — once the form teacher presses *File
+this class into the school's records* on *Traits & Psychomotor* — the character, psychomotor and
+attendance ratings that fill the other half of a child's card. That was the `P0`–`P2` work and it
+depends on `supabase/operations_state.sql`, `supabase/traits_assessments.sql` and
+`supabase/inventory.sql` having been run. Still browser-local: the class list, subject list
 and packages, the calendar, the timetable, the CA component structure, the report theme and
 newsletter, CBT questions and scores, and Inmail — each of those ten screens carries a
 *Kept on this browser* notice so nobody mistakes it for a record. See
@@ -97,7 +98,8 @@ newsletter, CBT questions and scores, and Inmail — each of those ten screens c
 Everything that must change, in the order that avoids surprises:
 
 1. New Supabase project → run every file in *Database setup* below, in that order, including
-   `supabase/operations_state.sql` and `supabase/traits_assessments.sql`. The `GRANT` block at the
+   `supabase/operations_state.sql`, `supabase/traits_assessments.sql` and `supabase/inventory.sql`.
+   The `GRANT` block at the
    end of each is what lets the server touch the new tables (privileges belong to the
    `service_role`, so a new project needs them again); a clone that skips it shows
    *"permission denied for table school_config"*.
@@ -241,10 +243,21 @@ Run these in the Supabase SQL editor, in order:
    marks on a score card come from the school's records but the behaviour panel does not: the
    card reads `/api/traits`, gets `503`, and says so on the panel itself instead of printing
    praise nobody typed.
+8. [`supabase/inventory.sql`](supabase/inventory.sql) — what the school owns. It creates
+   `inventory_items` (the register: label, category, unit, **opening** quantity, location,
+   custodian, condition, acquisition date, value paid, reorder level), `inventory_movements`
+   (every receipt and issue, with who took it and for what) and the `inventory_stock` view that
+   adds the log up into the quantity on hand. The stock figure is never stored, so it cannot
+   disagree with the movements that produced it; the only quantity anyone types is the opening
+   one, and an issue bigger than the shelf is refused. Safe to re-run. Until you run it,
+   *Accounts → Inventory* reports *The stores register could not be read* and `/api/inventory`
+   answers the `503` that names this file. The view is revoked from `anon` and `authenticated`
+   along with the tables: a plain view runs with its owner's rights, so it would otherwise be the
+   one door the browser key could walk through while every other table stays shut.
 
-`app_accounts` and `guardian_students` deliberately have RLS enabled with **no** policies, so
-only the server (holding the service-role key) can read them. The browser's anon key sees
-nothing, including the hashes.
+`app_accounts`, `guardian_students` and both inventory tables deliberately have RLS enabled with
+**no** policies, so only the server (holding the service-role key) can read them. The browser's anon
+key sees nothing, including the hashes.
 
 ## Public and protected routes
 
@@ -270,6 +283,8 @@ Inside that, each data route also checks the role:
 | `/api/term-closings` | every signed-in role | super admin, exam officer (`DELETE` re-opens a term) |
 | `/api/fees` | super admin, bursar, QA tester | super admin, bursar |
 | `/api/payments` | receipts for one pupil: super admin, bursar, QA tester, parent (**own children only**); the whole ledger: super admin, bursar, QA tester | super admin, bursar |
+| `/api/inventory` | super admin, bursar, QA tester | super admin, bursar (`DELETE` refused once the line has a movement) |
+| `/api/inventory/movements` | super admin, bursar, QA tester | super admin, bursar (an issue larger than the shelf is refused) |
 
 `/api/payments` POST is the money path. The receipt is filed first and the invoice balance moved
 second; if the balance cannot be moved, the receipt that was just written is withdrawn and the
@@ -392,7 +407,8 @@ Be aware of what this system does **not** do today:
   machine cannot see the typing and the data is lost if the device is cleared. What *is*
   multi-machine: pupils, staff, logins, invoices, fee payments and receipts, CA/exam marks and
   grades, the grading scales, the fee schedule, the school's own name / session / term, published
-  results, closed terms, the trait rubric and the character assessments once they are filed. The
+  results, closed terms, the trait rubric, the stores register and its movement log, and the
+  character assessments once they are filed. The
   CBT-to-CA path (`syncCBTScoreToCA`) writes this device's copy, so a CBT mark only reaches the
   database when *Update CA* files it.
 - **Ratings stay on the form teacher's machine until they are filed.** *Traits & Psychomotor*
@@ -409,9 +425,13 @@ Be aware of what this system does **not** do today:
   `/api/school-config` returns the school's row, and `/api/fees`, `/api/term-closings`,
   `/api/result-publications`, `/api/students`, `/api/staff` and `/api/accounts` all answer from the
   database instead of naming a missing table). What has not been driven end-to-end against those
-  live tables is the write path — Fee Structure → Bill → Record Payment → receipt in Transactions —
-  and `supabase/traits_assessments.sql` is not run yet, so `/api/traits` and `/api/traits-config`
-  answer `503` and name the file.
+  live tables is the write path — Fee Structure → Bill → Record Payment → receipt in Transactions.
+- **Two migrations are still not run on this project, and both screens say so.**
+  `supabase/traits_assessments.sql` ran successfully on 2026-11-05 after a first paste failed
+  mid-file, but no signed-in browser has re-read `/api/traits` since, so its routes are recorded as
+  *expected to work*, not as checked. `supabase/inventory.sql` has not been run at all: until it
+  is, `/api/inventory` answers `503` naming the file and *Accounts → Inventory* prints *The store
+  register could not be read* rather than an empty table it cannot prove.
 - **A parent's view is only as deep as the pupil record.** `/api/students` returns their children,
   `/api/invoices` their balances, `/api/ca` the per-subject marks, `/api/payments` the receipts and
   `/api/traits` the behaviour, attendance and remark half of the card — each filtered by

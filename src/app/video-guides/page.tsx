@@ -328,6 +328,37 @@ const SOP_MANUAL_DATA: SOPItem[] = [
     ],
     expectedOutput: "A receipt number from the school's records for every payment taken, an updated 'Paid'/'Partial' status and a printable slip — or a plain refusal notice and no slip at all.",
   },
+  {
+    id: "sop-4-3",
+    code: "SOP-ACC-003",
+    title: "Stores Register, Asset Ledger and Stock Movement Log",
+    role: "Bursar / Accounts Officer",
+    category: "Accounts / Bursary",
+    badgeColor: "bg-amber-100 text-amber-800 border-amber-200",
+    minRoleTier: "ACCOUNTANT",
+    summary: "Procedure for filing what the school owns and for changing the quantity on the shelf only through a recorded receipt or issue, so the register can be stood up beside a clipboard.",
+    prerequisites: [
+      "A SUPER_ADMIN or ACCOUNTANT login — a teacher, parent or QA login is refused at /api/inventory, and a QA login can read the register but not change it",
+      "supabase/inventory.sql run on this project. Until it is, the screen says 'The stores register could not be read' and names that file; nothing on it is the school's stock",
+    ],
+    procedureSteps: [
+      "Navigate to Accounts → Inventory (/accounts/inventory). The header names the school from its own Settings record, not from this browser.",
+      "Click 'Add To The Register' and fill 'Item', the 'Label or asset number' (leave it blank if the school never painted one on it — two blank labels do not collide), 'Category', 'Unit', 'Opening quantity', 'Kept where', 'Custodian', 'Condition', 'Acquired on', 'Value paid' and 'Reorder level'.",
+      "Only the 'Opening quantity' is a quantity. It is what the store held when the school began counting. Nothing on the screen accepts a current stock figure, so a line cannot be retyped to match a shelf.",
+      "Click 'File on the school's register' (it reads 'Filing…'). The notice names the item and says it is on the register. A label the register already holds is refused with that label in the sentence, so two people counting the same generator cannot file it twice.",
+      "On any row, click the movement button to 'Move {item}'. The form prints what is on the shelf first. Choose 'Issue out of stores' or 'Receive into stores', give the 'Quantity', the 'Issued to' / 'Received from' party, the 'Purpose' and, if it is not today, the 'Date moved' (a future date is refused). Then press 'File this movement' (it reads 'Filing…'). The notice ends with the quantity the school's own records now hold — the browser never works that sum out itself.",
+      "An issue larger than the shelf is refused with the real figure: '{item} has {n} on the shelf. It cannot issue {m}. Correct the opening figure or receive more stock first.' Correct the opening figure only if the school genuinely mis-counted at the start; otherwise the refusal is the finding.",
+      "The register lists 'On hand' with '+in / −out' beside it, flags items at or below their reorder level, and counts separately the items for which the school set no reorder level and the lines with no recorded value — a missing figure is not added in as zero.",
+      "A row with any movement against it cannot be deleted: the server refuses, because removing the line would erase the log that proves where the stock went. Mark it 'Disposed', 'Lost' or 'Unusable' instead and the history stays readable.",
+      "'Refresh' (it reads 'Reading…' while it works) re-reads the register and the log in case another machine filed something. 'Export This Register (CSV)' hands over exactly the rows the current search shows, and 'Only items to reorder' narrows the list to what the store needs ordered.",
+    ],
+    safetyRules: [
+      "The quantity on this screen is derived, never declared. If it disagrees with the shelf, the difference is a movement that was not filed — file it, do not edit the figure.",
+      "If the register could not be read, the screen lists nothing rather than this browser's last guess. An audit screen that filled in from memory would be reporting property nobody counted.",
+      "Every movement carries the login that filed it, taken from the session and not from the form, so a colleague's name cannot be attached to a person's issue.",
+    ],
+    expectedOutput: "A register of what the school owns with the stock figure added up from its own movement log, and a log naming who moved what, when, and for what — the same on every machine that opens the screen.",
+  },
 
   // 5. Administrative / Admissions
   {
