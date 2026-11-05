@@ -449,23 +449,34 @@ Be aware of what this system does **not** do today:
   `/api/result-publications`, `/api/students`, `/api/staff` and `/api/accounts` all answer from the
   database instead of naming a missing table). What has not been driven end-to-end against those
   live tables is the write path — Fee Structure → Bill → Record Payment → receipt in Transactions.
-- **Three migrations are still not run on this project, and each screen says so.**
+- **Every read route is now checked against the database; almost no write route is.**
   `supabase/traits_assessments.sql` ran successfully on 2026-11-05 after a first paste failed
-  mid-file, but no signed-in browser has re-read `/api/traits` since, so its routes are recorded as
-  *expected to work*, not as checked. `supabase/inventory.sql` has not been run at all: until it
-  is, `/api/inventory` answers `503` naming the file and *Accounts → Inventory* prints *The store
-  register could not be read* rather than an empty table it cannot prove. `supabase/timetable.sql`
-  has not been run either — both `timetable_entries` and `timetable_periods` are missing, confirmed
-  on 2026-11-05 — so until it is, `/api/timetable` and `/api/timetable/periods` answer the same
-  `503` and *Operations → Academics & Timetable* prints *The timetable could not be read* — and
-  refuses to show an empty week, because a grid that looks unfilled when the read failed is how a
-  class is sent to the wrong room. **Draft the week** stops at the same door: it places a plan into
-  the school's day, so with no day filed it places nothing and names the file. What *is* proven of
-  the generator is its logic, exercised outside the portal: 26 checks over the placement rule — no
-  teacher in two arms at one time, a week's shape taken from the school's own periods and breaks,
-  filed lessons kept and not buried, the stated load limit counted against both the plan and what
-  is already on the record, and a part of a plan that will not fit reported with the number placed
-  and the reason.
+  mid-file. A signed-in server read the same day confirmed it: `/api/traits-config` returns the
+  school's fourteen-trait rubric and `/api/traits` answers `200` with no assessments filed — which is
+  the truth, not an empty grid, because no form teacher has pressed *File this class into the
+  school's records* on this project. `/api/ca` reads `200` empty, as do `/api/students` and
+  `/api/invoices`; `/api/staff` returns the one login created here. So the reads are proven and the
+  writes are not.
+- **The stores and the timetable are real tables now, and nothing has been filed in them.**
+  `supabase/inventory.sql` and `supabase/timetable.sql` were run on 2026-11-05, and a signed-in
+  server read the same day proved the change: `/api/inventory`, `/api/timetable` and
+  `/api/timetable/periods` answer `200` with an empty list instead of the `503` that named those
+  files. The day shape comes back `configured: false`, so the grid prints the six periods the portal
+  ships with and says out loud that they are the portal's and not the school's, until someone presses
+  *Set the school's day*. `POST /api/timetable/generate` was run against those tables with a
+  three-line plan and a stated load limit: it proposed 9 lessons, kept 0 (nothing was filed), left 51
+  slots empty, named the one part of the plan that would not fit with how many were placed and why,
+  showed no teacher in two rooms at once, and the grid still read empty afterwards — a draft files
+  nothing by itself. What is **not** proven is every write: filing a lesson, filing a day shape, and
+  receiving or issuing stock have never been sent to this database, and with both registers empty no
+  screen has been seen reading real content. That distinction matters here, because a grid that looks
+  unfilled because nobody filed a lesson is not distinguishable from one that looks unfilled because
+  the read failed — which is why the `503` wording above is the guard rather than an empty table.
+  What *is* proven of the generator is its logic, exercised outside the portal: 26 checks over the
+  placement rule — no teacher in two arms at one time, a week's shape taken from the school's own
+  periods and breaks, filed lessons kept and not buried, the stated load limit counted against both
+  the plan and what is already on the record, and a part of a plan that will not fit reported with
+  the number placed and the reason.
 - **A parent's view is only as deep as the pupil record.** `/api/students` returns their children,
   `/api/invoices` their balances, `/api/ca` the per-subject marks, `/api/payments` the receipts and
   `/api/traits` the behaviour, attendance and remark half of the card — each filtered by
