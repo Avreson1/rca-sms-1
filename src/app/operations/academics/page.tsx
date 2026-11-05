@@ -14,6 +14,7 @@ import {
 } from "@/lib/realtime-store";
 import {
   clearClassTimetableOnServer,
+  draftTimetableOnServer,
   fetchTimetableDayShape,
   fetchTimetableFromSupabase,
   fileTimetableBatchOnServer,
@@ -21,8 +22,11 @@ import {
   saveTimetableDayShapeOnServer,
   saveTimetableLessonOnServer,
   type TimetableDayShape,
+  type TimetableDraftLesson,
+  type TimetableDraftResult,
   type TimetableLessonDraft,
   type TimetableLessonRow,
+  type TimetablePlanRow,
 } from "@/lib/supabase/db";
 import { findAllClashes, isUnassigned, sameTeacher, slotLabel, type TimetableLesson } from "@/lib/timetable/clashes";
 import {
@@ -39,6 +43,7 @@ import {
   Printer,
   Plus,
   RefreshCw,
+  Sparkles,
   TriangleAlert,
   Trash2,
   Upload,
@@ -92,6 +97,20 @@ interface DraftSlot {
   periodLabel: string;
 }
 
+/** One line of the plan a person writes before asking for a draft. The key is only for the list. */
+interface PlanRow extends TimetablePlanRow {
+  key: number;
+}
+
+const INITIAL_PLAN: PlanRow[] = [{ key: 0, className: "", subject: "", teacherName: "", teacherId: "", periodsWanted: 2 }];
+
+/** Keys for rows added after the screen has mounted, where a module counter is safe. */
+let planRowKey = 0;
+function blankPlanRow(className: string): PlanRow {
+  planRowKey += 1;
+  return { key: planRowKey, className, subject: "", teacherName: "", teacherId: "", periodsWanted: 2 };
+}
+
 export default function OperationsAcademicsPage() {
   const { staff } = useRealtimeStaff();
   const { classes } = useRealtimeClasses();
@@ -104,7 +123,7 @@ export default function OperationsAcademicsPage() {
 
   const [term, setTerm] = useState<string>(schoolTerm);
   const [selectedClass, setSelectedClass] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"class" | "master" | "workload">("class");
+  const [activeTab, setActiveTab] = useState<"class" | "master" | "workload" | "draft">("class");
 
   const [lessons, setLessons] = useState<TimetableLessonRow[] | null>(null);
   const [readProblem, setReadProblem] = useState<string | null>(null);
@@ -121,6 +140,12 @@ export default function OperationsAcademicsPage() {
   const [legacyCopy, setLegacyCopy] = useState<LegacyLesson[]>([]);
 
   const [shapeDraft, setShapeDraft] = useState<{ periods: TimetablePeriod[]; days: Day[] } | null>(null);
+
+  const [plan, setPlan] = useState<PlanRow[]>(INITIAL_PLAN);
+  const [capInput, setCapInput] = useState("");
+  /** The week the portal proposed, and the session and term it was proposed for. */
+  const [draft, setDraft] = useState<{ scope: string; result: TimetableDraftResult } | null>(null);
+  const [drafting, setDrafting] = useState(false);
 
   const canWrite = currentUser?.role === "SUPER_ADMIN" || currentUser?.role === "EXAM_OFFICER";
 
@@ -159,6 +184,12 @@ export default function OperationsAcademicsPage() {
   const periods = dayShape?.periods ?? NO_PERIODS;
   const days = (dayShape?.days ?? NO_DAYS) as Day[];
   const slots = useMemo(() => teachablePeriods(periods), [periods]);
+  const weeklyCapacity = slots.length * days.length;
+
+  // A draft is a proposal for one session and one term. Once either changes, what is
+  // on the screen is a plan for a different week, and filing it into the new one
+  // would be a mistake the portal made easy to make.
+  const scopedDraft = draft && draft.scope === `${session}|${term}` ? draft.result : null;
 
   const classLessons = useMemo(
     () => (lessons ?? []).filter((lesson) => lesson.className === selectedClass),
@@ -181,7 +212,7 @@ export default function OperationsAcademicsPage() {
     if (!slot || !selectedClass) return;
     setBusy(true);
 
-    const draft: TimetableLessonDraft = {
+    const newLesson: TimetableLessonDraft = {
       session,
       term,
       className: selectedClass,
@@ -194,12 +225,12 @@ export default function OperationsAcademicsPage() {
       room: roomInput.trim(),
     };
 
-    const result = await saveTimetableLessonOnServer(draft);
+    const result = await saveTimetableLessonOnServer(newLesson);
     if (result.ok) {
       setOutcome({
         tone: "ok",
-        message: `${selectedClass} · ${slot.day} · ${slot.periodLabel}: ${draft.subject}${
-          draft.teacherName && !isUnassigned(draft.teacherName, draft.teacherId) ? ` with ${draft.teacherName}` : " (no teacher named yet)"
+        message: `${selectedClass} · ${slot.day} · ${slot.periodLabel}: ${newLesson.subject}${
+          newLesson.teacherName && !isUnassigned(newLesson.teacherName, newLesson.teacherId) ? ` with ${newLesson.teacherName}` : " (no teacher named yet)"
         } is on the school's timetable${result.replaced ? " (replacing what was in that slot)" : ""}.`,
       });
       setSlot(null);
@@ -314,6 +345,146 @@ export default function OperationsAcademicsPage() {
     }
     setBusy(false);
   };
+
+  /**
+   * Asks the portal to place the plan into the school's week.
+   *
+   * The plan is what a person wrote; the placement is what the machine decides. This
+   * call saves nothing — the draft comes back on the screen to be read, and only a
+   * separate, deliberate filing puts it on the timetable.
+   */
+  const handleDraft = async () => {
+    const cap = capInput.trim() === "" ? null : Math.trunc(Number(capInput));
+    if (cap !== null && (!Number.isFinite(cap) || cap < 1)) {
+      setOutcome({ tone: "warn", message: "The limit for one teacher must be a whole number of periods, or blank to mean no limit." });
+      return;
+    }
+
+    const demands: TimetablePlanRow[] = plan
+      .map((row) => {
+        const teacherName = (row.teacherName ?? "").trim();
+        const member = staff.find((someone) => someone.fullName === teacherName);
+        return {
+          className: row.className.trim(),
+          subject: row.subject.trim(),
+          teacherName,
+          // The staff id is taken from the school's own staff file, so two spellings of
+          // one name are one teacher to the clash rule and to the load limit.
+          teacherId: member?.staffId ?? "",
+          periodsWanted: Math.trunc(Number(row.periodsWanted)) || 0,
+        };
+      })
+      .filter((row) => row.className && row.subject.length >= 2 && row.periodsWanted > 0);
+
+    if (demands.length === 0) {
+      setOutcome({
+        tone: "warn",
+        message: "The plan has nothing in it yet. Each line needs a class arm, a subject of at least two letters, and at least one period wanted.",
+      });
+      return;
+    }
+
+    setDrafting(true);
+    const result = await draftTimetableOnServer({ session, term, plan: demands, maxPeriodsPerTeacher: cap });
+    setDraft({ scope: `${session}|${term}`, result });
+    if (!result.ok) {
+      setOutcome({ tone: "warn", message: result.reason ?? "The draft could not be built." });
+    } else {
+      const placed = result.lessons.filter((lesson) => !lesson.onSchoolRecord).length;
+      setOutcome({
+        tone: result.unplaced.length === 0 ? "ok" : "warn",
+        message:
+          placed === 0
+            ? `The plan's ${demands.length} line(s) placed no lesson at all. The first reason is listed under “what did not fit” below.`
+            : `${placed} lesson(s) drafted for ${term}, ${session}. Nothing is on the timetable yet — read it, then file it or change the plan.`,
+      });
+    }
+    setDrafting(false);
+  };
+
+  /**
+   * Files the draft. The school's clash rule judges every row again, from the
+   * records as they are now rather than as they were when the draft was built —
+   * so a lesson someone filed by hand in the meantime is refused by name instead of
+   * quietly overwritten.
+   */
+  const handleFileDraft = async () => {
+    const rows = (scopedDraft?.lessons ?? []).filter((lesson) => !lesson.onSchoolRecord);
+    if (rows.length === 0) return;
+    if (
+      !window.confirm(
+        `File ${rows.length} drafted lesson(s) into ${term}, ${session}? The ${
+          (scopedDraft?.lessons ?? []).length - rows.length
+        } lesson(s) already on the school's timetable are left where they are. This cannot be undone as a block — lessons come back out one slot at a time.`
+      )
+    )
+      return;
+
+    setBusy(true);
+    const entries: TimetableLessonDraft[] = rows.map((lesson) => ({
+      session,
+      term,
+      className: lesson.class_name,
+      day: lesson.day,
+      periodIndex: lesson.period_index,
+      periodLabel: lesson.period_label,
+      subject: lesson.subject,
+      teacherName: lesson.teacher_name,
+      teacherId: lesson.teacher_ref ?? "",
+      room: "",
+    }));
+
+    const result = await fileTimetableBatchOnServer({ session, term }, entries);
+    const refusedText =
+      result.refused.length > 0
+        ? ` Refused: ${result.refused
+            .slice(0, 3)
+            .map((row) => `${row.className} · ${row.day} · ${row.subject} — ${row.reason}`)
+            .join(" / ")}${result.refused.length > 3 ? ` (and ${result.refused.length - 3} more)` : ""}`
+        : "";
+    setOutcome({
+      tone: result.filed > 0 && result.refused.length === 0 ? "ok" : "warn",
+      message: result.filed > 0
+        ? `${result.filed} of ${entries.length} drafted lesson(s) are now on the school's timetable for ${term}, ${session}.${refusedText}`
+        : `None of the ${entries.length} drafted lesson(s) were filed: ${result.reason ?? refusedText}`,
+    });
+    setDraft(null);
+    await load();
+    setBusy(false);
+  };
+
+  const draftProposed = useMemo(
+    () => (scopedDraft?.lessons ?? []).filter((lesson) => !lesson.onSchoolRecord),
+    [scopedDraft]
+  );
+
+  /** The drafted week, one arm at a time, in the order a person reads a grid. */
+  const draftByClass = useMemo(() => {
+    const dayOrder = days.length > 0 ? days : (DEFAULT_TIMETABLE_DAYS as Day[]);
+    const groups = new Map<string, TimetableDraftLesson[]>();
+    for (const lesson of draftProposed) {
+      const list = groups.get(lesson.class_name) ?? [];
+      list.push(lesson);
+      groups.set(lesson.class_name, list);
+    }
+    return [...groups.entries()]
+      .map(([className, rows]) => ({
+        className,
+        rows: rows.sort(
+          (a, b) =>
+            dayOrder.indexOf(a.day as Day) - dayOrder.indexOf(b.day as Day) || a.period_index - b.period_index
+        ),
+      }))
+      .sort((a, b) => a.className.localeCompare(b.className));
+  }, [draftProposed, days]);
+
+  const draftEmptyByClass = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const slot of scopedDraft?.emptySlots ?? []) {
+      counts.set(slot.class_name, (counts.get(slot.class_name) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [scopedDraft]);
 
   // The clash list is computed by the school's own rule, imported rather than
   // re-typed here, so the warning printed under a grid is the same test the save
@@ -731,6 +902,14 @@ export default function OperationsAcademicsPage() {
           >
             Faculty Workload Matrix ({staff.length} instructors)
           </button>
+          <button
+            onClick={() => setActiveTab("draft")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === "draft" ? "bg-slate-900 text-white shadow-xs" : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            Draft The Week{scopedDraft && draftProposed.length > 0 ? ` (${draftProposed.length} proposed)` : ""}
+          </button>
         </div>
 
         {/* Tab 1: one class arm */}
@@ -1061,6 +1240,279 @@ export default function OperationsAcademicsPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 4: a draft, built from a plan and filed only when a person says so */}
+        {activeTab === "draft" && (
+          <div className="space-y-4 print:hidden">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 print:hidden">
+              <div className="flex items-start gap-2 text-[11px] leading-snug text-slate-700">
+                <Sparkles className="w-4 h-4 text-indigo-600 flex-shrink-0 mt-0.5" />
+                <p>
+                  <strong>A draft is a proposal, not a timetable.</strong> You write what each
+                  arm needs — subject, teacher, how many periods — and the portal chooses the
+                  times so that no teacher stands in two class arms at once, judged by the same
+                  rule that refuses a lesson filed by hand. It builds around the{" "}
+                  {lessons?.length ?? 0} lesson(s) already filed for {term}, {session} and moves
+                  none of them. Nothing is saved until you file the draft yourself.
+                </p>
+              </div>
+
+              <p className="text-[11px] text-slate-500">
+                It places into {weeklyCapacity} slot(s) a week —{" "}
+                {slots.length} teaching period(s) × {days.length} day(s) —{" "}
+                {dayShape?.fromSchoolRecords
+                  ? "as the school filed that day for this term."
+                  : "using the day the portal ships with, because the school has not filed its own. If this school teaches a different day, file it above first: a draft placed into the wrong week is worse than no draft."}
+              </p>
+
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-slate-700">What the week must hold</p>
+                {plan.map((row, position) => (
+                  <div key={row.key} className="flex flex-wrap items-center gap-2 text-xs">
+                    <select
+                      value={row.className}
+                      onChange={(event) =>
+                        setPlan(plan.map((line, i) => (i === position ? { ...line, className: event.target.value } : line)))
+                      }
+                      className="w-40 p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-blue-900 outline-none"
+                      title="Which class arm this line is for"
+                    >
+                      <option value="">Choose a class arm…</option>
+                      {classes.map((arm) => (
+                        <option key={arm.id} value={arm.name}>
+                          {arm.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={row.subject}
+                      onChange={(event) =>
+                        setPlan(plan.map((line, i) => (i === position ? { ...line, subject: event.target.value } : line)))
+                      }
+                      list="academics-plan-subjects"
+                      placeholder="Subject"
+                      className="flex-1 min-w-36 p-2 bg-slate-50 border border-slate-200 rounded-lg font-semibold outline-none"
+                    />
+                    <select
+                      value={row.teacherName}
+                      onChange={(event) =>
+                        setPlan(plan.map((line, i) => (i === position ? { ...line, teacherName: event.target.value } : line)))
+                      }
+                      className="w-44 p-2 bg-slate-50 border border-slate-200 rounded-lg font-semibold outline-none"
+                      title="Left on “not named yet”, the lesson is placed as a gap for the office to fill"
+                    >
+                      <option value="">Not named yet</option>
+                      {staff.map((member) => (
+                        <option key={member.id} value={member.fullName}>
+                          {member.fullName} ({member.role})
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min={0}
+                      max={40}
+                      value={row.periodsWanted}
+                      onChange={(event) =>
+                        setPlan(
+                          plan.map((line, i) =>
+                            i === position ? { ...line, periodsWanted: Math.trunc(Number(event.target.value)) || 0 } : line
+                          )
+                        )
+                      }
+                      className="w-20 p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono text-center outline-none"
+                      title="Periods of this subject the arm needs this week"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setPlan(plan.filter((_, i) => i !== position))}
+                      className="p-1 text-rose-600 hover:text-rose-800 cursor-pointer"
+                      title="Take this line out of the plan"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                <datalist id="academics-plan-subjects">
+                  {subjects.map((subject) => (
+                    <option key={subject.id} value={subject.name} />
+                  ))}
+                </datalist>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setPlan([...plan, blankPlanRow(selectedClass)])}
+                    className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add a line
+                  </button>
+                  <label className="flex items-center gap-2 text-xs text-slate-700">
+                    <span className="font-bold">Limit one teacher to</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={capInput}
+                      onChange={(event) => setCapInput(event.target.value)}
+                      className="w-16 p-1.5 bg-slate-50 border border-slate-200 rounded-lg font-mono text-center outline-none"
+                      placeholder="—"
+                    />
+                    <span>periods a week</span>
+                  </label>
+                  <span className="text-[11px] text-slate-500">
+                    Blank means no limit. The portal has no record of what one teacher should
+                    carry, so it will not invent a number for you.
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setDraft(null)}
+                  disabled={!scopedDraft || busy}
+                  className="px-3.5 py-2 text-slate-600 hover:bg-slate-100 disabled:opacity-40 rounded-lg font-semibold text-xs cursor-pointer"
+                >
+                  Discard the draft
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDraft()}
+                  disabled={drafting || busy || loading}
+                  className="px-4 py-2 text-xs font-bold bg-indigo-700 hover:bg-indigo-800 disabled:bg-slate-300 text-white rounded-lg transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {drafting ? "Placing the week…" : "Draft the week"}
+                </button>
+              </div>
+            </div>
+
+            {draft && !scopedDraft && (
+              <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-xl p-3 print:hidden">
+                The draft held on this screen was built for{" "}
+                <strong>{draft.scope.replace("|", ", ")}</strong>, and the grid is now reading{" "}
+                <strong>{term}, {session}</strong>. It is not shown and cannot be filed: a week
+                planned for one term filed into another is how a class arrives for a lesson that was
+                never put there. Press “Draft the week” again to plan the term you are in.
+              </p>
+            )}
+
+            {scopedDraft?.ok && (
+              <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Draft for {term}, {session}
+                    </h3>
+                    <p className="text-[11px] text-slate-600 mt-0.5">
+                      {draftProposed.length} lesson(s) placed · {scopedDraft.unplaced.length} line(s) of
+                      the plan could not be ·{" "}
+                      {scopedDraft.emptySlots.length} slot(s) left empty in the arms planned.{" "}
+                      <strong>None of this is on the school&apos;s timetable yet.</strong>
+                    </p>
+                  </div>
+                  {canWrite ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleFileDraft()}
+                      disabled={busy || draftProposed.length === 0}
+                      className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-lg transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Upload className="w-4 h-4" />
+                      {busy ? "Filing…" : `File these ${draftProposed.length} lesson(s)`}
+                    </button>
+                  ) : (
+                    <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                      Your role can plan a week but not file one — only the Exam Office puts
+                      lessons on the school&apos;s timetable.
+                    </p>
+                  )}
+                </div>
+
+                {scopedDraft.unplaced.length > 0 && (
+                  <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 text-[11px] leading-snug text-rose-950 space-y-1">
+                    <p className="flex items-start gap-2">
+                      <TriangleAlert className="w-4 h-4 text-rose-700 flex-shrink-0 mt-0.5" />
+                      <strong>
+                        {scopedDraft.unplaced.length} part(s) of the plan did not fit, and are not on
+                        this draft.
+                      </strong>
+                    </p>
+                    <ul className="list-disc pl-6 space-y-0.5">
+                      {scopedDraft.unplaced.map((row, index) => (
+                        <li key={index}>
+                          {row.class_name} · {row.subject}
+                          {row.teacher_name ? ` (${row.teacher_name})` : ""}: {row.placed} of{" "}
+                          {row.wanted} placed — {row.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {draftProposed.length === 0 ? (
+                  <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                    The plan placed no lesson at all. Nothing will be filed, because there is
+                    nothing to file — the reasons are above.
+                  </p>
+                ) : (
+                  draftByClass.map((group) => (
+                    <div key={group.className} className="border border-slate-200 rounded-xl overflow-hidden">
+                      <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                        <h4 className="text-xs font-bold text-slate-800">{group.className}</h4>
+                        <span className="text-[11px] text-slate-500">
+                          {group.rows.length} of {scopedDraft.weeklySlots || weeklyCapacity} slots
+                          filled by this draft
+                          {(draftEmptyByClass.find(([name]) => name === group.className)?.[1] ?? 0) > 0 &&
+                            ` · ${(draftEmptyByClass.find(([name]) => name === group.className)?.[1] ?? 0)} still empty`}
+                        </span>
+                      </div>
+                      <div className="max-h-72 overflow-y-auto">
+                        <table className="w-full text-[11px]">
+                          <thead className="sticky top-0 bg-white">
+                            <tr className="text-left text-slate-500">
+                              <th className="px-3 py-1.5 font-semibold">Day</th>
+                              <th className="px-3 py-1.5 font-semibold">Period</th>
+                              <th className="px-3 py-1.5 font-semibold">Subject</th>
+                              <th className="px-3 py-1.5 font-semibold">Teacher</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {group.rows.map((lesson, index) => (
+                              <tr key={`${lesson.day}-${lesson.period_index}-${index}`} className="hover:bg-indigo-50/30">
+                                <td className="px-3 py-1.5 font-semibold text-slate-700">{lesson.day}</td>
+                                <td className="px-3 py-1.5 text-slate-600">
+                                  {lesson.period_label || `Period ${lesson.period_index + 1}`}
+                                </td>
+                                <td className="px-3 py-1.5 font-bold text-slate-900">{lesson.subject}</td>
+                                <td className="px-3 py-1.5">
+                                  {isUnassigned(lesson.teacher_name, lesson.teacher_ref) ? (
+                                    <span className="text-amber-700 font-semibold">No teacher named — a gap to fill</span>
+                                  ) : (
+                                    lesson.teacher_name
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))
+                )}
+
+                <p className="text-[11px] text-slate-500">
+                  A draft places lessons, not rooms: filing these leaves every room blank, which
+                  the grid prints as the class&apos;s own room. The school&apos;s clash rule judges
+                  each row again when it is filed, so anything a colleague added to the timetable
+                  since this draft was built is named and refused rather than overwritten.
+                </p>
               </div>
             )}
           </div>

@@ -186,10 +186,10 @@ const SOP_MANUAL_DATA: SOPItem[] = [
     category: "Exam Officer",
     badgeColor: "bg-blue-100 text-blue-800 border-blue-200",
     minRoleTier: "EXAM_OFFICER",
-    summary: "Procedure for building the term's timetable on the school's records: one lesson in one labelled slot, a teacher who is already booked refused with the other class named, and the workload read off the same grid a family's schedule is printed from.",
+    summary: "Procedure for building the term's timetable on the school's records: one lesson in one labelled slot, a teacher who is already booked refused with the other class named, a whole week drafted from a plan a person writes and filed only when that person says so, and the workload read off the same grid a family's schedule is printed from.",
     prerequisites: [
-      "A SUPER_ADMIN or EXAM_OFFICER login — a teacher, bursar, parent or QA login can read the grid but the Schedule / Assign / Clear controls are not shown and the server refuses the write",
-      "supabase/timetable.sql run on this project. Until it is, the screen prints 'The timetable could not be read' and names that file, and refuses to show an empty week in its place",
+      "A SUPER_ADMIN or EXAM_OFFICER login to file anything — a teacher or QA login can read the grid and ask for a draft, but the Schedule / Assign / Clear controls are not shown, the draft tab says your role can plan a week but not file one, and the server refuses the write",
+      "supabase/timetable.sql run on this project. Until it is, the screen prints 'The timetable could not be read' and names that file, and refuses to show an empty week in its place — and 'Draft the week' has no school day to place lessons into, so it answers the same 503 and files nothing",
       "The class arms and staff list on this machine — both are still browser-held, and the screen says so above the grid",
     ],
     procedureSteps: [
@@ -203,6 +203,9 @@ const SOP_MANUAL_DATA: SOPItem[] = [
       "If that line says the periods come from the portal, press 'Set the school's day'. Tick the weekdays the school actually teaches on, name each entry ('Period 1 (08:00 - 08:45 AM)'), use 'Add period' / 'Add break', and press 'File this day on the school's records'. The panel says which shape it opened with, so a saved six-period day is known to be the office's choice and not the portal's default.",
       "A period cannot be removed while a lesson still sits in it: the school refuses that save and names the lessons that would keep existing with no period to print them in. Move those lessons first, or clear the arm.",
       "Use 'Class Arm Timetable' for one arm ('n filled of m' and 'Assign' in every empty cell), 'Master Institutional Schedule' for every arm at once (each row shows 'n of m' and 'slot(s) empty'), and 'Faculty Workload Matrix' for periods per teacher.",
+      "To plan a week instead of typing it cell by cell, press 'Draft the week'. Write what each arm needs — class arm, subject, teacher (or 'Not named yet'), and how many periods — one line at a time with 'Add a line'. Optionally state the most periods one teacher should carry; left blank, the portal sets no limit, because it has no record of what a fair load at this school is and will not invent one.",
+      "Press 'Draft the week'. The portal chooses the times: no teacher in two arms at once (the same rule that refuses a hand-filed lesson), lessons spread over the week rather than stacked on Monday, and the periods already on the school's records left exactly where they are. Read all three numbers it answers with — what was placed, which parts of the plan did not fit and why, and how many slots are still empty. Nothing has been saved yet.",
+      "Press 'File these n lesson(s)' to put the draft on the timetable, and read the confirm line first: it says how many lessons land and that the ones already filed stay where they are. Filing is judged again by the school's rule, so anything a colleague added since the draft was built is refused and named rather than overwritten.",
       "In the workload tab, a count flagged 'by name, not staff id' means the lesson carries a typed name rather than a staff reference — two spellings of one person read as two people there. 'Awaiting Schedule' is a teacher with no filed lesson, not an idle one.",
       "'Clear Class Schedule' takes every lesson off one arm for the named session and term, after naming how many it is about to remove. There is no undo.",
     ],
@@ -211,8 +214,11 @@ const SOP_MANUAL_DATA: SOPItem[] = [
       "If the panel says 'n teacher(s) are in two classes at the same time on this timetable', fix it before the schedule is printed. Those lessons came in through an older browser copy or a name that does not match the staff file.",
       "Do not file a timetable into a term the school is not in. The term selector and the header are the only date on the grid — a schedule printed under the wrong term is worse than no schedule.",
       "The class arms and staff names you are grouping by are still this browser's lists. If another machine's arm is missing from the dropdown, the lessons filed for it are still on the school's records; only the grouping is incomplete here.",
+      "A draft is not a timetable. Until 'File these n lesson(s)' is pressed nothing is on the school's records, and a draft left open on screen schedules nobody. Switching the session or the term discards it, because what is on screen is then a plan for a different week.",
+      "The portal places times only from the plan it was handed. It never chooses a subject for a class or a teacher for a lesson — the school's records do not say who teaches what well enough to stake a printed schedule on it — and an arm the plan does not mention is left untouched.",
+      "A draft places lessons, not rooms: every line it files comes in with no room, which the grid prints as the class's own room. Set a room by hand where a lesson genuinely moves out of it.",
     ],
-    expectedOutput: "A timetable for one named session and term on the school's records, with no teacher double-booked, every unfilled slot shown as unfilled, and a workload count that matches what the grid prints.",
+    expectedOutput: "A timetable for one named session and term on the school's records, with no teacher double-booked, every unfilled slot shown as unfilled, and a workload count that matches what the grid prints — or a drafted week that names every part of the plan it could not place, waiting for a person to file it.",
   },
 
   // 3. Faculty / Teacher

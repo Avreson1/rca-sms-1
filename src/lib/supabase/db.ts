@@ -1581,3 +1581,111 @@ export async function saveTimetableDayShapeOnServer(shape: {
     return { ok: false, reason: "the portal server did not answer" };
   }
 }
+
+/** What the school is asking for: one arm, one subject, one teacher, N periods. */
+export interface TimetablePlanRow {
+  className: string;
+  subject: string;
+  teacherName?: string;
+  teacherId?: string;
+  periodsWanted: number;
+}
+
+export interface TimetableDraftLesson {
+  session: string;
+  term: string;
+  class_name: string;
+  day: string;
+  period_index: number;
+  period_label: string;
+  subject: string;
+  teacher_name: string;
+  teacher_ref: string | null;
+  /** True for the lessons already on the school's timetable, which the draft was built around. */
+  onSchoolRecord: boolean;
+}
+
+export interface TimetableDraftShortfall {
+  class_name: string;
+  subject: string;
+  teacher_name: string;
+  wanted: number;
+  placed: number;
+  reason: string;
+}
+
+export interface TimetableDraftEmptySlot {
+  class_name: string;
+  day: string;
+  period_index: number;
+  period_label: string;
+}
+
+export interface TimetableDraftResult {
+  ok: boolean;
+  reason: string | null;
+  weeklySlots: number;
+  dayShapeFromSchoolRecords: boolean;
+  lessons: TimetableDraftLesson[];
+  unplaced: TimetableDraftShortfall[];
+  emptySlots: TimetableDraftEmptySlot[];
+}
+
+/**
+ * Asks the portal to place a plan into the school's week, and files nothing.
+ *
+ * The answer always carries three separate facts — what was placed, what could not
+ * be and why, and which slots stayed empty — because a draft that only reports
+ * success is how a week with four holes in it gets printed as a finished timetable.
+ */
+export async function draftTimetableOnServer(input: {
+  session: string;
+  term: string;
+  plan: TimetablePlanRow[];
+  maxPeriodsPerTeacher?: number | null;
+}): Promise<TimetableDraftResult> {
+  const empty: TimetableDraftResult = {
+    ok: false,
+    reason: null,
+    weeklySlots: 0,
+    dayShapeFromSchoolRecords: false,
+    lessons: [],
+    unplaced: [],
+    emptySlots: [],
+  };
+  try {
+    const response = await fetch("/api/timetable/generate", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session: input.session,
+        term: input.term,
+        demands: input.plan,
+        maxPeriodsPerTeacher: input.maxPeriodsPerTeacher ?? null,
+      }),
+    });
+    if (!response.ok) return { ...empty, reason: await serverReason(response) };
+    const payload = (await response.json().catch(() => null)) as {
+      data?: {
+        weeklySlots?: number;
+        dayShapeFromSchoolRecords?: boolean;
+        lessons?: TimetableDraftLesson[];
+        unplaced?: TimetableDraftShortfall[];
+        emptySlots?: TimetableDraftEmptySlot[];
+      };
+    } | null;
+    return {
+      ok: true,
+      reason: null,
+      weeklySlots: payload?.data?.weeklySlots ?? 0,
+      dayShapeFromSchoolRecords: Boolean(payload?.data?.dayShapeFromSchoolRecords),
+      lessons: payload?.data?.lessons ?? [],
+      unplaced: payload?.data?.unplaced ?? [],
+      emptySlots: payload?.data?.emptySlots ?? [],
+    };
+  } catch (error) {
+    console.warn("API /api/timetable/generate failed", error);
+    return { ...empty, reason: "the portal server did not answer" };
+  }
+}

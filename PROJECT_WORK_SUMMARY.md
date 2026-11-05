@@ -180,7 +180,7 @@ A full Computer-Based Testing application with real-time proctoring safeguards h
 ## ⚙️ 7. Full Academic & Operational Workflow Modules
 
 ### Operations Suite (`/operations/*`)
-1. **Academics & Timetable (`/operations/academics`)**: Master 5-day school timetable, daily period allocation (Period 1 to Period 8, short break, lunch break), room numbers, and teacher workload analysis.
+1. **Academics & Timetable (`/operations/academics`)**: The term's grid read from the school's own records for one named session and term, one lesson filed into one labelled slot, a teacher already booked elsewhere refused with the other class named, the school's own day shape (periods, breaks, weekdays) as a record it can file, a clash-free week drafted from a plan a person writes and filed only when they press so, room numbers, and teacher workload read off the same grid. `supabase/timetable.sql` has to be run for any of it to hold data.
 2. **Update CA Gradebook (`/operations/update-ca`)**: Real-time Continuous Assessment spreadsheet with auto-saving, score clamping (Tests 0-10, Exam 0-60), class/subject filtering, and bulk CSV score upload.
 3. **Traits & Psychomotor Scoring (`/operations/traits-assessments`)**: 5-point rating matrix for behavioral and physical traits with preset auto-fill remarks for teachers and principals.
 4. **Publish Results (`/operations/publish-results`)**: Arm-by-arm result lock/publish toggle with timestamp auditing, controlling scorecard visibility on the student/parent portal.

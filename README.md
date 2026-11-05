@@ -264,12 +264,13 @@ Run these in the Supabase SQL editor, in order:
    than in a screen's hopes: `UNIQUE (session, term, class_name, day, period_index)` means a slot
    holds one lesson, and a `CHECK` means a row cannot be filed under a term the portal does not
    recognise. Whether one teacher is in two classes at once is decided by
-   [`src/lib/timetable/clashes.ts`](src/lib/timetable/clashes.ts), imported by the save route and
-   the grid so both use the same test — two rules is how a double-booking sits unnoticed until a
-   class arrives empty. It seeds one day shape (`2026/2027`, First Term, the six periods the portal
-   always printed) behind `WHERE NOT EXISTS`, so a re-run never overwrites a day the school chose.
-   Until you run it, *Operations → Academics & Timetable* answers *The timetable could not be read*
-   and `/api/timetable` returns the `503` that names this file.
+   [`src/lib/timetable/clashes.ts`](src/lib/timetable/clashes.ts), imported by the save route, the
+   grid and the generator so all three use the same test — two rules is how a double-booking sits
+   unnoticed until a class arrives empty. It seeds one day shape (`2026/2027`, First Term, the six
+   periods the portal always printed) behind `WHERE NOT EXISTS`, so a re-run never overwrites a day
+   the school chose. Until you run it, *Operations → Academics & Timetable* answers *The timetable
+   could not be read*, `/api/timetable` returns the `503` that names this file, and **Draft the
+   week** cannot place a single lesson because it has no day to place lessons into.
 
 `app_accounts`, `guardian_students`, both inventory tables and both timetable tables deliberately
 have RLS enabled with **no** policies, so only the server (holding the service-role key) can read
@@ -303,6 +304,7 @@ Inside that, each data route also checks the role:
 | `/api/inventory/movements` | super admin, bursar, QA tester | super admin, bursar (an issue larger than the shelf is refused) |
 | `/api/timetable` | super admin, exam officer, teacher, QA tester | super admin, exam officer (a lesson is filed into one empty slot; a teacher already in another class then is refused) |
 | `/api/timetable/periods` | super admin, exam officer, teacher, QA tester | super admin, exam officer (a day shape that would strand lessons already filed is refused) |
+| `/api/timetable/generate` | super admin, exam officer, teacher, QA tester | nobody — it reads the day and the filed lessons and hands back a proposal; filing it is a separate `PUT /api/timetable`, which only the office can make |
 
 `/api/payments` POST is the money path. The receipt is filed first and the invoice balance moved
 second; if the balance cannot be moved, the receipt that was just written is withdrawn and the
@@ -453,10 +455,17 @@ Be aware of what this system does **not** do today:
   *expected to work*, not as checked. `supabase/inventory.sql` has not been run at all: until it
   is, `/api/inventory` answers `503` naming the file and *Accounts → Inventory* prints *The store
   register could not be read* rather than an empty table it cannot prove. `supabase/timetable.sql`
-  has not been run either: until it is, `/api/timetable` answers the same `503` and
-  *Operations → Academics & Timetable* prints *The timetable could not be read* — and refuses to
-  show an empty week, because a grid that looks unfilled when the read failed is how a class is sent
-  to the wrong room.
+  has not been run either — both `timetable_entries` and `timetable_periods` are missing, confirmed
+  on 2026-11-05 — so until it is, `/api/timetable` and `/api/timetable/periods` answer the same
+  `503` and *Operations → Academics & Timetable* prints *The timetable could not be read* — and
+  refuses to show an empty week, because a grid that looks unfilled when the read failed is how a
+  class is sent to the wrong room. **Draft the week** stops at the same door: it places a plan into
+  the school's day, so with no day filed it places nothing and names the file. What *is* proven of
+  the generator is its logic, exercised outside the portal: 26 checks over the placement rule — no
+  teacher in two arms at one time, a week's shape taken from the school's own periods and breaks,
+  filed lessons kept and not buried, the stated load limit counted against both the plan and what
+  is already on the record, and a part of a plan that will not fit reported with the number placed
+  and the reason.
 - **A parent's view is only as deep as the pupil record.** `/api/students` returns their children,
   `/api/invoices` their balances, `/api/ca` the per-subject marks, `/api/payments` the receipts and
   `/api/traits` the behaviour, attendance and remark half of the card — each filtered by
