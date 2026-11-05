@@ -10,6 +10,7 @@ import {
   useRealtimeGradingScales,
   useRealtimeSubjectScores,
   useRealtimePsychomotor,
+  useRealtimeTraits,
   useRealtimeNewsletter,
   useRealtimeAuth,
   calculateGradeForClass,
@@ -169,7 +170,6 @@ export default function ScoreCardPage() {
   const { students } = useRealtimeStudents();
   const { classes } = useRealtimeClasses();
   const { gradingTiers } = useRealtimeGradingScales();
-  const { psychomotorList } = useRealtimePsychomotor();
   const { newsletter } = useRealtimeNewsletter();
   const { currentUser } = useRealtimeAuth();
 
@@ -251,6 +251,20 @@ export default function ScoreCardPage() {
     terms: [...REPORT_TERMS],
     className: selectedClass,
   });
+
+  // The same repair on the other half of the card. Behaviour ratings, attendance
+  // and the two remarks used to exist only in the browser of whichever machine
+  // typed them, so a family opening the portal on a phone was told their child had
+  // never been assessed while the form teacher's laptop held a full set — and a
+  // card printed in the office carried marks from the school and ratings from
+  // nobody. These come from /api/traits, filtered by the guardian links when the
+  // reader is a parent.
+  const { psychomotorList, assessmentsFiled } = useRealtimePsychomotor({
+    session: selectedSession,
+    terms: [...REPORT_TERMS],
+    className: selectedClass,
+  });
+  const { traits } = useRealtimeTraits();
 
   // Synchronize when parent ward or teacher role is initialized
   useEffect(() => {
@@ -461,6 +475,15 @@ export default function ScoreCardPage() {
     const filed = filedResults(student);
     return all.length > 0 && filed.length === all.length ? filed.reduce((sum, r) => sum + r.total, 0) / all.length : -1;
   };
+
+  // A rating is stored against a trait id and the family reads a name. The card
+  // used to print the id with its "tr-" chopped off — "punc", "hand" — on the one
+  // document a parent is expected to understand. An id the school has since
+  // removed still prints, as itself, rather than vanishing from the card.
+  const traitNames = useMemo(
+    () => Object.fromEntries(traits.map((trait) => [trait.id, trait.name])),
+    [traits]
+  );
 
   const renderScoreCard = (student: StudentRecord, isBatchItem: boolean = false) => {
     const results = computeStudentResults(student);
@@ -712,9 +735,11 @@ export default function ScoreCardPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
                 {Object.entries(psy.affectiveRatings || {}).slice(0, 8).map(([trait, val], idx) => (
                   <div key={idx} className="flex items-center justify-between border-b border-slate-100 pb-0.5">
-                    <span className="text-slate-700 truncate pr-1">{trait.replace(/tr-[a-z]+/, "") || trait}</span>
+                    <span className="text-slate-700 truncate pr-1">{traitNames[trait] ?? trait}</span>
                     <span className="font-bold text-purple-800 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 font-mono">
-                      {val} / 5
+                      {/* 0 is the shape of an unrated trait, not a mark of zero. A
+                          family reading "0 / 5" reads a failing score. */}
+                      {val > 0 ? `${val} / 5` : "not rated"}
                     </span>
                   </div>
                 ))}
@@ -732,9 +757,9 @@ export default function ScoreCardPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
                 {Object.entries(psy.psychomotorRatings || {}).slice(0, 8).map(([trait, val], idx) => (
                   <div key={idx} className="flex items-center justify-between border-b border-slate-100 pb-0.5">
-                    <span className="text-slate-700 truncate pr-1">{trait.replace(/tr-[a-z]+/, "") || trait}</span>
+                    <span className="text-slate-700 truncate pr-1">{traitNames[trait] ?? trait}</span>
                     <span className="font-bold text-blue-800 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200 font-mono">
-                      {val} / 5
+                      {val > 0 ? `${val} / 5` : "not rated"}
                     </span>
                   </div>
                 ))}
@@ -745,10 +770,14 @@ export default function ScoreCardPage() {
 
         {showAttendanceRemarks && !psy && (
           <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[11px] text-amber-900">
-            <strong>No character assessment on file for this pupil.</strong> Attendance, the affective and
-            psychomotor ratings, and the form teacher&apos;s and principal&apos;s remarks print only for a
-            pupil somebody assessed in Traits &amp; Psychomotor for {selectedTerm}, {selectedSession}. The
-            praise this panel used to carry for every child was a template, not an observation.
+            <strong>
+              {assessmentsFiled
+                ? "No character assessment on file for this pupil."
+                : "No character assessment on this device."}
+            </strong>{" "}
+            {assessmentsFiled
+              ? `Attendance, the affective and psychomotor ratings, and the form teacher's and principal's remarks print only for a pupil somebody assessed and filed in Traits & Psychomotor for ${selectedTerm}, ${selectedSession}. The praise this panel used to carry for every child was a template, not an observation.`
+              : `The school's own assessments for ${selectedSession} could not be read, so this panel cannot say whether anybody rated this child — it is only reporting that this browser holds nothing. Ask the form teacher to re-file from Operations → Traits & Psychomotor, or reload once the portal server answers.`}
           </div>
         )}
 

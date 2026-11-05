@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRole, requireRoleSession } from "@/lib/auth/guard";
 import { guardianScope } from "@/lib/auth/guardian-links";
 import { databaseUnavailable, getSupabaseServerClient } from "@/lib/supabase/server";
+import { closedTermRefusal, validateScope } from "@/lib/supabase/term-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -16,16 +17,6 @@ const READ_CA = ["SUPER_ADMIN", "EXAM_OFFICER", "TEACHER", "STUDENT_PARENT", "TE
 // ca_scores column limits, straight from the schema's CHECK constraints.
 const COMPONENT_MAX = { test1: 10, test2: 10, project: 10, midTerm: 10 } as const;
 const EXAM_MAX = 60;
-
-// The only terms a mark can belong to. "Term" on a card is a word the family
-// reads, so it cannot be whatever string the browser sent.
-const KNOWN_TERMS: readonly string[] = ["First Term", "Second Term", "Third Term"];
-
-/** A timestamp from the database in the form the office recognises. */
-function formatStamp(value: string | null | undefined): string {
-  const date = value ? new Date(value) : null;
-  return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString() : "an earlier session";
-}
 
 // The REST layer hands back at most this many rows per request, so a read that
 // could exceed it is paged rather than silently truncated.
@@ -271,63 +262,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: "Provide the student's admission number." }, { status: 400 });
   }
 
-  // No silent default. Filing a mark into "First Term 2025/2026" because the
-  // request forgot to say which term is how a child ends up with a grade on a
-  // card for a term they were never taught.
   const session = (body.session || "").trim();
   const term = (body.term || "").trim();
-  if (!/^\d{4}[\/\s-]+\d{4}$/.test(session)) {
-    return NextResponse.json(
-      { success: false, error: `The academic session must be stated and look like 2025/2026, not "${session}".` },
-      { status: 400 }
-    );
-  }
-  if (!KNOWN_TERMS.includes(term)) {
-    return NextResponse.json(
-      { success: false, error: `The term must be one of: ${KNOWN_TERMS.join(", ")}. Not "${term}".` },
-      { status: 400 }
-    );
-  }
+  const scopeRefusal = validateScope(session, term);
+  if (scopeRefusal) return scopeRefusal;
 
   const supabase = getSupabaseServerClient();
   if (!supabase) return databaseUnavailable();
 
-  // A term the office has signed off is finished. This is what makes the End of
-  // Term screen's button mean something: the marks it locks stay readable, so
-  // the cards still print, but they cannot be changed after the fact.
-  const { data: closedRow, error: closedError } = await supabase
-    .from("closed_terms")
-    .select("term, closed_by, closed_at")
-    .eq("session", session)
-    .eq("term", term)
-    .maybeSingle();
-
-  if (closedError) {
-    // A term can only be signed off by writing into closed_terms, so a database
-    // with no such table has signed off nothing, and filing a mark there is not
-    // unlocking a closed term. Refusing instead would stop the whole school
-    // entering marks because one optional migration had not been run. Every
-    // other failure — a lost connection, a revoked key, a table the server
-    // cannot read — is refused, because there the portal truly does not know
-    // whether the term is closed.
-    const tableAbsent =
-      closedError.code === "42P01" ||
-      closedError.code === "PGRST205" ||
-      /could not find the table|relation .* does not exist|schema cache/i.test(closedError.message ?? "");
-
-    if (!tableAbsent) return NextResponse.json({ success: false, error: closedError.message }, { status: 502 });
-  }
-  if (closedRow) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: `${term} of ${session} was closed on ${formatStamp(closedRow.closed_at)} by ${
-          closedRow.closed_by || "the office"
-        }. Ask the exam office to re-open it from Operations → End of Term before any mark in it is changed.`,
-      },
-      { status: 409 }
-    );
-  }
+  // A term the office has signed off is finished; nothing may be filed into it.
+  const termRefusal = await closedTermRefusal(supabase, session, term);
+  if (termRefusal) return termRefusal;
 
   if (!Array.isArray(body.scores) || body.scores.length === 0) {
     return NextResponse.json({ success: false, error: "Provide at least one subject score." }, { status: 400 });

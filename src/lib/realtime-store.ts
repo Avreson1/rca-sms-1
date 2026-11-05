@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { SCHOOL_INFO, ROLES, RBAC_STEPS } from "./constants";
 import { cachedSchoolSession, cachedSchoolTerm } from "./school-config";
 import { isSupabaseConfigured } from "./supabase/client";
+import { reportSyncFailure, reportSyncSaved } from "./sync-status";
 import {
   fetchStudentsFromSupabase,
   fetchStaffFromSupabase,
@@ -25,6 +26,10 @@ import {
   saveCaScoresToSupabase,
   fetchCaScoresFromSupabase,
   saveGradingTiersToSupabase,
+  fetchAssessmentsFromSupabase,
+  saveAssessmentOnServer,
+  fetchTraitsConfigFromSupabase,
+  saveTraitsConfigOnServer,
 } from "./supabase/db";
 
 // Channel for instant multi-tab & multi-window event synchronization
@@ -1390,8 +1395,36 @@ export function useRealtimeSubjectScores(scope?: { session?: string; terms?: str
 // -------------------------------------------------------------
 // Hook: Real-Time Psychomotor & Behavioral Traits Assessment Store
 // -------------------------------------------------------------
-export function useRealtimePsychomotor() {
+
+/** One pupil, one session, one term — the key a card is filed under. */
+function assessmentKey(record: PsychomotorRecord): string {
+  return `${record.studentId}|${record.session}|${record.term}`;
+}
+
+/**
+ * The school's own rows win for the child and term they cover; everything else on
+ * this device is kept. Replacing the whole list would throw away a class a teacher
+ * is halfway through rating, and merging the other way would let a stale browser
+ * claim ratings the office has since corrected.
+ */
+function mergeAssessments(local: PsychomotorRecord[], filed: PsychomotorRecord[]): PsychomotorRecord[] {
+  const serverKeys = new Set(filed.map(assessmentKey));
+  return [...filed, ...local.filter((row) => !serverKeys.has(assessmentKey(row)))];
+}
+
+export function useRealtimePsychomotor(scope?: { session?: string; terms?: string[]; className?: string }) {
   const [psychomotorList, setPsychomotorList] = useState<PsychomotorRecord[]>(INITIAL_PSYCHOMOTOR);
+  // True only once the school's rows for this session/term have arrived. Until
+  // then the list is this browser's copy and a screen must not write it back over
+  // what the database holds.
+  const [assessmentsFiled, setAssessmentsFiled] = useState(false);
+
+  const session = scope?.session ?? "";
+  const terms = scope?.terms ?? [];
+  const className = scope?.className ?? "";
+  // A stable key: the effect must not re-run because a caller rebuilt its
+  // options object on every render.
+  const scopeKey = session && terms.length > 0 ? `${session}|${terms.join(",")}|${className}` : "";
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1419,6 +1452,32 @@ export function useRealtimePsychomotor() {
       channel?.close();
     };
   }, []);
+
+  useEffect(() => {
+    if (!scopeKey || !isSupabaseConfigured) return;
+
+    setAssessmentsFiled(false);
+    let cancelled = false;
+    void fetchAssessmentsFromSupabase({ session, terms, className: className || undefined }).then((filed) => {
+      // null means the read was refused or failed: keep showing this device's
+      // copy, which the sync notice has already labelled as such.
+      if (cancelled || filed === null) return;
+      setPsychomotorList((current) => mergeAssessments(current, filed));
+      setAssessmentsFiled(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopeKey]);
+
+  // Only this hook's own mutators write the store, and only the read above can
+  // leave the browser holding rows it has never saved anywhere.
+  useEffect(() => {
+    if (!assessmentsFiled || typeof window === "undefined") return;
+    localStorage.setItem(STORAGE_KEYS.PSYCHOMOTOR, JSON.stringify(psychomotorList));
+  }, [psychomotorList, assessmentsFiled]);
 
   const savePsychomotorAssessment = (record: Omit<PsychomotorRecord, "id">) => {
     const existingIndex = psychomotorList.findIndex(
@@ -1458,12 +1517,57 @@ export function useRealtimePsychomotor() {
     );
   };
 
-  return { psychomotorList, savePsychomotorAssessment, getAssessmentForStudent };
+  /**
+   * Files the listed assessments into the school's records, one pupil per request,
+   * and answers with how many landed. The rating grid edits this device's copy as
+   * it is typed, which is why the screen has to say plainly that a tick on the
+   * form is not a card until it is filed here.
+   */
+  const fileAssessments = async (
+    records: PsychomotorRecord[]
+  ): Promise<{ filed: number; total: number; reason: string | null }> => {
+    if (records.length === 0) return { filed: 0, total: 0, reason: "no pupil on this screen has an assessment to file" };
+    if (!isSupabaseConfigured) {
+      return { filed: 0, total: records.length, reason: "this device is not connected to the school records" };
+    }
+
+    const failures: string[] = [];
+    let filed = 0;
+    for (const record of records) {
+      if (!record.admissionNo?.trim()) {
+        failures.push(`${record.studentId}: no admission number on this record, so the school cannot say which child it rates`);
+        continue;
+      }
+      const result = await saveAssessmentOnServer(record);
+      if (result.ok) filed++;
+      else failures.push(`${record.admissionNo}: ${result.reason}`);
+    }
+
+    const summary = `The assessments for ${records.length} pupil${records.length === 1 ? "" : "s"}`;
+    if (failures.length > 0) {
+      reportSyncFailure(`${summary} were NOT saved to the school records — ${failures.length} refused (${failures[0]}).`);
+      return { filed, total: records.length, reason: failures[0] };
+    }
+
+    reportSyncSaved(`${summary} saved to the school records.`);
+    return { filed, total: records.length, reason: null };
+  };
+
+  return { psychomotorList, savePsychomotorAssessment, getAssessmentForStudent, assessmentsFiled, fileAssessments };
 }
 
 // -------------------------------------------------------------
 // Hook: Real-Time Configurable Traits Setup Store
 // -------------------------------------------------------------
+/**
+ * The rubric every behaviour rating is written against.
+ *
+ * It used to be the list compiled into this file plus whatever one browser had
+ * added: Setup could invent a trait on the staff-room machine that no other screen
+ * in the school would ever offer, and a card printed elsewhere had to name the
+ * ratings from a list its reader had never seen. The school's list now comes from
+ * /api/traits-config and this device's copy is only what it last read.
+ */
 export function useRealtimeTraits() {
   const [traits, setTraits] = useState<TraitConfigItem[]>(DEFAULT_TRAITS);
 
@@ -1477,6 +1581,16 @@ export function useRealtimeTraits() {
       } else {
         localStorage.setItem(STORAGE_KEYS.TRAITS, JSON.stringify(DEFAULT_TRAITS));
       }
+    }
+
+    if (isSupabaseConfigured) {
+      void fetchTraitsConfigFromSupabase().then((serverTraits) => {
+        // null is a refused or failed read, so this browser keeps the list it has
+        // and the sync notice has said so. An empty array is the school's answer.
+        if (!serverTraits) return;
+        setTraits(serverTraits);
+        localStorage.setItem(STORAGE_KEYS.TRAITS, JSON.stringify(serverTraits));
+      });
     }
 
     let channel: BroadcastChannel | null = null;
@@ -1494,35 +1608,26 @@ export function useRealtimeTraits() {
     };
   }, []);
 
-  const addTrait = (newTrait: Omit<TraitConfigItem, "id">) => {
-    const item: TraitConfigItem = {
-      ...newTrait,
-      id: `tr-${Date.now()}`,
-    };
-    const updated = [...traits, item];
+  /** Applies a new list here, on every tab of this device, and on the school's table. */
+  const commitTraits = async (updated: TraitConfigItem[]): Promise<string | null> => {
     setTraits(updated);
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEYS.TRAITS, JSON.stringify(updated));
       broadcast("TRAITS_UPDATED");
     }
+
+    if (!isSupabaseConfigured) return "this device is not connected to the school records, so the change lives on it alone";
+    const result = await saveTraitsConfigOnServer(updated);
+    return result.ok ? null : (result.reason ?? "the school's records did not take the change");
   };
 
-  const deleteTrait = (traitId: string) => {
-    const updated = traits.filter((t) => t.id !== traitId);
-    setTraits(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.TRAITS, JSON.stringify(updated));
-      broadcast("TRAITS_UPDATED");
-    }
-  };
+  const addTrait = (newTrait: Omit<TraitConfigItem, "id">): Promise<string | null> =>
+    commitTraits([...traits, { ...newTrait, id: `tr-${Date.now()}` }]);
 
-  const resetTraitsToDefault = () => {
-    setTraits(DEFAULT_TRAITS);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.TRAITS, JSON.stringify(DEFAULT_TRAITS));
-      broadcast("TRAITS_UPDATED");
-    }
-  };
+  const deleteTrait = (traitId: string): Promise<string | null> =>
+    commitTraits(traits.filter((t) => t.id !== traitId));
+
+  const resetTraitsToDefault = (): Promise<string | null> => commitTraits(DEFAULT_TRAITS);
 
   return { traits, addTrait, deleteTrait, resetTraitsToDefault };
 }

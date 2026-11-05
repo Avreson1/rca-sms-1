@@ -13,7 +13,6 @@ import {
   useRealtimeAuth,
   PsychomotorRecord,
 } from "@/lib/realtime-store";
-import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   Heart,
   Activity,
@@ -26,6 +25,7 @@ import {
   Printer,
   ChevronDown,
   ChevronRight,
+  TriangleAlert,
 } from "lucide-react";
 
 // Standard teacher and principal remark templates for rapid auto-selection
@@ -52,7 +52,6 @@ export default function TraitsAssessmentsPage() {
   const { students } = useRealtimeStudents();
   const { classes } = useRealtimeClasses();
   const { traits } = useRealtimeTraits();
-  const { psychomotorList, savePsychomotorAssessment } = useRealtimePsychomotor();
   const { currentUser } = useRealtimeAuth();
   const { config: school } = useSchoolConfig();
 
@@ -105,6 +104,16 @@ export default function TraitsAssessmentsPage() {
   const [selectedClass, setSelectedClass] = useState<string>(
     isTeacher && currentUser?.assignedClass ? currentUser.assignedClass : classes[0]?.name || "Primary 1"
   );
+  // The ratings on this screen come from the school's own rows for the arm and
+  // term chosen above, so a form teacher opening the portal on another machine
+  // sees — and continues — the work their colleagues filed, not an empty grid.
+  const { psychomotorList, savePsychomotorAssessment, assessmentsFiled, fileAssessments } = useRealtimePsychomotor({
+    session: selectedSession,
+    terms: [selectedTerm],
+    className: selectedClass,
+  });
+  const [filing, setFiling] = useState(false);
+  const [filedOutcome, setFiledOutcome] = useState<{ tone: "ok" | "warn"; message: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState(false);
@@ -266,6 +275,61 @@ export default function TraitsAssessmentsPage() {
     showTempSaved(`All ${classStudents.length} pupils in ${selectedClass} set to rating ${ratingValue} on this browser.`);
   };
 
+  /**
+   * A record only earns a place on a family's card if it says something about the
+   * child: one rating above zero, an attendance figure, or a word of remark. Filing
+   * an all-blank record would print a panel of "not rated" under a child's name and
+   * make the card look assessed when nobody looked at them.
+   */
+  const fileableAssessment = (studentId: string): PsychomotorRecord | null => {
+    const record = psychomotorList.find(
+      (p) => p.studentId === studentId && p.session === selectedSession && p.term === selectedTerm
+    );
+    if (!record) return null;
+
+    const rated =
+      Object.values(record.affectiveRatings || {}).some((v) => v > 0) ||
+      Object.values(record.psychomotorRatings || {}).some((v) => v > 0);
+    const attended = record.attendance.daysOpened > 0 || record.attendance.daysPresent > 0;
+    const written = Boolean(
+      record.formTeacherRemark?.trim() || record.principalRemark?.trim() || record.nextTermBegins?.trim()
+    );
+
+    return rated || attended || written ? record : null;
+  };
+
+  const handleFileClass = async () => {
+    const records = classStudents
+      .map((student) => fileableAssessment(student.id))
+      .filter((record): record is PsychomotorRecord => record !== null);
+
+    setFiling(true);
+    const scope = `${selectedClass}, ${selectedTerm} (${selectedSession})`;
+
+    if (records.length === 0) {
+      setFiledOutcome({
+        tone: "warn",
+        message: `Nothing was filed for ${scope}: no pupil on this screen has a rating, an attendance figure or a remark yet.`,
+      });
+      setFiling(false);
+      return;
+    }
+
+    const outcome = await fileAssessments(records);
+    if (outcome.filed === records.length) {
+      setFiledOutcome({
+        tone: "ok",
+        message: `${outcome.filed} pupil${outcome.filed === 1 ? "" : "s"} from ${scope} are filed in the school's records. Every score card, every machine and the child's own family now read the same ratings.`,
+      });
+    } else {
+      setFiledOutcome({
+        tone: "warn",
+        message: `Only ${outcome.filed} of ${records.length} pupils from ${scope} reached the school's records. ${outcome.reason}.`,
+      });
+    }
+    setFiling(false);
+  };
+
   const showTempSaved = (msg: string) => {
     setSaveMessage(msg);
     setIsSaved(true);
@@ -295,7 +359,7 @@ export default function TraitsAssessmentsPage() {
               </h1>
               <span className="bg-purple-50 border border-purple-200 text-purple-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
                 <Heart className="w-3 h-3 text-purple-600" />
-                Kept on this browser
+                {assessmentsFiled ? "Ratings read from the school's records" : "This device's copy of the ratings"}
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -304,6 +368,16 @@ export default function TraitsAssessmentsPage() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleFileClass}
+              disabled={filing}
+              className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              {filing ? "Filing this class…" : "File this class into the school's records"}
+            </button>
+
             <Link
               href="/setup/traits"
               className="px-3 py-2 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
@@ -322,16 +396,44 @@ export default function TraitsAssessmentsPage() {
           </div>
         </div>
 
-        <DeviceOnlyNotice what="Saved traits and psychomotor ratings" />
+        {/* What this screen holds, and what reaches a family's card. */}
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-[11px] leading-snug text-amber-950 flex items-start gap-2 print:hidden">
+          <TriangleAlert className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
+          <p>
+            <strong>Typing a rating changes this device only.</strong>{" "}
+            {assessmentsFiled
+              ? `This grid opened with the assessments the school has filed for ${selectedClass}, ${selectedTerm} (${selectedSession}).`
+              : `The school's own assessments for ${selectedClass} could not be read, so the grid is holding whatever this browser has — possibly another machine's unfinished work, possibly nothing.`}{" "}
+            Use <strong>File this class into the school&apos;s records</strong> to put them where the score card, the
+            other machines and the child&apos;s family can see them. A rating nobody files never prints on a card.
+          </p>
+        </div>
+
+        {filedOutcome && (
+          <div
+            className={`rounded-xl border p-3 text-xs font-semibold flex items-start gap-2 print:hidden ${
+              filedOutcome.tone === "ok"
+                ? "bg-emerald-50 border-emerald-300 text-emerald-950"
+                : "bg-amber-50 border-amber-300 text-amber-950"
+            }`}
+          >
+            {filedOutcome.tone === "ok" ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+            ) : (
+              <TriangleAlert className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
+            )}
+            <p>{filedOutcome.message}</p>
+          </div>
+        )}
 
         {/* Saved Alert Toast */}
         {isSaved && (
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl p-3 text-xs font-semibold flex items-center justify-between animate-in fade-in">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-              <span>{saveMessage || "Assessments saved on this browser — the score card reads them from here."}</span>
+              <span>{saveMessage || "Rating recorded on this browser."}</span>
             </div>
-            <span className="text-[10px] text-emerald-700 font-mono">Saved on this browser</span>
+            <span className="text-[10px] text-emerald-700 font-mono">Not yet in the school&apos;s records</span>
           </div>
         )}
 

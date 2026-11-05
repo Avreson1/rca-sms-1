@@ -5,6 +5,8 @@ import {
   FeeComponentRecord,
   SubjectScoreRecord,
   TierGradingConfig,
+  PsychomotorRecord,
+  TraitConfigItem,
 } from "../realtime-store";
 
 // All reads and writes go through the authenticated API routes. The browser no
@@ -1088,3 +1090,130 @@ export async function setPublicationsOnServer(
 ): Promise<{ ok: boolean; reason: string | null }> {
   return writeOnce("/api/result-publications", "POST", { session, term, classes, published });
 }
+
+// ============================================================================
+// 10. CHARACTER, PSYCHOMOTOR AND ATTENDANCE ASSESSMENTS
+// ============================================================================
+
+interface TraitsConfigPayload {
+  traits: TraitConfigItem[] | null;
+}
+
+/**
+ * The school's rubric of rated traits.
+ *
+ * null means the read failed or was refused, and the caller keeps this device's
+ * copy — which the on-screen sync notice has already labelled as such. An empty
+ * array is a real answer: the office has cleared the list.
+ */
+export async function fetchTraitsConfigFromSupabase(): Promise<TraitConfigItem[] | null> {
+  const payload = await requestJson<TraitsConfigPayload>("/api/traits-config", "The trait list");
+  return Array.isArray(payload?.traits) ? payload.traits : null;
+}
+
+export async function saveTraitsConfigOnServer(
+  traits: TraitConfigItem[]
+): Promise<{ ok: boolean; reason: string | null }> {
+  const result = await writeOnce("/api/traits-config", "POST", { traits });
+  if (result.ok) reportSyncSaved("The trait list was saved to the school records.");
+  else reportSyncFailure(`The trait list was NOT saved to the school records: ${result.reason}.`);
+  return result;
+}
+
+/** One `traits_assessments` row with its pupil attached. */
+interface AssessmentRow {
+  id: string;
+  studentId: string;
+  admissionNo: string;
+  studentName: string;
+  className: string;
+  session: string;
+  term: PsychomotorRecord["term"];
+  affectiveRatings: Record<string, number>;
+  psychomotorRatings: Record<string, number>;
+  attendance: PsychomotorRecord["attendance"];
+  formTeacherRemark: string;
+  principalRemark: string;
+  nextTermBegins: string;
+  promotedTo?: string;
+  updatedAt?: string;
+}
+
+/**
+ * Reads the behaviour, skills, attendance and remarks the school has actually
+ * filed for one session and term.
+ *
+ * Without this the report card was half a document: the marks came off the
+ * database and the ratings came from whichever browser had typed them, so a parent
+ * opening the portal on their phone saw a card that said their child had never been
+ * assessed while the form teacher's laptop said otherwise.
+ */
+export async function fetchAssessmentsFromSupabase(options: {
+  session: string;
+  terms: string[];
+  className?: string;
+}): Promise<PsychomotorRecord[] | null> {
+  const params = new URLSearchParams({ session: options.session, term: options.terms.join(",") });
+  if (options.className) params.set("class_name", options.className);
+
+  const rows = await requestJson<AssessmentRow[]>(`/api/traits?${params.toString()}`, "The character assessments");
+  if (!rows) return null;
+
+  // The route already answers in the client's own shape; the copy is deliberate
+  // rather than a spread of the row, so a column the server adds cannot leak into
+  // what the card prints.
+  return rows.map((row) => ({
+    id: row.id,
+    studentId: row.studentId,
+    admissionNo: row.admissionNo,
+    className: row.className,
+    session: row.session,
+    term: row.term,
+    affectiveRatings: row.affectiveRatings ?? {},
+    psychomotorRatings: row.psychomotorRatings ?? {},
+    attendance: {
+      daysOpened: Number(row.attendance?.daysOpened) || 0,
+      daysPresent: Number(row.attendance?.daysPresent) || 0,
+      daysAbsent: Number(row.attendance?.daysAbsent) || 0,
+    },
+    formTeacherRemark: row.formTeacherRemark ?? "",
+    principalRemark: row.principalRemark ?? "",
+    nextTermBegins: row.nextTermBegins ?? "",
+    promotedTo: row.promotedTo || undefined,
+    updatedAt: row.updatedAt || undefined,
+  }));
+}
+
+/**
+ * Files one pupil's assessment. `/api/traits` writes one child per request, so
+ * these are sent one at a time and the notice can name the child it failed on.
+ */
+export async function saveAssessmentOnServer(
+  record: Pick<
+    PsychomotorRecord,
+    | "admissionNo"
+    | "session"
+    | "term"
+    | "affectiveRatings"
+    | "psychomotorRatings"
+    | "attendance"
+    | "formTeacherRemark"
+    | "principalRemark"
+    | "nextTermBegins"
+    | "promotedTo"
+  >
+): Promise<{ ok: boolean; reason: string | null }> {
+  return writeOnce("/api/traits", "POST", {
+    admissionNo: record.admissionNo,
+    session: record.session,
+    term: record.term,
+    affectiveRatings: record.affectiveRatings,
+    psychomotorRatings: record.psychomotorRatings,
+    attendance: { daysOpened: record.attendance.daysOpened, daysPresent: record.attendance.daysPresent },
+    formTeacherRemark: record.formTeacherRemark,
+    principalRemark: record.principalRemark,
+    nextTermBegins: record.nextTermBegins,
+    promotedTo: record.promotedTo ?? "",
+  });
+}
+

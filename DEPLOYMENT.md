@@ -69,10 +69,11 @@ graph TD
      not to go editing code. Note that privileges belong to the role, not to the key string, so
      **rotating an API key never requires re-running this step.**
 
-5. **Run the three migrations the app's own screens need** (do not skip — this is the step that
-   makes Settings, Publish Results, End of Term, Fee Structure, Invoicing and the Transactions
-   ledger real instead of a browser-local performance). Open a new query for each file and run it in
-   order; all three are idempotent, so re-running after an upgrade is safe:
+5. **Run the four migrations the app's own screens need** (do not skip — this is the step that
+   makes Settings, Publish Results, End of Term, Fee Structure, Invoicing, the Transactions
+   ledger and the character assessment real instead of a browser-local performance). Open a new
+   query for each file and run it in order; all four are idempotent, so re-running after an
+   upgrade is safe:
 
    - [`supabase/app_accounts.sql`](supabase/app_accounts.sql) — the logins that Settings → User
      Access and *Register Staff* create. Until it runs, app-managed accounts cannot be created and
@@ -86,6 +87,14 @@ graph TD
      screens answer *This part of the database is not set up on this project yet. Run
      supabase/operations_state.sql in the Supabase SQL editor, then try again.* (`503`). It ends
      with `SELECT`s you can run to prove each table is there.
+   - [`supabase/traits_assessments.sql`](supabase/traits_assessments.sql) — `traits_config` (the
+     school's one rubric, seeded with the fourteen default traits and never overwritten by a
+     re-run) and `traits_assessments` (one row per pupil per session and term: the affective and
+     psychomotor ratings, the attendance line, and the form-teacher, principal, next-term and
+     promotion remarks). Until it runs, *Traits & Psychomotor*, *Setup → Traits* and `/api/traits`
+     answer the same `503`, naming this file, and a family's card prints *No character assessment
+     on file for this pupil.* The seed is `ON CONFLICT DO NOTHING`, so an edited rubric survives
+     a re-run; ratings that were typed but never filed live only in that one browser.
 
 6. **(Optional) Seed Official Baseline School Configuration**:
    - Open a new query in the **SQL Editor**.
@@ -185,7 +194,7 @@ by someone who did not write the code.
 | --- | --- | --- | --- |
 | **P0** | Backup job running green, keep-warm, branch protection, push approved fixes | Code and workflows are in; the **nightly backup is blocked until the five secrets exist**, the pinger interval is still undecided, and branch protection is a click in GitHub. | A nightly dump exists in the bucket and `pg_restore --list` opens it. |
 | **P1** | No screen may print a figure nobody entered; no button may claim an action it did not perform | **Done in code**, for every screen: ungraded subjects print a dash, unassessed pupils open a blank form, CBT question banks start empty, invoices price themselves only from the filed fee schedule, and *Send SMS* / *Send Email* report what actually happened instead of claiming delivery. | Open a report card for a pupil with no stored marks and confirm it says *not entered* rather than showing numbers. |
-| **P2** | School configuration gets a server: fees, the school's own name/session/term, publish flags, term closures, payment receipts, per-subject CA reads back, cross-tab sync | **Half done, and honest about the half.** Server-backed now: `school_config`, `fee_components`, receipts on `transactions`, `result_publications`, `closed_terms`, grading scales, CA marks. Still browser-only — each with a *Kept on this browser* notice: classes, subjects and packages, calendar, timetable, traits and their ratings, CA component structure, report theme and newsletter, CBT, Inmail. **All of it is unverified against a live database until `supabase/operations_state.sql` has been run.** | Enter a setting on machine A, see it on machine B. |
+| **P2** | School configuration gets a server: fees, the school's own name/session/term, publish flags, term closures, payment receipts, per-subject CA reads back, the trait rubric and the child's character assessment, cross-tab sync | **Mostly done, and honest about the rest.** Server-backed now: `school_config`, `fee_components`, receipts on `transactions`, `result_publications`, `closed_terms`, grading scales, CA marks, `traits_config` and `traits_assessments`. `supabase/operations_state.sql` **was run on this project and each of those routes was verified against it on 2026-11-05**; `supabase/traits_assessments.sql` still answers `503` until it is run. Still browser-only — each with a *Kept on this browser* notice: classes, subjects and packages, calendar, timetable, CA component structure, report theme and newsletter, CBT, Inmail. Ratings also stay on the form teacher's own machine until that screen's **File this class into the school's records** button is pressed. | Enter a setting on machine A, see it on machine B. |
 | **P3** | Real roster enrolled, one real parent link, one mock term run end-to-end on the deployed site | Not started — `students` and `invoices` on this project are still empty. | Two browsers, same data, no fabricated numbers on the printed report. |
 | **P4** | Features the school has asked for but not named yet | Not scoped. Ask before any of it is built; nothing here is a substitute for P2 and P3. | Planned after P3, not before. |
 

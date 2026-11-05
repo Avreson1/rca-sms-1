@@ -78,15 +78,18 @@ protection rule*: branch name pattern `main`, then tick **Require a pull request
 and **Require status checks to pass** → choose `CI / build`. Until that is set, a broken build can
 be live without anyone deciding it should be.
 
-### 4. The portal is multi-machine for the money and the marks, not yet for the setup
+### 4. The portal is multi-machine for the money, the marks and the card, not yet for the setup
 
 A clerk's entry now reaches every other machine for: pupils, staff and logins, invoices, the fee
 schedule, payments and receipts, CA and exam marks, the grading scales, the school's own name /
-session / term, published results and closed terms. That was the `P0`–`P2` work and it depends on
-`supabase/operations_state.sql` having been run. Still browser-local: the class list, subject list
-and packages, the calendar, the timetable, the trait list and its ratings, the CA component
-structure, the report theme and newsletter, CBT questions and scores, and Inmail — each of those
-twelve screens now carries a *Kept on this browser* notice so nobody mistakes it for a record. See
+session / term, published results, closed terms, the list of rated traits and — once the form
+teacher presses *File this class into the school's records* on *Traits & Psychomotor* — the
+character, psychomotor and attendance ratings that fill the other half of a child's card. That was
+the `P0`–`P2` work and it depends on `supabase/operations_state.sql` and
+`supabase/traits_assessments.sql` having been run. Still browser-local: the class list, subject list
+and packages, the calendar, the timetable, the CA component structure, the report theme and
+newsletter, CBT questions and scores, and Inmail — each of those ten screens carries a
+*Kept on this browser* notice so nobody mistakes it for a record. See
 *Current limitations* and the `P0`–`P4` order in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ### Cloning this repository for the live school
@@ -94,9 +97,10 @@ twelve screens now carries a *Kept on this browser* notice so nobody mistakes it
 Everything that must change, in the order that avoids surprises:
 
 1. New Supabase project → run every file in *Database setup* below, in that order, including
-   `supabase/operations_state.sql`. The `GRANT` block at the end of that file is what lets the
-   server touch the new tables (privileges belong to the `service_role`, so a new project needs
-   them again); a clone that skips it shows *"permission denied for table school_config"*.
+   `supabase/operations_state.sql` and `supabase/traits_assessments.sql`. The `GRANT` block at the
+   end of each is what lets the server touch the new tables (privileges belong to the
+   `service_role`, so a new project needs them again); a clone that skips it shows
+   *"permission denied for table school_config"*.
 2. New Render service from the cloned repository; set `NEXT_PUBLIC_SUPABASE_URL`,
    `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (the `sb_secret_…` form), a fresh
    `AUTH_SESSION_SECRET`, and the `AUTH_SUPER_ADMIN_*` bootstrap account.
@@ -228,6 +232,15 @@ Run these in the Supabase SQL editor, in order:
    in the Supabase SQL editor, then try again.* (`503`) — and everything those three office
    screens used to claim ("Published and authorized results for SS 2!", "successfully archived!
    Next term initialized.") was a browser-local performance with no record behind it.
+7. [`supabase/traits_assessments.sql`](supabase/traits_assessments.sql) — the other half of a
+   child's card. It creates `traits_config` (the school's list of rated traits, seeded with the
+   fourteen the portal ships with) and `traits_assessments` (one row per pupil per session per
+   term: affective and psychomotor ratings, days opened and present, the form teacher's remark,
+   the Head's endorsement and the resumption date), and grants both to `service_role`. Safe to
+   re-run, and it never overwrites a rubric the school has since edited. Until you run it, the
+   marks on a score card come from the school's records but the behaviour panel does not: the
+   card reads `/api/traits`, gets `503`, and says so on the panel itself instead of printing
+   praise nobody typed.
 
 `app_accounts` and `guardian_students` deliberately have RLS enabled with **no** policies, so
 only the server (holding the service-role key) can read them. The browser's anon key sees
@@ -371,28 +384,43 @@ cannot break the build. Nothing in `rca-sms/` reaches production.
 
 Be aware of what this system does **not** do today:
 
-- **Twelve screens still keep their work in the browser.** Each one now says so on screen, with a
+- **Ten screens still keep their work in the browser.** Each one now says so on screen, with a
   *Kept on this browser* notice: CBT (question bank and score), Inmail, the timetable
-  (*Academics*), Traits & Psychomotor ratings, the CBT lockdown switch in Settings, the CA
-  component structure, the school calendar and activity templates, the class list, the report-card
-  theme and terminal newsletter, the subject packages, the subject list and the trait list. None of
-  them has a route behind it, so a second machine cannot see the typing and the data is lost if the
-  device is cleared. What *is* multi-machine: pupils, staff, logins, invoices, fee payments and
-  receipts, CA/exam marks and grades, the grading scales, the fee schedule, the school's own name /
-  session / term, published results and closed terms. The CBT-to-CA path (`syncCBTScoreToCA`)
-  writes this device's copy, so a CBT mark only reaches the database when *Update CA* files it.
-- **The bursary loop works, but only once the migration is run.** `supabase/operations_state.sql`
-  creates `fee_components` and the receipt columns; until it has been executed on this project,
-  Fee Structure, Invoicing, Record Payment and the Transactions ledger return `503` and file
-  nothing. Every claim below about those screens is code-complete and typechecks, but is unproven
-  against a live database until that SQL has run.
+  (*Academics*), the CBT lockdown switch in Settings, the CA component structure, the school
+  calendar and activity templates, the class list, the report-card theme and terminal newsletter,
+  the subject packages and the subject list. None of them has a route behind it, so a second
+  machine cannot see the typing and the data is lost if the device is cleared. What *is*
+  multi-machine: pupils, staff, logins, invoices, fee payments and receipts, CA/exam marks and
+  grades, the grading scales, the fee schedule, the school's own name / session / term, published
+  results, closed terms, the trait rubric and the character assessments once they are filed. The
+  CBT-to-CA path (`syncCBTScoreToCA`) writes this device's copy, so a CBT mark only reaches the
+  database when *Update CA* files it.
+- **Ratings stay on the form teacher's machine until they are filed.** *Traits & Psychomotor*
+  edits this device's copy as the adult types — that is what makes a long rating session survive a
+  crashed tab — and the screen now says so on the toast (*Not yet in the school's records*). The
+  button beside it, *File this class into the school's records*, posts one `/api/traits` request
+  per pupil and reports how many landed. A record with no rating, no attendance figure and no
+  remark is skipped rather than filed, because an all-blank row would print a panel of *not rated*
+  under a child's name and make the card look assessed when nobody looked at them. Until the file
+  is run, the ratings go nowhere and the card's behaviour panel says the school's records could not
+  be read.
+- **The bursary loop is code-complete and the migration is run; the loop itself is unproven.**
+  `supabase/operations_state.sql` has been executed on this test project (verified 2026-11-05:
+  `/api/school-config` returns the school's row, and `/api/fees`, `/api/term-closings`,
+  `/api/result-publications`, `/api/students`, `/api/staff` and `/api/accounts` all answer from the
+  database instead of naming a missing table). What has not been driven end-to-end against those
+  live tables is the write path — Fee Structure → Bill → Record Payment → receipt in Transactions —
+  and `supabase/traits_assessments.sql` is not run yet, so `/api/traits` and `/api/traits-config`
+  answer `503` and name the file.
 - **A parent's view is only as deep as the pupil record.** `/api/students` returns their children,
-  `/api/invoices` their balances, `/api/ca` the per-subject marks and `/api/payments` the receipts
-  filed against their own children — each filtered by `guardian_students` from the signed cookie,
-  never from the request. What has no read route is the psychomotor and traits record, so a card
-  printed on a parent's own phone shows the marks but not the behaviour ratings the form teacher
-  typed on the staff laptop. Give those tables a route (the same `guardianScope` filter applies)
-  before telling parents the portal shows the whole card.
+  `/api/invoices` their balances, `/api/ca` the per-subject marks, `/api/payments` the receipts and
+  `/api/traits` the behaviour, attendance and remark half of the card — each filtered by
+  `guardian_students` from the signed cookie, never from the request. The card prints a rating for
+  a trait the school's own rubric still lists and, for anything else, the id it was stored under;
+  it prints `not rated` for a trait the form teacher left unrated rather than a `0 / 5` a family
+  would read as a mark of zero. What a parent cannot see is anything the form teacher never filed:
+  a rating that stayed on the staff laptop is not on the school's record, and the card says *No
+  character assessment on file for this pupil* instead of inventing one.
 - **The invoicing page is one screen doing two jobs.** A Parent login may open it and sees only
   their own children's invoices and filed receipts. Every write control — *Bill n Enrolled Pupils*,
   *Record Payment* — is hidden unless `isActionAuthorized(role, "EDIT_FEES")` passes, which is the
