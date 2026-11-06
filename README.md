@@ -84,11 +84,12 @@ A clerk's entry now reaches every other machine for: pupils, staff and logins, i
 schedule, payments and receipts, CA and exam marks, the grading scales, the school's own name /
 session / term, published results, closed terms, the list of rated traits, what the school owns and
 every unit of stock that moved in or out of its stores, the timetable with the number of periods and
-breaks a school day actually has, and — once the form teacher presses *File
+breaks a school day actually has, the duty roster with who filed it and against which date, and —
+once the form teacher presses *File
 this class into the school's records* on *Traits & Psychomotor* — the character, psychomotor and
 attendance ratings that fill the other half of a child's card. That was the `P0`–`P2` work and it
 depends on `supabase/operations_state.sql`, `supabase/traits_assessments.sql`,
-`supabase/inventory.sql` and `supabase/timetable.sql` having been run. Still browser-local: the
+`supabase/inventory.sql`, `supabase/timetable.sql` and `supabase/staff_duties.sql` having been run. Still browser-local: the
 class list, subject list and packages, the calendar, the CA component structure, the report theme
 and newsletter, CBT questions and scores, and Inmail — each of those ten screens carries a
 *Kept on this browser* notice so nobody mistakes it for a record (the timetable screen keeps one,
@@ -100,8 +101,8 @@ because it groups the filed lessons by the class arms that are still only on thi
 Everything that must change, in the order that avoids surprises:
 
 1. New Supabase project → run every file in *Database setup* below, in that order, including
-   `supabase/operations_state.sql`, `supabase/traits_assessments.sql`, `supabase/inventory.sql`
-   and `supabase/timetable.sql`.
+   `supabase/operations_state.sql`, `supabase/traits_assessments.sql`, `supabase/inventory.sql`,
+   `supabase/timetable.sql` and `supabase/staff_duties.sql`.
    The `GRANT` block at the
    end of each is what lets the server touch the new tables (privileges belong to the
    `service_role`, so a new project needs them again); a clone that skips it shows
@@ -271,10 +272,26 @@ Run these in the Supabase SQL editor, in order:
    the school chose. Until you run it, *Operations → Academics & Timetable* answers *The timetable
    could not be read*, `/api/timetable` returns the `503` that names this file, and **Draft the
    week** cannot place a single lesson because it has no day to place lessons into.
+10. [`supabase/staff_duties.sql`](supabase/staff_duties.sql) — what the school says its staff are,
+    and who it asks of them each day. It adds `designation` and `standing_duties` to `staff` (both
+    `NOT NULL DEFAULT` empty, so every existing row survives the paste and prints as *not stated*
+    rather than as a title invented from the person's access tier) and creates `staff_duties`: one
+    row is one person, one duty, one named day. Two rules live in the database:
+    `UNIQUE (duty_date, staff_id, time_window)` means one person holds one duty per part of a day,
+    so re-filing a slot corrects it instead of stacking a second duty on the same morning, and a
+    `CHECK` on `time_window` means a duty cannot be filed against a time of day the portal does not
+    print. There is **no foreign key** to `staff` on purpose: a duty is a record of what was asked,
+    and it has to outlive the staff record it was filed against — the API checks the register
+    before filing, which is where "only a real member of staff" is enforced. `assigned_by` stores
+    the login that filed the row, taken from the signed session and never from the request. Until
+    you run it, *Operations → Duty Roster* and the dashboard *On Duty Today* panel report that the
+    roster could not be read, `/api/staff-duty` answers the `503` that names this file, and
+    registering a staff member **with** a designation refuses to save with the same sentence (a
+    member registered without one still saves, so the portal stays usable before the paste).
 
-`app_accounts`, `guardian_students`, both inventory tables and both timetable tables deliberately
-have RLS enabled with **no** policies, so only the server (holding the service-role key) can read
-them. The browser's anon key sees nothing, including the hashes.
+`app_accounts`, `guardian_students`, both inventory tables, both timetable tables and `staff_duties`
+deliberately have RLS enabled with **no** policies, so only the server (holding the service-role key)
+can read them. The browser's anon key sees nothing, including the hashes.
 
 ## Public and protected routes
 
@@ -305,6 +322,7 @@ Inside that, each data route also checks the role:
 | `/api/timetable` | super admin, exam officer, teacher, QA tester | super admin, exam officer (a lesson is filed into one empty slot; a teacher already in another class then is refused) |
 | `/api/timetable/periods` | super admin, exam officer, teacher, QA tester | super admin, exam officer (a day shape that would strand lessons already filed is refused) |
 | `/api/timetable/generate` | super admin, exam officer, teacher, QA tester | nobody — it reads the day and the filed lessons and hands back a proposal; filing it is a separate `PUT /api/timetable`, which only the office can make |
+| `/api/staff-duty` | super admin, exam officer, QA tester see the whole school's roster; teacher and bursar see **only the rows filed against their own staff record** | super admin, exam officer (one duty filed against a real, non-suspended staff record, for one date and one part of that day; `DELETE` removes one row by its own id) |
 
 `/api/payments` POST is the money path. The receipt is filed first and the invoice balance moved
 second; if the balance cannot be moved, the receipt that was just written is withdrawn and the

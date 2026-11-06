@@ -221,6 +221,43 @@ const SOP_MANUAL_DATA: SOPItem[] = [
     expectedOutput: "A timetable for one named session and term on the school's records, with no teacher double-booked, every unfilled slot shown as unfilled, and a workload count that matches what the grid prints — or a drafted week that names every part of the plan it could not place, waiting for a person to file it.",
   },
 
+  {
+    id: "sop-2-4",
+    code: "SOP-EXM-004",
+    title: "Daily Duty Roster: Designation, Assignment and the Workspace Panel",
+    role: "Super Administrator / Exam Officer (office); every staff member reads their own",
+    category: "Exam Officer",
+    badgeColor: "bg-blue-100 text-blue-800 border-blue-200",
+    minRoleTier: "EXAM_OFFICER",
+    summary: "Procedure for saying what each member of staff is employed as, and for assigning who is on duty for which part of which day. A duty is a dated record, not a standing arrangement: yesterday's gate duty does not carry into today, and nothing is filed on anybody's behalf by their job title.",
+    prerequisites: [
+      "supabase/staff_duties.sql run on this project. Until it is, Operations → Duty Roster and the On Duty Today panel both print 'The duty roster could not be read' and name that file, and the roster refuses to show an empty week in its place.",
+      "The people you are rostering already on the register at Operations → Staff. A duty cannot be filed against a name the school does not hold; the route answers 404 and nothing is filed.",
+      "A login of your own that the portal accepts as Super Administrator or Exam Officer. A teacher or bursar login can read only its own rows and cannot file, replace or remove a duty.",
+    ],
+    procedureSteps: [
+      "At Operations → Staff, open 'Register Staff' and fill 'Designation (job title)' — Bursar, Dean of Studies, Coordinator — and, if you wish, 'Standing duties' as a comma-separated list. The designation is what the school employs the person as; the role in the same form is what the portal lets them do. They are stored apart and neither implies the other.",
+      "Leave a designation blank when the school has not stated one. The register, the roster and the workspace all then print 'not stated'. Never let a screen's guess stand in for the school's decision.",
+      "Navigate to Operations → Duty Roster (/operations/duties). Check the line 'Today at the school' — it is the server's date in West African time, not this machine's, and the host that runs the portal sits several hours behind Jos.",
+      "Move to the week you mean with the arrows, or press 'This week'. To read a Saturday or a Sunday (sports day, inter-house games), use 'One day instead' and pick that date.",
+      "Press 'File A Duty', or the 'Duty' button on the day you mean. Pick the date, then the person from the register — the dropdown shows each one's designation, and marks any who are not Active. Suspended members are not offered at all: their login is closed, so a duty filed there would never reach them.",
+      "Write the duty. The list offers the school's usual names (and whatever you entered as that person's standing duties), but typing your own is allowed and gets filed in your wording.",
+      "Choose which part of the day: Before School, Morning Assembly, Break Time, Lunch Break, After School, All Day. A duty with no time of day is a duty nobody knows when to keep, and the route refuses it.",
+      "Read the answer. 'Filed: …' means the row is on the school's records. If the slot already held a duty, the line says which one it replaced — one person holds one duty per part of a day, and that rule lives in the database, not in this screen's good behaviour.",
+      "Check the member's own workspace. The On Duty Today panel prints their designation, today's duties and, under each, the login that filed it ('Assigned by …'). A parent login has no panel: a guardian holds no staff record and therefore no duty.",
+      "To take a duty off, use the bin icon on that row and read the confirm line first — it names the duty, the person, the date and the part of the day. Removal is by that row's own id, so a half-filled form cannot clear a whole day.",
+    ],
+    safetyRules: [
+      "A day the roster shows empty is a day nobody assigned, not a day that needs no cover. Say so out loud before the gates open; the screen will not quietly fill it for you.",
+      "Do not roster around a suspension. If a member is Suspended, reinstate the record in Settings → User Access or assign somebody else — do not create a second spelling of their name to get past the picker.",
+      "Never file a duty for a date the school has not decided. The portal refuses a date it cannot read (YYYY-MM-DD, and between 2020 and 2100), because a duty filed for 2126 is a typo that would sit unread on the register for a century.",
+      "Do not correct a duty by filing a second one into the same slot and hoping the first drops off harmlessly. Read the 'It replaces …' line, and if it names a duty you did not mean to move, refresh the week and put it back.",
+      "The 'Assigned by' name is the login that filed the row, taken from the signed session. It cannot be typed, so it is the record the office is held to — which is why a duty is never filed from a shared login.",
+      "If the roster could not be read, no day is listed. Filing blind from another screen would produce a week that looks covered and is not.",
+    ],
+    expectedOutput: "A dated roster the school can print — each duty naming its person, its designation as the register held it at the moment of filing, its part of the day, and the login that assigned it — and a workspace panel on every staff login showing today's duties with the same names on them.",
+  },
+
   // 3. Faculty / Teacher
   {
     id: "sop-3-1",

@@ -169,6 +169,8 @@ interface StaffRow {
   is_form_master: boolean | null;
   email_verified: boolean | null;
   status: string | null;
+  designation: string | null;
+  standing_duties: string[] | null;
 }
 
 interface InvoiceRow {
@@ -280,6 +282,11 @@ export async function fetchStaffFromSupabase(): Promise<StaffRecord[] | null> {
     isFormMaster: Boolean(item.is_form_master),
     emailVerified: Boolean(item.email_verified),
     status: item.status || "Active",
+    // Absent until supabase/staff_duties.sql is run, and empty after it is run and
+    // nobody has filled it in. Both print as "the register does not say", never as
+    // a job title invented from the access tier.
+    designation: item.designation || "",
+    standingDuties: Array.isArray(item.standing_duties) ? item.standing_duties : [],
   })) as StaffRecord[];
 }
 
@@ -304,6 +311,8 @@ export async function insertStaffToSupabase(
     is_form_master: staff.isFormMaster,
     email_verified: staff.emailVerified,
     status: staff.status,
+    designation: staff.designation ?? "",
+    standing_duties: staff.standingDuties ?? [],
   }, `${staff.fullName}'s staff record`);
 }
 
@@ -385,6 +394,8 @@ export async function bulkInsertStaffOnServer(members: StaffRecord[]): Promise<B
       is_form_master: member.isFormMaster,
       email_verified: member.emailVerified,
       status: member.status,
+      designation: member.designation ?? "",
+      standing_duties: member.standingDuties ?? [],
     };
 
     try {
@@ -1687,5 +1698,165 @@ export async function draftTimetableOnServer(input: {
   } catch (error) {
     console.warn("API /api/timetable/generate failed", error);
     return { ...empty, reason: "the portal server did not answer" };
+  }
+}
+
+// ============================================================================
+// 8. THE DAILY DUTY ROSTER
+//
+// One row is one person, one duty, one part of one named day. The screen prints
+// what the school filed and nothing else: a day with no duties says so, because
+// an empty grid that could also mean "the read failed" is how a teacher ends up
+// standing at a gate nobody assigned her.
+// ============================================================================
+
+export interface StaffDutyRow {
+  id: string;
+  duty_date: string;
+  staff_id: string;
+  staff_name: string;
+  designation: string;
+  duty: string;
+  time_window: string;
+  location: string;
+  notes: string;
+  assigned_by: string;
+}
+
+export interface DutyRoster {
+  ok: boolean;
+  /** Why the roster could not be read, in the server's own sentence. */
+  reason: string | null;
+  /** "school" for the office roles, "self" for a staff login reading its own rows. */
+  scope: "school" | "self" | "";
+  from: string;
+  to: string;
+  /** The server's date for the school, in West African Time — never the browser's. */
+  today: string;
+  duties: StaffDutyRow[];
+  staffRecordLinked: boolean;
+  note: string | null;
+}
+
+const EMPTY_ROSTER: DutyRoster = {
+  ok: false,
+  reason: null,
+  scope: "",
+  from: "",
+  to: "",
+  today: "",
+  duties: [],
+  staffRecordLinked: true,
+  note: null,
+};
+
+export async function fetchDutyRosterOnServer(range: {
+  from?: string;
+  to?: string;
+  date?: string;
+}): Promise<DutyRoster> {
+  const params = new URLSearchParams();
+  if (range.date) params.set("date", range.date);
+  if (range.from) params.set("from", range.from);
+  if (range.to) params.set("to", range.to);
+  const query = params.toString();
+
+  try {
+    const response = await fetch(`/api/staff-duty${query ? `?${query}` : ""}`, {
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!response.ok) return { ...EMPTY_ROSTER, reason: await serverReason(response) };
+
+    const payload = (await response.json().catch(() => null)) as {
+      data?: Partial<Omit<DutyRoster, "ok" | "reason">>;
+    } | null;
+    const data = payload?.data ?? {};
+    return {
+      ok: true,
+      reason: null,
+      scope: data.scope === "school" || data.scope === "self" ? data.scope : "",
+      from: data.from ?? "",
+      to: data.to ?? "",
+      today: data.today ?? "",
+      duties: Array.isArray(data.duties) ? data.duties : [],
+      staffRecordLinked: data.staffRecordLinked !== false,
+      note: data.note ?? null,
+    };
+  } catch (error) {
+    console.warn("API /api/staff-duty read failed", error);
+    return { ...EMPTY_ROSTER, reason: "the portal server did not answer" };
+  }
+}
+
+export interface DutyAssignment {
+  date: string;
+  staffId: string;
+  duty: string;
+  timeWindow: string;
+  location?: string;
+  notes?: string;
+}
+
+export interface DutyAssignmentResult {
+  ok: boolean;
+  reason: string | null;
+  /** The duty that was already in this slot, when the office corrected one. */
+  replaced: string | null;
+  /** The register's status for this member, so a duty filed for someone on leave is visible. */
+  staffStatus: string | null;
+  duty: StaffDutyRow | null;
+}
+
+export async function assignDutyOnServer(input: DutyAssignment): Promise<DutyAssignmentResult> {
+  try {
+    const response = await fetch("/api/staff-duty", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+
+    if (!response.ok) {
+      return { ok: false, reason: await serverReason(response), replaced: null, staffStatus: null, duty: null };
+    }
+
+    const payload = (await response.json().catch(() => null)) as {
+      data?: { duty?: StaffDutyRow; replaced?: string | null; staffStatus?: string | null };
+    } | null;
+
+    return {
+      ok: true,
+      reason: null,
+      duty: payload?.data?.duty ?? null,
+      replaced: payload?.data?.replaced ?? null,
+      staffStatus: payload?.data?.staffStatus ?? null,
+    };
+  } catch (error) {
+    console.warn("API /api/staff-duty write failed", error);
+    return { ok: false, reason: "the portal server did not answer", replaced: null, staffStatus: null, duty: null };
+  }
+}
+
+export async function removeDutyOnServer(
+  id: string
+): Promise<{ ok: boolean; reason: string | null; duty: string | null }> {
+  try {
+    const response = await fetch("/api/staff-duty", {
+      method: "DELETE",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+
+    if (!response.ok) {
+      return { ok: false, reason: await serverReason(response), duty: null };
+    }
+
+    const payload = (await response.json().catch(() => null)) as { data?: { duty?: string } } | null;
+    return { ok: true, reason: null, duty: payload?.data?.duty ?? null };
+  } catch (error) {
+    console.warn("API /api/staff-duty delete failed", error);
+    return { ok: false, reason: "the portal server did not answer", duty: null };
   }
 }

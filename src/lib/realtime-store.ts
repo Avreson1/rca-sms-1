@@ -176,6 +176,19 @@ export interface StaffRecord {
   isFormMaster: boolean;
   emailVerified: boolean;
   status: "Active" | "On Leave" | "Suspended";
+  /**
+   * The job title the school states for this person — Bursar, Dean of Studies,
+   * Coordinator. Kept apart from `role` on purpose: the role is the access tier
+   * the portal enforces, the designation is what the person is employed as, and
+   * letting one imply the other is how somebody ends up with access nobody
+   * decided to give them. Empty means the register does not say.
+   */
+  designation?: string;
+  /**
+   * Duties this member is ordinarily on, e.g. "Gate Duty". They are suggestions
+   * the roster editor offers for a named date; nothing files them on its own.
+   */
+  standingDuties?: string[];
   permissions?: StaffPermissions;
 }
 

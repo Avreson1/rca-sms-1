@@ -66,6 +66,7 @@ const navItems: NavItem[] = [
     children: [
       { title: "Students", href: "/operations/students" },
       { title: "Staff", href: "/operations/staff" },
+      { title: "Duty Roster", href: "/operations/duties" },
       { title: "Academics", href: "/operations/academics" },
       { title: "Update CA", href: "/operations/update-ca" },
       { title: "Traits Assessments", href: "/operations/traits-assessments" },

@@ -187,6 +187,7 @@ A full Computer-Based Testing application with real-time proctoring safeguards h
 5. **Student Promotion Engine (`/operations/promotion`)**: Automated class-to-class promotion with 50% pass threshold qualification filters.
 6. **End-of-Term Processing (`/operations/end-term`)**: Term closeout checklist, broadsheet archival, and session transition.
 7. **SMS & Email Communications (`/operations/send-sms`, `/operations/send-email`)**: Parent broadcast consoles for fees, emergency notices, and term resumption.
+8. **Daily Duty Roster (`/operations/duties`)**: Who is on duty for which part of which named day, filed against a real staff record by an office login that is recorded on the row. The week is built on the school's own date (`Africa/Lagos`, not the host's), a teacher or bursar reads only the rows filed against their own staff number, and the dashboard prints today's duties beside the designations the register holds. One duty per person per part of a day is enforced by the database, not the screen. `supabase/staff_duties.sql` has to be run for any of it to hold data; until then both the roster and the panel say the roster could not be read, and refuse to print an empty week in its place.
 
 ### Setup & Configuration Suite (`/setup/*`)
 1. **Academic Calendar (`/setup/calendar`)**: 12-week term schedule, holiday markers, exam windows, and activity template library.

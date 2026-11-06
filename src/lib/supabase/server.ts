@@ -55,7 +55,8 @@ export function databaseUnavailable() {
  */
 export function databaseSetupRequired(
   error: { code?: string; message?: string; details?: string } | null | undefined,
-  sqlFile: string
+  sqlFile: string,
+  ownedColumns?: RegExp
 ): NextResponse | null {
   if (!error) return null;
   const text = `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""}`;
@@ -65,7 +66,14 @@ export function databaseSetupRequired(
     /could not find the table|relation .* does not exist|schema cache/i.test(text);
   const grantMissing =
     error.code === "42501" || /permission denied for table|insufficient privilege/i.test(text);
-  if (!tableMissing && !grantMissing) return null;
+  // A missing column means the same thing as a missing table, but only the route
+  // that owns the column can say which file adds it — so a route has to name its
+  // own columns before this one is believed.
+  const columnMissing =
+    ownedColumns !== undefined &&
+    (error.code === "42703" || /column .* does not exist/i.test(text)) &&
+    ownedColumns.test(text);
+  if (!tableMissing && !grantMissing && !columnMissing) return null;
 
   return NextResponse.json(
     {

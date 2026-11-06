@@ -41,6 +41,7 @@ export const ROLE_ROUTE_ACCESS: Record<UserRole, RoleAccessRule> = {
       "/operations/update-ca",
       "/operations/traits-assessments",
       "/operations/score-card",
+      "/operations/duties",
       "/cbt",
       "/inmail",
     ],
@@ -64,6 +65,7 @@ export const ROLE_ROUTE_ACCESS: Record<UserRole, RoleAccessRule> = {
       "/setup/fees",
       "/accounts",
       "/operations/students",
+      "/operations/duties",
       "/inmail",
       "/reports",
     ],
@@ -170,7 +172,14 @@ export function rolesAllowedForPath(pathname: string): UserRole[] {
  * Checks if a specific action (e.g. DELETE_STUDENT, PUBLISH_RESULTS) is authorized.
  */export function isActionAuthorized(
   role: UserRole | string | undefined,
-  action: "EDIT_SETUP" | "EDIT_FEES" | "PUBLISH_RESULTS" | "ENTER_CA" | "SYSTEM_PURGE" | "EDIT_STAFF"
+  action:
+    | "EDIT_SETUP"
+    | "EDIT_FEES"
+    | "PUBLISH_RESULTS"
+    | "ENTER_CA"
+    | "SYSTEM_PURGE"
+    | "EDIT_STAFF"
+    | "ASSIGN_DUTIES"
 ): boolean {
   if (role === "SUPER_ADMIN") return true;
   if (!role) return false;
@@ -188,6 +197,11 @@ export function rolesAllowedForPath(pathname: string): UserRole[] {
       return role === "SUPER_ADMIN" || role === "EXAM_OFFICER" || role === "TEACHER";
     case "EDIT_STAFF":
       return role === "SUPER_ADMIN";
+    // Same pair that files the timetable: naming who is at the gate is an act of
+    // the office, and it is not open to a teacher, so a colleague cannot move a
+    // duty off somebody without that person seeing it happen.
+    case "ASSIGN_DUTIES":
+      return role === "SUPER_ADMIN" || role === "EXAM_OFFICER";
     default:
       return false;
   }

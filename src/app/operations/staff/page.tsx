@@ -85,6 +85,24 @@ const DEFAULT_ACCOUNTANT_PERMISSIONS: StaffPermissions = {
   canApprovePromotions: false,
 };
 
+/**
+ * Comma-separated text into the duty names the register holds.
+ *
+ * Duplicate spellings are collapsed and blanks dropped, so "Gate Duty, gate duty,"
+ * cannot become two standing duties on one person — the roster offers these as
+ * suggestions, and a list of near-duplicates is how two gates get manned.
+ */
+function splitDutyList(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((item) => item.trim().slice(0, 120))
+        .filter((item) => item.length > 1)
+    )
+  ).slice(0, 12);
+}
+
 export default function StaffManagementPage() {
   const { staff, addStaff, bulkAddStaff, deleteStaff, updateStaff } = useRealtimeStaff();
   const { classes } = useRealtimeClasses();
@@ -99,6 +117,8 @@ export default function StaffManagementPage() {
   const [assignedSubject, setAssignedSubject] = useState("General Mathematics");
   const [assignedClass, setAssignedClass] = useState("Primary 1");
   const [isFormMaster, setIsFormMaster] = useState(false);
+  const [designation, setDesignation] = useState("");
+  const [standingDuties, setStandingDuties] = useState("");
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
 
   // Granular Permissions State
@@ -237,6 +257,8 @@ export default function StaffManagementPage() {
       isFormMaster,
       emailVerified: true,
       status: "Active",
+      designation: designation.trim(),
+      standingDuties: splitDutyList(standingDuties),
       permissions,
     });
 
@@ -267,6 +289,8 @@ export default function StaffManagementPage() {
     setFullName("");
     setPhone("");
     setIsFormMaster(false);
+    setDesignation("");
+    setStandingDuties("");
     setPermissions(DEFAULT_TEACHER_PERMISSIONS);
   };
 
@@ -373,6 +397,8 @@ export default function StaffManagementPage() {
       "Can Edit Scores",
       "Can Edit Fees",
       "Employment Status",
+      "Designation",
+      "Standing Duties",
     ];
 
     const rows = filtered.map((s) => [
@@ -388,6 +414,8 @@ export default function StaffManagementPage() {
       s.permissions?.canEditScores ? "Yes" : "No",
       s.permissions?.canEditFees ? "Yes" : "No",
       s.status,
+      s.designation?.trim() || "not stated",
+      (s.standingDuties ?? []).join("; "),
     ]);
 
     exportToCSV("RCA_Staff_Directory", headers, rows);
@@ -574,6 +602,16 @@ export default function StaffManagementPage() {
                         <td className="py-3 px-4 font-mono font-bold text-blue-900">{s.staffId}</td>
                         <td className="py-3 px-4">
                           <p className="font-bold text-slate-900 leading-tight">{s.fullName}</p>
+                          {s.designation?.trim() ? (
+                            <p className="text-[11px] font-semibold text-slate-700 leading-tight">{s.designation}</p>
+                          ) : (
+                            <p className="text-[11px] italic text-slate-400 leading-tight">Designation not stated</p>
+                          )}
+                          {s.standingDuties && s.standingDuties.length > 0 && (
+                            <p className="text-[10px] text-slate-500 leading-tight mt-0.5">
+                              Standing: {s.standingDuties.join(", ")}
+                            </p>
+                          )}
                           <p className="text-[11px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
                             <Mail className="w-3 h-3 text-slate-400" />
                             {s.email}
@@ -646,7 +684,7 @@ export default function StaffManagementPage() {
                             <button
                               onClick={() => void issueAccessSlip(s)}
                               disabled={slipBusy === s.staffId}
-                              className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-[#0000FF] text-[10px] font-bold rounded flex items-center gap-1 cursor-pointer border border-blue-200 shadow-2xs disabled:opacity-60 disabled:cursor-wait"
+                              className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-[#0000FF] text-[10px] font-bold rounded flex items-center gap-1 whitespace-nowrap cursor-pointer border border-blue-200 shadow-2xs disabled:opacity-60 disabled:cursor-wait"
                               title="Issue Private Access Slip"
                             >
                               <KeyRound className="w-3 h-3 text-[#0000FF]" />
@@ -849,6 +887,39 @@ export default function StaffManagementPage() {
                     </select>
                   </div>
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Designation (job title)</label>
+                    <input
+                      type="text"
+                      maxLength={80}
+                      placeholder="e.g. Bursar, Dean of Studies, Coordinator"
+                      value={designation}
+                      onChange={(e) => setDesignation(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Standing duties, comma-separated</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Gate Duty, Morning Assembly"
+                      value={standingDuties}
+                      onChange={(e) => setStandingDuties(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                    />
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-slate-500 leading-snug -mt-1">
+                  The designation is what the school employs this person as; the role above is what the portal lets them
+                  do. They are recorded apart on purpose — a title has never granted access here, and leaving the
+                  designation blank prints as “not stated”, never as a guess taken from the role. Standing duties are
+                  what the duty roster offers for a named date; nothing is filed on anyone&apos;s behalf by being listed
+                  here.
+                </p>
 
                 <div className="flex items-center gap-2 pt-1">
                   <input

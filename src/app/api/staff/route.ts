@@ -24,7 +24,16 @@ type StaffPayload = {
   is_form_master?: boolean;
   email_verified?: boolean;
   status?: string;
+  designation?: string;
+  standing_duties?: string[];
 };
+
+function trimmedList(value: unknown, max: number, cap: number): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(value.map((entry) => (typeof entry === "string" ? entry.trim().slice(0, max) : "")).filter(Boolean))
+  ).slice(0, cap);
+}
 
 function sanitizeStaff(raw: StaffPayload) {
   if (!raw || typeof raw !== "object") return null;
@@ -33,6 +42,8 @@ function sanitizeStaff(raw: StaffPayload) {
   const username = typeof raw.username === "string" ? raw.username.trim() : "";
   const email = typeof raw.email === "string" ? raw.email.trim() : "";
   if (!staffId || !fullName || !username || !email) return null;
+  const designation = typeof raw.designation === "string" ? raw.designation.trim().slice(0, 80) : "";
+  const standingDuties = trimmedList(raw.standing_duties, 120, 12);
   return {
     id: typeof raw.id === "string" && raw.id.trim() ? raw.id.trim() : undefined,
     staff_id: staffId,
@@ -46,6 +57,11 @@ function sanitizeStaff(raw: StaffPayload) {
     is_form_master: Boolean(raw.is_form_master),
     email_verified: Boolean(raw.email_verified),
     status: typeof raw.status === "string" && raw.status ? raw.status : "Active",
+    // Sent only when the office actually wrote one, so a project that has not run
+    // supabase/staff_duties.sql carries on filing staff records exactly as before
+    // instead of failing on a column that does not exist yet.
+    ...(designation ? { designation } : {}),
+    ...(standingDuties.length ? { standing_duties: standingDuties } : {}),
   };
 }
 
@@ -81,7 +97,22 @@ export async function POST(request: Request) {
   }
 
   const { error } = await supabase.from("staff").upsert(row, { onConflict: "id" });
-  if (error) return NextResponse.json({ success: false, error: error.message }, { status: 502 });
+  if (error) {
+    // A designation or standing duty is a column supabase/staff_duties.sql adds.
+    // Naming the file is the difference between "the save failed" and "run this
+    // one script and the save works".
+    if (/designation|standing_duties/i.test(`${error.message} ${error.code ?? ""}`)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `The staff record cannot carry a designation or a standing duty until supabase/staff_duties.sql has been run on this project. Nothing was saved.`,
+          reason: error.message,
+        },
+        { status: 503 }
+      );
+    }
+    return NextResponse.json({ success: false, error: error.message }, { status: 502 });
+  }
 
   // Registering a person and giving them a way to sign in is one act of
   // onboarding, not two. Before this the form invented a passcode in the

@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SubjectsCard } from "@/components/dashboard/subjects-card";
+import { TodayDutyPanel } from "@/components/dashboard/today-duty-panel";
 import { UsersOnlineWidget } from "@/components/dashboard/users-online";
 import { SCHOOL_INFO } from "@/lib/constants";
 import { useRealtimeAuth, useRealtimeStudents } from "@/lib/realtime-store";
@@ -380,8 +381,9 @@ export default function DashboardHome() {
 
           </div>
 
-          {/* Right Column: Real-time Users Online Presence Widget */}
-          <div className="lg:col-span-1">
+          {/* Right Column: Today's duties, then the live presence widget */}
+          <div className="lg:col-span-1 space-y-6">
+            <TodayDutyPanel />
             <UsersOnlineWidget />
           </div>
 
