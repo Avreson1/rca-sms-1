@@ -12,10 +12,12 @@ import {
   useRealtimePsychomotor,
   useRealtimeTraits,
   useRealtimeNewsletter,
+  useRealtimeReportTheme,
   useRealtimeAuth,
   calculateGradeForClass,
   formatOrdinal,
   StudentRecord,
+  type ReportTheme,
 } from "@/lib/realtime-store";
 import { fetchPublicationsFromSupabase } from "@/lib/supabase/db";
 import { useSchoolConfig, sessionOptions, REPORT_TERMS, type ReportTerm } from "@/lib/school-config";
@@ -170,7 +172,14 @@ export default function ScoreCardPage() {
   const { students } = useRealtimeStudents();
   const { classes, classesSource } = useRealtimeClasses();
   const { gradingTiers } = useRealtimeGradingScales();
-  const { newsletter } = useRealtimeNewsletter();
+  const { bulletins, bulletinsSource, newsletterFor } = useRealtimeNewsletter();
+  const {
+    theme: schoolTheme,
+    themeSource: schoolThemeSource,
+    themeUpdatedBy,
+    themeUpdatedAt,
+    reloadTheme,
+  } = useRealtimeReportTheme();
   const { currentUser } = useRealtimeAuth();
 
   // The role, or nothing. This used to default to SUPER_ADMIN, so a browser that
@@ -297,11 +306,19 @@ export default function ScoreCardPage() {
   const [showAttendanceRemarks, setShowAttendanceRemarks] = useState(true);
   const [showNewsletter, setShowNewsletter] = useState(true);
   const [isBatchPrintMode, setIsBatchPrintMode] = useState(false);
-  const [themeScheme, setThemeScheme] = useState<"royal" | "scheme2" | "emerald" | "burgundy" | "gold" | "slate">(
-    (newsletter.themeColor as any) || "royal"
-  );
 
-  const theme = (THEME_STYLES as any)[themeScheme] || THEME_STYLES.royal;
+  // The card is coloured with the scheme on the school's records. Choosing
+  // differently here is a decision about the sheets going into this printer, not
+  // a rewrite of that record — the standing choice is filed under
+  // Setup → Report & Newsletter Templates.
+  const [printRunScheme, setPrintRunScheme] = useState<ReportTheme | null>(null);
+  const activeScheme: ReportTheme = printRunScheme ?? schoolTheme;
+
+  const theme = THEME_STYLES[activeScheme] ?? THEME_STYLES.royal;
+
+  // The circular printed behind this card: the one filed for the session and term
+  // the card itself is printed for. There is no fallback to another term's words.
+  const bulletin = newsletterFor(selectedSession, selectedTerm);
 
   // Filter students in selected class
   const classStudents = useMemo(() => {
@@ -808,7 +825,9 @@ export default function ScoreCardPage() {
             </div>
             <div>
               <span className="text-[10px] uppercase font-bold text-slate-400 block">Next Term Resumption</span>
-              <strong className="text-slate-900 font-bold text-xs">{psy.nextTermBegins || newsletter.nextTermResumption || "To be announced"}</strong>
+              <strong className="text-slate-900 font-bold text-xs">
+                {psy.nextTermBegins || bulletin?.nextTermResumption || "To be announced"}
+              </strong>
             </div>
           </div>
         )}
@@ -878,7 +897,7 @@ export default function ScoreCardPage() {
                 {schoolName} • Terminal Circular
               </span>
               <h3 className="text-base font-black tracking-tight uppercase">
-                End-of-Term Newsletter &amp; Important Advisories
+                {bulletin?.title?.trim() || "End-of-Term Newsletter & Important Advisories"}
               </h3>
               <p className="text-[11px] text-slate-300">
                 {selectedSession} Session • {selectedTerm}
@@ -886,61 +905,87 @@ export default function ScoreCardPage() {
             </div>
 
             <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-xs space-y-3">
-              <div>
-                <h4 className="font-bold text-slate-900 mb-1">Director&apos;s End-of-Term Address:</h4>
-                <p className="text-slate-700 leading-relaxed italic">
-                  {newsletter.principalMessage ? `"${newsletter.principalMessage}"` : "Not written for this term."}
-                </p>
-                {newsletter.principalName && (
-                  <p className="text-[11px] font-bold text-slate-900 mt-1">— {newsletter.principalName}</p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200">
-                <div>
-                  <h4 className="font-bold text-slate-900 mb-1 flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                    Upcoming Term Schedule:
-                  </h4>
-                  <p className="text-[#0000FF] font-bold text-xs mb-1">
-                    {newsletter.nextTermResumption
-                      ? `Resumption: ${newsletter.nextTermResumption}`
-                      : "Resumption date not announced."}
+              {bulletin === null ? (
+                <div className="space-y-2">
+                  <p className="font-bold text-slate-900">
+                    {bulletinsSource === "server"
+                      ? `No circular has been filed for ${selectedTerm} of ${selectedSession}.`
+                      : "The school's circulars could not be read, so nothing is printed here."}
                   </p>
-                  {newsletter.eventsAndHighlights.length > 0 && (
-                    <ul className="list-disc list-inside space-y-0.5 text-[11px] text-slate-700">
-                      {newsletter.eventsAndHighlights.map((ev, idx) => (
-                        <li key={idx}>{ev}</li>
-                      ))}
-                    </ul>
-                  )}
+                  <p className="text-slate-700 leading-relaxed">
+                    {bulletinsSource === "server"
+                      ? "A card carries the words written for its own term. This one prints no principal's address, no resumption date and no bank account rather than borrowing another term's — the office files the term's circular under Setup → Report & Newsletter Templates."
+                      : `This browser holds ${bulletins.length} circular${bulletins.length === 1 ? "" : "s"} of its own, and printing one would put words on a child's card that the school never filed. Reload the screen once the portal server answers.`}
+                  </p>
                 </div>
-
-                <div>
-                  <h4 className="font-bold text-slate-900 mb-1 flex items-center gap-1">
-                    <CreditCard className="w-3.5 h-3.5 text-blue-600" />
-                    Tuition &amp; Bank Payment Details:
-                  </h4>
-                  <p className="text-[11px] text-slate-700 leading-snug mb-2">{newsletter.feePolicyAndDeadlines}</p>
-                  {newsletter.bankAccountDetails.accountNumber ? (
-                    <div className="bg-white border border-slate-300 p-2 rounded-lg text-[11px] font-mono">
-                      <p className="text-slate-500">Bank: <strong className="text-slate-900">{newsletter.bankAccountDetails.bankName}</strong></p>
-                      <p className="text-slate-500">Account: <strong className="text-slate-900">{newsletter.bankAccountDetails.accountName}</strong></p>
-                      <p className="text-slate-500">Number: <strong className="text-[#0000FF] font-bold">{newsletter.bankAccountDetails.accountNumber}</strong></p>
-                    </div>
-                  ) : (
-                    <p className="text-[11px] italic text-slate-500">
-                      No bank account has been entered for the school, so none is printed. A printed
-                      account number sends families money, so it is never guessed.
+              ) : (
+                <>
+                  {bulletinsSource !== "server" && (
+                    // On screen only: the paper cannot say "this came from a cache",
+                    // but the person about to print 200 of them can be told.
+                    <p className="print:hidden text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-300 rounded-lg px-2.5 py-1.5">
+                      This is this browser&apos;s own copy of the circular — the school&apos;s records were not read, so
+                      another machine may hold different words.
                     </p>
                   )}
-                </div>
-              </div>
 
-              {newsletter.customNotes && (
-                <div className="pt-2 border-t border-slate-200 text-[11px] text-slate-600 font-medium">
-                  <strong>Special Advisory:</strong> {newsletter.customNotes}
-                </div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 mb-1">Director&apos;s End-of-Term Address:</h4>
+                    <p className="text-slate-700 leading-relaxed italic">
+                      {bulletin.principalMessage ? `"${bulletin.principalMessage}"` : "Not written for this term."}
+                    </p>
+                    {bulletin.principalName && (
+                      <p className="text-[11px] font-bold text-slate-900 mt-1">— {bulletin.principalName}</p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200">
+                    <div>
+                      <h4 className="font-bold text-slate-900 mb-1 flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                        Upcoming Term Schedule:
+                      </h4>
+                      <p className="text-[#0000FF] font-bold text-xs mb-1">
+                        {bulletin.nextTermResumption
+                          ? `Resumption: ${bulletin.nextTermResumption}`
+                          : "Resumption date not announced."}
+                      </p>
+                      {bulletin.eventsAndHighlights.length > 0 && (
+                        <ul className="list-disc list-inside space-y-0.5 text-[11px] text-slate-700">
+                          {bulletin.eventsAndHighlights.map((ev) => (
+                            <li key={ev}>{ev}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    <div>
+                      <h4 className="font-bold text-slate-900 mb-1 flex items-center gap-1">
+                        <CreditCard className="w-3.5 h-3.5 text-blue-600" />
+                        Tuition &amp; Bank Payment Details:
+                      </h4>
+                      <p className="text-[11px] text-slate-700 leading-snug mb-2">{bulletin.feePolicyAndDeadlines}</p>
+                      {bulletin.bankAccountDetails.accountNumber ? (
+                        <div className="bg-white border border-slate-300 p-2 rounded-lg text-[11px] font-mono">
+                          <p className="text-slate-500">Bank: <strong className="text-slate-900">{bulletin.bankAccountDetails.bankName}</strong></p>
+                          <p className="text-slate-500">Account: <strong className="text-slate-900">{bulletin.bankAccountDetails.accountName}</strong></p>
+                          <p className="text-slate-500">Number: <strong className="text-[#0000FF] font-bold">{bulletin.bankAccountDetails.accountNumber}</strong></p>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] italic text-slate-500">
+                          No bank account has been filed for the school, so none is printed. A printed
+                          account number sends families money, so it is never guessed.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {bulletin.customNotes && (
+                    <div className="pt-2 border-t border-slate-200 text-[11px] text-slate-600 font-medium">
+                      <strong>Special Advisory:</strong> {bulletin.customNotes}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -1182,21 +1227,46 @@ export default function ScoreCardPage() {
               </div>
             </div>
 
-            {/* Theme Selector (Restricted to Super Admin & Exam Officer) */}
+            {/* Print-run theme override (Restricted to Super Admin & Exam Officer) */}
             {isSuperOrExam && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-bold text-slate-700">Theme:</span>
                 <select
-                  value={themeScheme}
-                  onChange={(e) => setThemeScheme(e.target.value as any)}
+                  value={activeScheme}
+                  onChange={(e) => setPrintRunScheme(e.target.value as ReportTheme)}
                   className="min-w-0 max-w-full text-xs font-bold bg-slate-50 text-slate-800 border border-slate-200 rounded-lg p-1.5 cursor-pointer"
                 >
                   <option value="royal">Scheme 1: Royal Blue &amp; Cyan</option>
                   <option value="scheme2">Scheme 2: Deep Navy &amp; Magenta</option>
                   <option value="emerald">Emerald Green</option>
                   <option value="burgundy">Burgundy Wine</option>
+                  <option value="gold">Classic Gold &amp; Navy</option>
                   <option value="slate">Executive Slate</option>
                 </select>
+                {printRunScheme !== null ? (
+                  <button
+                    onClick={() => setPrintRunScheme(null)}
+                    className="text-[11px] font-bold text-[#0000FF] hover:text-blue-800 cursor-pointer"
+                    title={`The scheme on the school's records${themeUpdatedBy ? `, filed by ${themeUpdatedBy}` : ""}${
+                      themeUpdatedAt ? ` on ${new Date(themeUpdatedAt).toLocaleDateString()}` : ""
+                    }`}
+                  >
+                    Back to the school&apos;s filed scheme
+                  </button>
+                ) : (
+                  <span className="text-[11px] text-slate-500">
+                    {schoolThemeSource === "server"
+                      ? "the school's filed scheme"
+                      : "the portal's built-in scheme — the school's row was not read"}
+                  </span>
+                )}
+                <button
+                  onClick={() => void reloadTheme()}
+                  className="text-[11px] font-bold text-slate-500 hover:text-blue-800 cursor-pointer"
+                  title="Read the school's card theme again"
+                >
+                  re-read
+                </button>
               </div>
             )}
 

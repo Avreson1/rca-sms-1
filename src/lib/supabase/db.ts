@@ -15,6 +15,10 @@ import {
   CBTSittingRecord,
   CalendarEventRecord,
   ActivityTemplateRecord,
+  CAComponentItem,
+  CATierKey,
+  NewsletterRecord,
+  ReportTheme,
 } from "../realtime-store";
 import { DEFAULT_TIMETABLE_DAYS, DEFAULT_TIMETABLE_PERIODS, type TimetablePeriod } from "../timetable/day-shape";
 
@@ -2656,4 +2660,191 @@ export async function removeActivityTemplateOnServer(id: string): Promise<{ ok: 
     reportSyncFailure(`The activity template was NOT removed from the school's records: ${reason}.`);
     return { ok: false, reason };
   }
+}
+
+// ============================================================================
+// 17. THE CA COMPONENT STRUCTURE, THE CARD THEME AND THE TERMINAL CIRCULAR
+// ============================================================================
+// Three lists the portal kept in one browser's localStorage. Two of them reach a
+// family — the card's colours and the circular printed on its back — so the
+// office machine was the only one whose printout carried the school's own words,
+// and a card printed for Third Term carried the message written for First under
+// a Third Term heading.
+//
+// What filing a CA structure does NOT do is change a computed mark: the
+// gradebook and /api/ca add the five columns they were written with. These calls
+// record what the school says its assessment is made of, and the screens that
+// file it say that out loud.
+
+export interface CAStructureFile {
+  tierKey: CATierKey;
+  components: CAComponentItem[];
+  description: string;
+  updatedBy: string;
+  updatedAt: string | null;
+}
+
+interface CAStructureRow {
+  tier_key: string;
+  components: { key?: unknown; name?: unknown; max_score?: unknown; description?: unknown }[] | null;
+  description: string | null;
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+function toCAStructureFile(row: CAStructureRow): CAStructureFile {
+  return {
+    tierKey: row.tier_key as CATierKey,
+    description: row.description ?? "",
+    updatedBy: row.updated_by ?? "",
+    updatedAt: row.updated_at,
+    components: (row.components ?? []).flatMap((entry) => {
+      const name = typeof entry?.name === "string" ? entry.name : "";
+      if (!name) return [];
+      return [
+        {
+          key: typeof entry?.key === "string" ? entry.key : name.toLowerCase().replace(/\W+/g, "_"),
+          name,
+          maxScore: Number(entry?.max_score) || 0,
+          description: typeof entry?.description === "string" ? entry.description : "",
+        },
+      ];
+    }),
+  };
+}
+
+/** The structures the school has filed, keyed by tier. A tier with no row is absent. */
+export async function fetchCAStructuresFromSupabase(): Promise<Record<string, CAStructureFile> | null> {
+  const rows = await requestJson<CAStructureRow[]>("/api/ca-structures", "The CA component structures");
+  if (!rows) return null;
+
+  const byTier: Record<string, CAStructureFile> = {};
+  for (const row of rows) {
+    const file = toCAStructureFile(row);
+    byTier[file.tierKey] = file;
+  }
+  return byTier;
+}
+
+/** What a screen sends to file a tier: the list itself and the school's note. */
+export type CAStructureInput = Pick<CAStructureFile, "tierKey" | "components" | "description">;
+
+/** Files one tier's component list, or the starting outline for all four, in one call. */
+export async function saveCAStructuresOnServer(
+  structures: CAStructureInput[]
+): Promise<{ ok: boolean; reason: string | null }> {
+  const reason = await postQuiet(
+    "/api/ca-structures",
+    structures.map((structure) => ({
+      tierKey: structure.tierKey,
+      description: structure.description,
+      components: structure.components.map((component) => ({
+        key: component.key,
+        name: component.name,
+        max_score: component.maxScore,
+        description: component.description,
+      })),
+    }))
+  );
+  if (reason) reportSyncFailure(`The CA structure was NOT filed on the school's records: ${reason}.`);
+  else {
+    reportSyncSaved(
+      structures.length === 1
+        ? "CA structure filed on the school's records."
+        : `${structures.length} tier structures filed on the school's records.`
+    );
+  }
+  return { ok: !reason, reason };
+}
+
+interface ThemeRow {
+  id: number;
+  theme_key: string;
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
+export interface ReportThemeFile {
+  theme: ReportTheme;
+  updatedBy: string;
+  updatedAt: string | null;
+}
+
+/** The card theme the school filed, or null when it never has. */
+export async function fetchReportThemeFromSupabase(): Promise<ReportThemeFile | null> {
+  const row = await requestJson<ThemeRow | null>("/api/report-theme", "The report card theme");
+  if (!row || typeof row.theme_key !== "string") return null;
+  return {
+    theme: row.theme_key as ReportTheme,
+    updatedBy: row.updated_by ?? "",
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function saveReportThemeOnServer(theme: ReportTheme): Promise<{ ok: boolean; reason: string | null }> {
+  const reason = await postQuiet("/api/report-theme", { theme });
+  if (reason) reportSyncFailure(`The report card theme was NOT filed on the school's records: ${reason}.`);
+  else reportSyncSaved("Report card theme filed on the school's records.");
+  return { ok: !reason, reason };
+}
+
+interface NewsletterRow {
+  id: string;
+  session: string;
+  term: string;
+  title: string | null;
+  principal_name: string | null;
+  principal_message: string | null;
+  next_term_resumption: string | null;
+  events_and_highlights: unknown;
+  fee_policy_and_deadlines: string | null;
+  bank_name: string | null;
+  account_name: string | null;
+  account_number: string | null;
+  custom_notes: string | null;
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
+function toNewsletterRecord(row: NewsletterRow): NewsletterRecord {
+  return {
+    session: row.session,
+    term: row.term as NewsletterRecord["term"],
+    // Blank stays blank. The card has its own sentence for every field the
+    // school left empty, and an invented resumption date or bank account is a
+    // statement to a family that nobody made.
+    title: row.title ?? "",
+    principalName: row.principal_name ?? "",
+    principalMessage: row.principal_message ?? "",
+    nextTermResumption: row.next_term_resumption ?? "",
+    eventsAndHighlights: Array.isArray(row.events_and_highlights)
+      ? row.events_and_highlights.filter((line): line is string => typeof line === "string" && line.trim() !== "")
+      : [],
+    feePolicyAndDeadlines: row.fee_policy_and_deadlines ?? "",
+    bankAccountDetails: {
+      bankName: row.bank_name ?? "",
+      accountName: row.account_name ?? "",
+      accountNumber: row.account_number ?? "",
+    },
+    customNotes: row.custom_notes ?? "",
+    updatedAt: row.updated_at ?? undefined,
+    updatedBy: row.updated_by ?? "",
+  };
+}
+
+/** Every circular the school has written, one per session and term. */
+export async function fetchNewslettersFromSupabase(): Promise<NewsletterRecord[] | null> {
+  const rows = await requestJson<NewsletterRow[]>("/api/newsletter", "The terminal newsletters");
+  if (!rows) return null;
+  return rows.map(toNewsletterRecord);
+}
+
+/** Files the circular for the session and term the record is labelled with. */
+export async function saveNewsletterOnServer(
+  newsletter: NewsletterRecord
+): Promise<{ ok: boolean; reason: string | null }> {
+  const reason = await postQuiet("/api/newsletter", newsletter);
+  if (reason) reportSyncFailure(`The newsletter was NOT filed on the school's records: ${reason}.`);
+  else reportSyncSaved(`${newsletter.term} of ${newsletter.session} circular filed on the school's records.`);
+  return { ok: !reason, reason };
 }

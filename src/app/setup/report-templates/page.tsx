@@ -1,11 +1,23 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
-import { useRealtimeNewsletter, NewsletterRecord } from "@/lib/realtime-store";
-import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
+import {
+  useRealtimeAuth,
+  useRealtimeNewsletter,
+  useRealtimeReportTheme,
+  type NewsletterRecord,
+  type ReportTheme,
+} from "@/lib/realtime-store";
+import {
+  effectiveScope,
+  REPORT_TERMS,
+  sessionOptions,
+  useSchoolConfig,
+  type ReportTerm,
+} from "@/lib/school-config";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -14,7 +26,8 @@ import {
   Mail,
   CreditCard,
   Save,
-  RotateCcw,
+  Info,
+  TriangleAlert,
 } from "lucide-react";
 
 export const COLOR_SCHEMES = [
@@ -74,62 +87,143 @@ export const COLOR_SCHEMES = [
   },
 ];
 
+/** The ten boxes the circular is made of, as one editable draft. */
+interface BulletinDraft {
+  title: string;
+  principalName: string;
+  principalMessage: string;
+  nextTermResumption: string;
+  eventsText: string;
+  feePolicy: string;
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  customNotes: string;
+}
+
+function draftFrom(bulletin: NewsletterRecord | null): BulletinDraft {
+  return {
+    title: bulletin?.title ?? "",
+    principalName: bulletin?.principalName ?? "",
+    principalMessage: bulletin?.principalMessage ?? "",
+    nextTermResumption: bulletin?.nextTermResumption ?? "",
+    eventsText: (bulletin?.eventsAndHighlights ?? []).join("\n"),
+    feePolicy: bulletin?.feePolicyAndDeadlines ?? "",
+    bankName: bulletin?.bankAccountDetails.bankName ?? "",
+    accountName: bulletin?.bankAccountDetails.accountName ?? "",
+    accountNumber: bulletin?.bankAccountDetails.accountNumber ?? "",
+    customNotes: bulletin?.customNotes ?? "",
+  };
+}
+
 export default function SetupReportTemplatesPage() {
-  const { newsletter, updateNewsletter, resetNewsletter } = useRealtimeNewsletter();
+  const { bulletins, bulletinsSource, newsletterFor, saveBulletin, reloadBulletins } = useRealtimeNewsletter();
+  const { theme, themeSource, themeUpdatedBy, themeUpdatedAt, fileTheme, reloadTheme } = useRealtimeReportTheme();
+  const { currentUser } = useRealtimeAuth();
 
-  const [themeColor, setThemeColor] = useState<NewsletterRecord["themeColor"]>(newsletter.themeColor || "royal");
-  const [principalName, setPrincipalName] = useState(newsletter.principalName);
-  const [principalMessage, setPrincipalMessage] = useState(newsletter.principalMessage);
-  const [nextTermResumption, setNextTermResumption] = useState(newsletter.nextTermResumption);
-  const [feePolicy, setFeePolicy] = useState(newsletter.feePolicyAndDeadlines);
-  const [bankName, setBankName] = useState(newsletter.bankAccountDetails.bankName);
-  const [accountName, setAccountName] = useState(newsletter.bankAccountDetails.accountName);
-  const [accountNumber, setAccountNumber] = useState(newsletter.bankAccountDetails.accountNumber);
-  const [eventsText, setEventsText] = useState(newsletter.eventsAndHighlights.join("\n"));
-  const [customNotes, setCustomNotes] = useState(newsletter.customNotes || "");
-  const [isSaved, setIsSaved] = useState(false);
+  const { config: school } = useSchoolConfig();
+  const scope = effectiveScope(school, { session: SCHOOL_INFO.currentSession, term: "First Term" });
+  const sessionList = sessionOptions(scope.session);
+  const termInScope: ReportTerm = REPORT_TERMS.includes(scope.term as ReportTerm)
+    ? (scope.term as ReportTerm)
+    : "First Term";
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    const parsedEvents = eventsText
-      .split("\n")
-      .map((e) => e.trim())
-      .filter(Boolean);
+  const [period, setPeriod] = useState<{ session: string; term: ReportTerm }>({
+    session: scope.session,
+    term: termInScope,
+  });
+  const [draft, setDraft] = useState<BulletinDraft | null>(null);
+  const [themeDraft, setThemeDraft] = useState<ReportTheme | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isFiling, setIsFiling] = useState(false);
 
-    updateNewsletter({
-      themeColor,
-      principalName,
-      principalMessage,
-      nextTermResumption,
-      feePolicyAndDeadlines: feePolicy,
+  // A draft belongs to the term it was started under. Changing the term — or the
+  // school's answer arriving a moment after the page — drops it, so words written
+  // for First Term can never be filed onto Third Term by a stale form.
+  const filedBulletin = newsletterFor(period.session, period.term);
+  useEffect(() => {
+    setDraft(null);
+  }, [period.session, period.term, bulletinsSource, filedBulletin?.updatedAt]);
+
+  const current = draft ?? draftFrom(filedBulletin);
+  const isBulletinDraft = draft !== null;
+  const shownTheme = themeDraft ?? theme;
+  const isThemeDraft = themeDraft !== null && themeDraft !== theme;
+  const canEdit = currentUser?.role === "SUPER_ADMIN" || currentUser?.role === "EXAM_OFFICER";
+
+  const setField = (field: keyof BulletinDraft) => (value: string) =>
+    setDraft({ ...current, [field]: value });
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 6000);
+  };
+
+  const handleFileBulletin = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setRefusal(null);
+    setIsFiling(true);
+
+    const outcome = await saveBulletin({
+      session: period.session,
+      term: period.term,
+      title: current.title.trim(),
+      principalName: current.principalName.trim(),
+      principalMessage: current.principalMessage.trim(),
+      nextTermResumption: current.nextTermResumption.trim(),
+      eventsAndHighlights: current.eventsText
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean),
+      feePolicyAndDeadlines: current.feePolicy.trim(),
       bankAccountDetails: {
-        bankName,
-        accountName,
-        accountNumber,
+        bankName: current.bankName.trim(),
+        accountName: current.accountName.trim(),
+        accountNumber: current.accountNumber.trim(),
       },
-      eventsAndHighlights: parsedEvents,
-      customNotes,
+      customNotes: current.customNotes.trim(),
     });
+    setIsFiling(false);
 
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 3000);
-  };
-
-  const handleResetToDefault = () => {
-    if (
-      confirm(
-        "Reset the newsletter and report card theme held on this browser back to the built-in defaults? What you typed here is dropped and cannot be brought back."
-      )
-    ) {
-      resetNewsletter();
-      setIsSaved(true);
-      setTimeout(() => setIsSaved(false), 3000);
+    if (!outcome.ok) {
+      setRefusal(outcome.reason ?? "the portal server refused the write");
+      return;
     }
+
+    setDraft(null);
+    showToast(`The ${period.term} circular for ${period.session} is on the school's records.`);
   };
+
+  const handleFileTheme = async () => {
+    setRefusal(null);
+    setIsFiling(true);
+    const outcome = await fileTheme(shownTheme);
+    setIsFiling(false);
+
+    if (!outcome.ok) {
+      setRefusal(outcome.reason ?? "the portal server refused the write");
+      return;
+    }
+
+    setThemeDraft(null);
+    showToast(`${COLOR_SCHEMES.find((scheme) => scheme.id === shownTheme)?.name ?? "The scheme"} is the school's card theme on the records.`);
+  };
+
+  const bulletinsFiledForOtherPeriods = bulletins.filter(
+    (bulletin) => bulletin.session !== period.session || bulletin.term !== period.term
+  );
 
   return (
     <DashboardShell>
       <div className="space-y-6">
+        {toastMessage && (
+          <div className="fixed top-20 right-6 bg-[#0a1128] text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 z-50 animate-in slide-in-from-top-3 border border-cyan-400">
+            <CheckCircle2 className="w-4 h-4 text-cyan-400" />
+            <span className="text-xs font-bold">{toastMessage}</span>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -147,17 +241,20 @@ export default function SetupReportTemplatesPage() {
               Report Card Theme &amp; End-of-Term Newsletter
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Select standardized color schemes for report cards and configure the official printable terminal newsletter for {SCHOOL_INFO.name}.
+              The colour scheme every card is printed in, and the circular that prints on the back of it, filed once on{" "}
+              {SCHOOL_INFO.name}&apos;s records so all machines read the same pair.
             </p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
             <button
-              onClick={handleResetToDefault}
-              className="px-3.5 py-2 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+              onClick={() => {
+                void reloadBulletins();
+                void reloadTheme();
+              }}
+              className="px-3.5 py-2 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
             >
-              <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-              Reset Default
+              Read the school&apos;s records again
             </button>
             <Link
               href="/operations/score-card"
@@ -169,41 +266,63 @@ export default function SetupReportTemplatesPage() {
           </div>
         </div>
 
-        <DeviceOnlyNotice what="The report card theme and the terminal newsletter" />
+        {(bulletinsSource !== "server" || themeSource !== "server") && (
+          <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-[11px] leading-snug text-amber-950 flex items-start gap-2">
+            <TriangleAlert className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
+            <p>
+              <strong>
+                {bulletinsSource !== "server" && themeSource !== "server"
+                  ? "Neither the circulars nor the card theme have been read from the school's records,"
+                  : bulletinsSource !== "server"
+                    ? "The circulars have not been read from the school's records, so the bulletin below is this browser's own copy"
+                    : "The card theme has not been read from the school's records, so the scheme selected below is this browser's own copy"}
+              </strong>{" "}
+              Another machine will not see what is typed here, and clearing this browser&apos;s data loses it.
+            </p>
+          </div>
+        )}
 
-        {/* Success Alert */}
-        {isSaved && (
-          <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl p-4 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-            The report card color scheme and the terminal newsletter have been updated on this browser. They stay here —
-            other machines will not see them, so print the cards from this one.
+        {refusal && (
+          <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 text-[11px] leading-snug text-rose-950 flex items-start gap-2">
+            <TriangleAlert className="w-4 h-4 text-rose-700 flex-shrink-0 mt-0.5" />
+            <p>
+              <strong>Nothing was filed on the school&apos;s records.</strong> {refusal}
+            </p>
           </div>
         )}
 
         {/* Section 1: Color Scheme Selector */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
               <Palette className="w-4 h-4 text-blue-600" />
-              Report Card Color Scheme Palette
+              Report Card Color Scheme
             </h3>
-            <span className="text-xs text-slate-500">Applies uniformly across all school tiers</span>
+            <span className="text-xs text-slate-500">
+              {themeSource !== "server"
+                ? "Not read from the school's records."
+                : `On the school's records${themeUpdatedAt ? ` since ${new Date(themeUpdatedAt).toLocaleDateString()}` : ""}${
+                    themeUpdatedBy ? `, filed by ${themeUpdatedBy}` : ""
+                  }.`}
+            </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
             {COLOR_SCHEMES.map((scheme) => (
               <div
                 key={scheme.id}
-                onClick={() => setThemeColor(scheme.id)}
-                className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between space-y-3 ${
-                  themeColor === scheme.id
+                onClick={() => canEdit && setThemeDraft(scheme.id)}
+                className={`p-4 rounded-xl border-2 transition-all flex flex-col justify-between space-y-3 ${
+                  canEdit ? "cursor-pointer" : "cursor-default"
+                } ${
+                  shownTheme === scheme.id
                     ? `${scheme.borderClass} ring-2 ring-blue-500/20 shadow-sm bg-slate-50/70`
                     : "border-slate-200 hover:border-slate-300 bg-white"
                 }`}
               >
                 <div className="space-y-2">
                   <div className={`h-8 rounded-lg bg-gradient-to-r ${scheme.previewBg} shadow-xs flex items-center justify-end px-2`}>
-                    {themeColor === scheme.id && <CheckCircle2 className="w-4 h-4 text-white" />}
+                    {shownTheme === scheme.id && <CheckCircle2 className="w-4 h-4 text-white" />}
                   </div>
                   <div>
                     <h4 className="text-xs font-extrabold text-slate-900">{scheme.name}</h4>
@@ -213,35 +332,139 @@ export default function SetupReportTemplatesPage() {
 
                 <span
                   className={`text-[10px] font-bold px-2 py-0.5 rounded text-center block ${
-                    themeColor === scheme.id ? scheme.badgeClass : "bg-slate-100 text-slate-600"
+                    shownTheme === scheme.id ? scheme.badgeClass : "bg-slate-100 text-slate-600"
                   }`}
                 >
-                  {themeColor === scheme.id ? "Active Scheme" : "Select Scheme"}
+                  {shownTheme === scheme.id ? (isThemeDraft ? "Chosen, not filed" : "The school's scheme") : "Select Scheme"}
                 </span>
               </div>
             ))}
           </div>
+
+          {canEdit ? (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 border-t border-slate-100">
+              <p className="text-[11px] text-slate-500 max-w-2xl">
+                The scheme picked on the score-card screen only colours the sheets that run through that printer. This
+                row is the school&apos;s standing choice, and filing it changes what every machine opens the card with.
+              </p>
+              <div className="flex items-center gap-2 shrink-0">
+                {isThemeDraft && (
+                  <button
+                    onClick={() => setThemeDraft(null)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  onClick={() => void handleFileTheme()}
+                  disabled={isFiling || !isThemeDraft}
+                  className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  {isFiling && isThemeDraft ? "Filing…" : "File theme on the school's records"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+              Only a Super Admin or the Exam Office files the card theme; this screen shows what the records hold.
+            </p>
+          )}
         </div>
 
         {/* Section 2: End-of-Term Newsletter Editor */}
-        <form onSubmit={handleSave} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-5">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div>
+        <form onSubmit={handleFileBulletin} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-5">
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3 border-b border-slate-100 pb-3">
+            <div className="min-w-0">
               <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
                 <Mail className="w-4 h-4 text-blue-600" />
                 End-of-Term Official Terminal Newsletter &amp; Notice
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                This bulletin prints on the report cards printed from this browser, since the newsletter text is kept here.
+                One circular per session and term. The score card prints the one labelled with the term it is being
+                printed for — a term with no filed circular prints as having none rather than repeating another
+                term&apos;s words.
               </p>
             </div>
-            <button
-              type="submit"
-              className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <Save className="w-4 h-4" />
-              Save Newsletter
-            </button>
+            {canEdit && (
+              <button
+                type="submit"
+                disabled={isFiling}
+                className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                {isFiling ? "Filing on the school's records…" : "File on the school's records"}
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Session this circular is for</label>
+              <select
+                value={period.session}
+                onChange={(e) => setPeriod((p) => ({ ...p, session: e.target.value }))}
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium"
+              >
+                {sessionList.map((session) => (
+                  <option key={session} value={session}>
+                    {session} Session
+                  </option>
+                ))}
+                {!sessionList.includes(period.session) && <option value={period.session}>{period.session}</option>}
+              </select>
+            </div>
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Term this circular is for</label>
+              <select
+                value={period.term}
+                onChange={(e) => setPeriod((p) => ({ ...p, term: e.target.value as ReportTerm }))}
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium"
+              >
+                {REPORT_TERMS.map((term) => (
+                  <option key={term} value={term}>
+                    {term}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="text-[11px] leading-snug rounded-xl px-3 py-2 border bg-slate-50 text-slate-600 border-slate-200">
+            {filedBulletin ? (
+              <>
+                <strong className="text-slate-800">
+                  A circular is already filed for {period.term} of {period.session}.
+                </strong>{" "}
+                Filing again replaces it{filedBulletin.updatedBy ? `, last written by ${filedBulletin.updatedBy}` : ""}
+                {filedBulletin.updatedAt ? ` on ${new Date(filedBulletin.updatedAt).toLocaleDateString()}` : ""}.
+              </>
+            ) : bulletinsSource === "server" ? (
+              <>Nothing is filed for {period.term} of {period.session} yet — cards printed for that term currently say so.</>
+            ) : (
+              <>
+                The school&apos;s records could not be read, so this screen cannot say whether {period.term} of{" "}
+                {period.session} already has a circular.
+              </>
+            )}
+            {bulletins.length > 0 && bulletinsFiledForOtherPeriods.length > 0 && (
+              <span className="text-slate-500">
+                {" "}
+                Filed for other periods: {bulletinsFiledForOtherPeriods.map((b) => `${b.term} ${b.session}`).join(", ")}.
+              </span>
+            )}
+          </div>
+
+          <div className="text-xs">
+            <label className="block font-semibold text-slate-700 mb-1">Bulletin Title</label>
+            <input
+              type="text"
+              value={current.title}
+              onChange={(e) => setField("title")(e.target.value)}
+              placeholder="e.g. End of Term Newsletter & Parent Advisory"
+              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium"
+            />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
@@ -249,9 +472,8 @@ export default function SetupReportTemplatesPage() {
               <label className="block font-semibold text-slate-700 mb-1">Director / Principal Sign-off Name</label>
               <input
                 type="text"
-                required
-                value={principalName}
-                onChange={(e) => setPrincipalName(e.target.value)}
+                value={current.principalName}
+                onChange={(e) => setField("principalName")(e.target.value)}
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium"
               />
             </div>
@@ -260,10 +482,9 @@ export default function SetupReportTemplatesPage() {
               <label className="block font-semibold text-slate-700 mb-1">Next Term Resumption Date</label>
               <input
                 type="text"
-                required
                 placeholder="e.g. Monday, January 12, 2026"
-                value={nextTermResumption}
-                onChange={(e) => setNextTermResumption(e.target.value)}
+                value={current.nextTermResumption}
+                onChange={(e) => setField("nextTermResumption")(e.target.value)}
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium"
               />
             </div>
@@ -273,9 +494,8 @@ export default function SetupReportTemplatesPage() {
             <label className="block font-semibold text-slate-700 mb-1">Principal&apos;s End-of-Term Executive Address</label>
             <textarea
               rows={3}
-              required
-              value={principalMessage}
-              onChange={(e) => setPrincipalMessage(e.target.value)}
+              value={current.principalMessage}
+              onChange={(e) => setField("principalMessage")(e.target.value)}
               className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 leading-relaxed font-normal"
             />
           </div>
@@ -286,9 +506,8 @@ export default function SetupReportTemplatesPage() {
             </label>
             <textarea
               rows={4}
-              required
-              value={eventsText}
-              onChange={(e) => setEventsText(e.target.value)}
+              value={current.eventsText}
+              onChange={(e) => setField("eventsText")(e.target.value)}
               className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 leading-relaxed font-mono"
             />
           </div>
@@ -297,9 +516,8 @@ export default function SetupReportTemplatesPage() {
             <label className="block font-semibold text-slate-700 mb-1">Tuition Fee Policy &amp; Clearance Deadlines</label>
             <textarea
               rows={2}
-              required
-              value={feePolicy}
-              onChange={(e) => setFeePolicy(e.target.value)}
+              value={current.feePolicy}
+              onChange={(e) => setField("feePolicy")(e.target.value)}
               className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 leading-relaxed"
             />
           </div>
@@ -315,9 +533,8 @@ export default function SetupReportTemplatesPage() {
                 <label className="block font-medium text-slate-600 mb-1">Bank Name</label>
                 <input
                   type="text"
-                  required
-                  value={bankName}
-                  onChange={(e) => setBankName(e.target.value)}
+                  value={current.bankName}
+                  onChange={(e) => setField("bankName")(e.target.value)}
                   className="w-full p-2 bg-white border border-slate-200 rounded-lg text-slate-800 font-semibold"
                 />
               </div>
@@ -325,9 +542,8 @@ export default function SetupReportTemplatesPage() {
                 <label className="block font-medium text-slate-600 mb-1">Account Name</label>
                 <input
                   type="text"
-                  required
-                  value={accountName}
-                  onChange={(e) => setAccountName(e.target.value)}
+                  value={current.accountName}
+                  onChange={(e) => setField("accountName")(e.target.value)}
                   className="w-full p-2 bg-white border border-slate-200 rounded-lg text-slate-800 font-semibold"
                 />
               </div>
@@ -335,13 +551,17 @@ export default function SetupReportTemplatesPage() {
                 <label className="block font-medium text-slate-600 mb-1">Account Number</label>
                 <input
                   type="text"
-                  required
-                  value={accountNumber}
-                  onChange={(e) => setAccountNumber(e.target.value)}
+                  inputMode="numeric"
+                  value={current.accountNumber}
+                  onChange={(e) => setField("accountNumber")(e.target.value)}
                   className="w-full p-2 bg-white border border-slate-200 rounded-lg text-slate-800 font-mono font-bold tracking-wider"
                 />
               </div>
             </div>
+            <p className="text-[11px] text-slate-500">
+              Families pay what is printed here. Nothing is filled in for the school: an empty box prints as empty, and
+              a filed account number replaces the previous one for every card printed after it.
+            </p>
           </div>
 
           <div className="text-xs">
@@ -349,21 +569,45 @@ export default function SetupReportTemplatesPage() {
             <input
               type="text"
               placeholder="e.g. Please ensure students return with complete uniforms, textbooks, and sports wear."
-              value={customNotes}
-              onChange={(e) => setCustomNotes(e.target.value)}
+              value={current.customNotes}
+              onChange={(e) => setField("customNotes")(e.target.value)}
               className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-normal"
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="submit"
-              className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs cursor-pointer flex items-center gap-1.5"
-            >
-              <Save className="w-4 h-4" />
-              Save Report Theme &amp; Newsletter
-            </button>
-          </div>
+          {canEdit ? (
+            <div className="flex items-center justify-between gap-3 pt-2 flex-wrap">
+              <p className="text-[11px] text-slate-500 flex items-start gap-1.5 max-w-xl">
+                <Info className="w-3.5 h-3.5 text-blue-600 flex-shrink-0 mt-0.5" />
+                {bulletinsSource === "server"
+                  ? "Filing writes this circular onto the school's records for the session and term chosen above, replacing whatever that term held."
+                  : "The school's records could not be read, so filing will not reach them. This screen is working from this browser's copy."}
+              </p>
+              <div className="flex items-center gap-2">
+                {isBulletinDraft && (
+                  <button
+                    type="button"
+                    onClick={() => setDraft(null)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg cursor-pointer"
+                  >
+                    Cancel Edits
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  disabled={isFiling}
+                  className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-xs shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  {isFiling ? "Filing on the school's records…" : "File this term's circular"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[11px] text-slate-500 pt-2 border-t border-slate-100">
+              This is what the school has filed. Only a Super Admin or the Exam Office writes a circular.
+            </p>
+          )}
         </form>
       </div>
     </DashboardShell>

@@ -94,12 +94,15 @@ this class into the school's records* on *Traits & Psychomotor* — the characte
 attendance ratings that fill the other half of a child's card. That was the `P0`–`P2` work and it
 depends on `supabase/operations_state.sql`, `supabase/traits_assessments.sql`,
 `supabase/inventory.sql`, `supabase/timetable.sql`, `supabase/staff_duties.sql`,
-`supabase/classes_and_subjects.sql`, `supabase/cbt.sql` and `supabase/calendar.sql` having been run.
-Still browser-local: the CA component structure, the report theme and newsletter, and
-Inmail — each of those screens carries a *Kept on this browser* notice so nobody mistakes it for a
-record (the timetable screen keeps one, because the teacher names it groups by are still only on this
-device; the calendar screen shows one only while its two lists cannot be read from the school's
-records). See
+`supabase/classes_and_subjects.sql`, `supabase/cbt.sql`, `supabase/calendar.sql` and
+`supabase/ca_structure_and_bulletin.sql` having been run — the last of those is what each tier's
+assessment is stated to be made of, the colour scheme the cards are printed in, and the circular
+that prints behind the marks, one per session and term.
+Still browser-local: Inmail, and the marking of an exam sitting before it is filed as an attempt —
+each of those screens carries a *Kept on this browser* notice so nobody mistakes it for a record
+(the timetable screen keeps one, because the teacher names it groups by are still only on this
+device; the calendar and report-template screens show one only while their lists cannot be read from
+the school's records). See
 *Current limitations* and the `P0`–`P4` order in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ### Cloning this repository for the live school
@@ -338,9 +341,25 @@ Run these in the Supabase SQL editor, in order:
     names this file, *Setup → Calendar* says both of its lists are still this browser's copy, and every
     *File…* button on that screen answers *Nothing was filed on the school's records* with this
     sentence.
+14. [`supabase/ca_structure_and_bulletin.sql`](supabase/ca_structure_and_bulletin.sql) — what the
+    school says its own assessment, its cards and its circular are. It creates
+    `ca_component_structures` (one row per tier, the components as an ordered list of 1–12 entries,
+    plus the note the school writes about that tier), `report_card_settings` (exactly one row: which
+    of the six schemes the cards are printed in) and `terminal_newsletters` (one circular per session
+    and term, which is why the score card can print Third Term's words on a Third Term card and stop
+    printing First Term's on it). **It seeds nothing**, and filing a structure changes no mark: the
+    gradebook under *Operations → Update CA* still adds the five columns written into that code
+    (10 + 10 + 10 + 10 + 60) and the CA screen says so on its face. A resumption date, a fee deadline
+    or a bank account the school has not typed stays empty and prints as empty, because a printed
+    account number sends families money. Until you run it, `/api/ca-structures`, `/api/report-theme`
+    and `/api/newsletter` answer the `503` that names this file, *Setup → CA Structure* and
+    *Setup → Report Templates* say their lists are this browser's copy, the score card prints no
+    circular it did not read, and every *File…* button answers *Nothing was filed on the school's
+    records* with this sentence.
 
 `app_accounts`, `guardian_students`, both inventory tables, both timetable tables, `staff_duties`,
-`class_arms`, `subjects`, `subject_templates`, all three CBT tables and both calendar tables
+`class_arms`, `subjects`, `subject_templates`, all three CBT tables, both calendar tables and the
+three structure/theme/circular tables
 deliberately have RLS enabled with **no** policies,
 so only the server (holding the service-role key) can read them. The browser's anon key sees nothing,
 including the hashes.
@@ -497,23 +516,32 @@ cannot break the build. Nothing in `rca-sms/` reaches production.
 
 Be aware of what this system does **not** do today:
 
-- **Three screens still keep their work in the browser.** Each one now says so on screen, with a
-  *Kept on this browser* notice: Inmail, the CA component structure, and the
-  report-card theme with the terminal newsletter. None of them has a route behind it, so a second
-  machine cannot see the typing and the data is lost if the device is cleared. (*Academics* keeps a
-  notice of its own: the lessons are on the school's records and so are the arms they are grouped
-  by, but the teacher names the grid reads come from this device's staff list. *Setup → Calendar*
-  shows its notice only while the two lists cannot be read from `school_calendar_events` and
-  `activity_templates`, i.e. until `supabase/calendar.sql` has been run.) What *is*
+- **One screen still keeps its work in the browser.** Inmail says so on screen with a
+  *Kept on this browser* notice: nothing behind it has a route, so a second machine cannot see the
+  typing and it is lost if the device is cleared. (*Academics* keeps a notice of its own: the
+  lessons are on the school's records and so are the arms they are grouped by, but the teacher names
+  the grid reads come from this device's staff list. *Setup → Calendar* and
+  *Setup → Report Templates* show theirs only while the lists cannot be read from
+  `school_calendar_events`, `activity_templates`, `ca_component_structures`,
+  `report_card_settings` and `terminal_newsletters`, i.e. until `supabase/calendar.sql` and
+  `supabase/ca_structure_and_bulletin.sql` have been run.) What *is*
   multi-machine: pupils, staff, logins, invoices, fee payments and receipts, CA/exam marks and
   grades, the grading scales, the fee schedule, the school's own name / session / term, published
-  results, closed terms, the trait rubric, the stores register and its movement log, the timetable
+  results, closed terms, the trait rubric, what each tier states its assessment is made of, the
+  colour scheme the cards print in and the circular filed for each session and term, the stores
+  register and its movement log, the timetable
   and its day shape, the class arms, the subject list and the subject packages, the milestones the
   office dates a term by and the activity blueprints they are scheduled from, the questions the
   exam office sets, the sittings candidates finish, the switch that shuts the exam portal, and the
   character assessments once they are filed. A finished sitting is filed as an **attempt**
   (`synced_to_ca` is always written `false`): the mark itself still only reaches the database when a
   person types it on *Update CA* and saves.
+- **A filed CA structure is what the school states, not what the marks are worked out from.**
+  `ca_component_structures` now holds each tier's components, and every machine reads the same list —
+  but the gradebook under *Operations → Update CA* and `/api/ca` still add the five columns written
+  into that code (10 + 10 + 10 + 10 + 60). Filing a different structure therefore changes what the
+  school says its assessment is made of, not a child's total. Both screens say this on their face.
+  Making the gradebook compute from the filed structure is the follow-up that has not been done.
 - **Ratings stay on the form teacher's machine until they are filed.** *Traits & Psychomotor*
   edits this device's copy as the adult types — that is what makes a long rating session survive a
   crashed tab — and the screen now says so on the toast (*Not yet in the school's records*). The

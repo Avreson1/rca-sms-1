@@ -210,12 +210,12 @@ sitting and the switch.
 4. **Subjects (`/setup/subjects`)**: Master directory of subjects, filed per name and band on the school's records, with the arms each is taught to held as names (single add, bulk add, CSV import, CSV export). A subject whose CA marks are still filed is refused on deletion and named, because removing the line would orphan the marks.
 5. **Subject Templates (`/setup/subject-templates`)**: Standard curriculum packages assigned to each education tier, filed on the school's records so the CA grid offers the same shortcut on every machine. A package is a plan, not a register: it holds no pupil count.
 6. **Fees Configuration (`/setup/fees`)**: Line-item breakdown of tuition, ICT levy, examination fees, and development levies.
-7. **CA Structure (`/setup/ca-structure`)**: Component weighting manager (Tests, Projects, Mid-Term, Terminal Exam) per education tier.
+7. **CA Structure (`/setup/ca-structure`)**: What the school states each tier's assessment is made of — an ordered list of components with their marks and the school's own note about that tier, filed one row per tier on the school's records so every machine reads the same statement. It seeds nothing: the four distributions the portal used to ship arrive only when somebody presses the button that calls them a starting outline, and that button says the outline is the software author's, not the school's approval. Filing a structure does **not** re-derive a mark — the gradebook still adds the five columns written into its own code, and both screens say so on their face. `supabase/ca_structure_and_bulletin.sql` has to be run for any of it to hold; until then the screen counts 0 of 4 tiers filed, calls the list this browser's copy, and refuses every filing with the sentence naming that file.
 8. **Grading Scales (`/setup/grading`)**: Multi-tier bracket editor for marks, GPA points, remarks, and badge colors.
 9. **Minimum Pass Scores (`/setup/pass-scores`)**: Benchmark promotion thresholds per grade level.
 10. **Traits & Domains (`/setup/traits`)**: Affective and psychomotor criteria library.
 11. **School Houses (`/setup/houses`)**: House sports affiliations (Sapphire, Ruby, Emerald, Topaz).
-12. **Report Card Templates (`/setup/report-templates`)**: Visual branding, color scheme selection, and bulletin preview.
+12. **Report Card Theme & Newsletter (`/setup/report-templates`)**: Two records on the school's own tables. The card theme is one standing row — which of the six schemes every machine opens a card in — and the terminal circular is one row per session and term, so a Third Term card prints the words written for Third Term and, when none were written, prints *"no circular has been filed for this term"* instead of last term's. Nothing is seeded: the resumption date, the fee deadline and the bank account that used to ship inside the portal now start blank, because a printed account number sends families money. The scheme picked on the score-card screen is a choice about the sheets in that printer and never writes this row. `supabase/ca_structure_and_bulletin.sql` has to be run for either to hold.
 
 ---
 
@@ -261,6 +261,19 @@ The database architecture is designed with **Supabase PostgreSQL**, utilizing Ro
 13. `public.activity_templates`: a reusable activity blueprint — its name, category, who it is for,
     who leads it, where it is held, what it costs, the objectives and how many days it runs — with
     every field but the title allowed to stay empty. Also created by `supabase/calendar.sql`.
+14. `public.ca_component_structures`: what the school states one tier's assessment is made of — the
+    components in teaching order (1–12, each with its own marks) and the school's note about that
+    tier, one row per tier, filed and corrected by a named login. Created by
+    `supabase/ca_structure_and_bulletin.sql`, which seeds no row and stores no total or weight: the
+    marks are the fact, and the gradebook does not yet read this table.
+15. `public.report_card_settings`: exactly one row — which of the six colour schemes the cards are
+    printed in, and who filed it. The scheme chosen on the score-card screen is a print-run choice
+    and never writes here. Also created by `supabase/ca_structure_and_bulletin.sql`.
+16. `public.terminal_newsletters`: one circular per session and term — the title, the principal's
+    address and signatory, the resumption wording, the key events as a list, the fee policy, the bank
+    details and the special advisory, each allowed to stay empty and printed as empty when it is. The
+    score card prints the row labelled with the term it is printing for, or says none is filed. Also
+    created by `supabase/ca_structure_and_bulletin.sql`, which seeds no row.
 
 Every feature built after `schema.sql` ships its own file in `supabase/` (the list, in run order, is
 in [DEPLOYMENT.md](DEPLOYMENT.md)): each creates or extends its tables, enables RLS with **no**

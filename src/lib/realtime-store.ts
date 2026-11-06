@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { SCHOOL_INFO, ROLES, RBAC_STEPS } from "./constants";
 import { cachedSchoolSession, cachedSchoolTerm } from "./school-config";
 import { isSupabaseConfigured } from "./supabase/client";
@@ -57,6 +57,14 @@ import {
   saveActivityTemplateOnServer,
   removeActivityTemplateOnServer,
   type ActivityTemplateInput,
+  fetchCAStructuresFromSupabase,
+  saveCAStructuresOnServer,
+  type CAStructureFile,
+  type CAStructureInput,
+  fetchReportThemeFromSupabase,
+  saveReportThemeOnServer,
+  fetchNewslettersFromSupabase,
+  saveNewsletterOnServer,
 } from "./supabase/db";
 
 // Channel for instant multi-tab & multi-window event synchronization
@@ -81,11 +89,17 @@ const STORAGE_KEYS = {
   // settings purge can clear that device copy.
   CALENDAR: "rca_calendar_store_v6",
   INMAIL: "rca_inmail_store_v6",
-  NEWSLETTER: "rca_newsletter_store_v6",
+  // The terminal circulars, the CA structures and the card theme are on the
+  // school's records now (/api/newsletter, /api/ca-structures,
+  // /api/report-theme). These keys stay so a machine can still print something
+  // when the school's list cannot be read, and so the settings purge can clear
+  // that device copy — a cached circular carries the school's bank details.
+  NEWSLETTER: "rca_newsletter_store_v8",
   GRADING_SCALES: "rca_grading_scales_store_v6",
   ACTIVE_RBAC_ROLE: "rca_active_rbac_role_v6",
   BROWSER_OWNER: "rca_portal_browser_owner_v1",
   CA_STRUCTURES: "rca_ca_structures_store_v7",
+  REPORT_THEME: "rca_report_theme_store_v8",
   ACTIVITY_TEMPLATES: "rca_activity_templates_store_v7",
   AUTH_SESSION: "rca_auth_session_store_v7",
   // The timetable is on the school records now (/api/timetable). The key stays so the
@@ -334,13 +348,31 @@ export interface CBTSittingRecord {
   completedAt: string;
 }
 
+/**
+ * The six report card schemes. The keys are the ids the school's theme row
+ * holds, the picker on the setup screen and the print styles on the score card.
+ */
+export type ReportTheme = "royal" | "scheme2" | "emerald" | "burgundy" | "gold" | "slate";
+
+/**
+ * The end-of-term circular for ONE session and term, as the school wrote it.
+ *
+ * It is keyed by term because the printed sheet carries that term's heading: a
+ * single shared message could only be true for one of the three, and for the
+ * other two the card printed another term's resumption date, fee deadline and
+ * events under a label that did not match.
+ *
+ * Every field is allowed to be empty, and the card says so in words
+ * ("Resumption date not announced") rather than showing a placeholder. The
+ * previous defaults invented a resumption date, four dated highlights, a fee
+ * deadline and — worst — a bank account number that belongs to nobody. A printed
+ * account number sends families money, so it is typed by the bursary or not
+ * printed at all.
+ */
 export interface NewsletterRecord {
-  id: string;
   session: string;
   term: "First Term" | "Second Term" | "Third Term";
-  themeColor: "royal" | "scheme2" | "emerald" | "burgundy" | "gold" | "slate";
-  title?: string;
-  resumptionDate?: string;
+  title: string;
   principalName: string;
   principalMessage: string;
   nextTermResumption: string;
@@ -351,26 +383,40 @@ export interface NewsletterRecord {
     accountName: string;
     accountNumber: string;
   };
-  customNotes?: string;
+  customNotes: string;
   updatedAt?: string;
+  updatedBy?: string;
 }
 
+/** The tiers the portal groups classes into. Same four the grading scales use. */
+export type CATierKey = "PLAY_PRESCHOOL" | "NURSERY" | "PRIMARY" | "SECONDARY";
+
+export const CA_TIER_KEYS: CATierKey[] = ["PLAY_PRESCHOOL", "NURSERY", "PRIMARY", "SECONDARY"];
+
+/**
+ * One column of a tier's assessment, in the order it is taught.
+ *
+ * There is deliberately no `weight` beside `maxScore`: every screen that ever
+ * read this list used the marks, a weight nobody typed was compiled in equal to
+ * them, and two numbers for one fact is how they drift apart.
+ */
 export interface CAComponentItem {
-  id: string;
-  name: string;
   key: string;
+  name: string;
   maxScore: number;
-  weight: number;
   description: string;
 }
 
 export interface TierCAStructure {
-  tierKey: "PLAY_PRESCHOOL" | "NURSERY" | "PRIMARY" | "SECONDARY";
+  tierKey: CATierKey;
   tierTitle: string;
   applicableClasses: string[];
   components: CAComponentItem[];
-  totalMaxScore: number;
+  /** The school's own note about the tier. Empty when it has not written one. */
   description: string;
+  /** Who last filed this tier, and when. Empty and null when nobody has. */
+  updatedBy: string;
+  updatedAt: string | null;
 }
 
 /**
@@ -497,63 +543,82 @@ export const DEFAULT_GRADING_TIERS: Record<string, TierGradingConfig> = {
 };
 
 // -------------------------------------------------------------
-// Approved Tier CA Structures Baseline (Assignable by Super Admin & Exam Officer)
+// The four CA tiers and what they are called
+//
+// Which arm sits in which tier is the portal's own taxonomy — the same map the
+// grading scales and the report card group by — so the names and the class lists
+// live here rather than on the school's records. What the school decides, and
+// now files there (/api/ca-structures), is what each tier is assessed by.
 // -------------------------------------------------------------
-export const DEFAULT_CA_STRUCTURES: Record<string, TierCAStructure> = {
+export const CA_TIER_LABELS: Record<CATierKey, { tierTitle: string; applicableClasses: string[] }> = {
+  PLAY_PRESCHOOL: { tierTitle: "Play & Preschool (Creche & Playgroup)", applicableClasses: ["Pre-Play Class", "Play Class"] },
+  NURSERY: { tierTitle: "Nursery 1 & 2", applicableClasses: ["Nursery 1", "Nursery 2"] },
+  PRIMARY: { tierTitle: "Basic Primary 1 – 5", applicableClasses: ["Primary 1", "Primary 2", "Primary 3", "Primary 4", "Primary 5"] },
+  SECONDARY: {
+    tierTitle: "Junior Secondary (JSS 1-3) & Senior Secondary (SS 1-3)",
+    applicableClasses: ["JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"],
+  },
+};
+
+/**
+ * A starting outline the office can file and then correct.
+ *
+ * These distributions — and their "Week 3 early assessment in literacy and
+ * numeracy" descriptions — were written by whoever built the portal, not decided
+ * by this school. They used to be compiled in as the answer itself, so a
+ * nursery's five-part CA appeared on the screen of a school that had never
+ * approved it, and "Reset All Defaults" put them back over a list the office had
+ * edited. They now reach the screen only through the button that calls them an
+ * outline, and only reach the school's records when somebody files them.
+ */
+export const STANDARD_CA_OUTLINE: Record<CATierKey, { description: string; components: CAComponentItem[] }> = {
   PLAY_PRESCHOOL: {
-    tierKey: "PLAY_PRESCHOOL",
-    tierTitle: "Play & Preschool (Creche & Playgroup)",
-    applicableClasses: ["Pre-Play Class", "Play Class"],
     description: "Preschool evaluation based on 100% comprehensive practical and milestone examination.",
-    totalMaxScore: 100,
     components: [
-      { id: "comp-play-exam", name: "Comprehensive Milestone Examination", key: "exam", maxScore: 100, weight: 100, description: "Preschool cognitive, sensory, and motor developmental examination." },
+      { key: "exam", name: "Comprehensive Milestone Examination", maxScore: 100, description: "Preschool cognitive, sensory, and motor developmental examination." },
     ],
   },
   NURSERY: {
-    tierKey: "NURSERY",
-    tierTitle: "Nursery 1 & 2",
-    applicableClasses: ["Nursery 1", "Nursery 2"],
     description: "4-Part Continuous Assessment (40 Marks) + Terminal Examination (60 Marks).",
-    totalMaxScore: 100,
     components: [
-      { id: "comp-nur-1", name: "1st Assessment", key: "assessment1", maxScore: 10, weight: 10, description: "Week 3 early assessment in literacy and numeracy." },
-      { id: "comp-nur-2", name: "2nd Assessment", key: "assessment2", maxScore: 10, weight: 10, description: "Week 6 phonics and quantitative assessment." },
-      { id: "comp-nur-3", name: "1st Continuous Assessment Test (CAT)", key: "cat1", maxScore: 10, weight: 10, description: "Mid-term written & oral practical test." },
-      { id: "comp-nur-4", name: "2nd CAT", key: "cat2", maxScore: 10, weight: 10, description: "Post-midterm assessment." },
-      { id: "comp-nur-5", name: "Terminal Examination", key: "exam", maxScore: 60, weight: 60, description: "End of term comprehensive examination." },
+      { key: "assessment1", name: "1st Assessment", maxScore: 10, description: "Week 3 early assessment in literacy and numeracy." },
+      { key: "assessment2", name: "2nd Assessment", maxScore: 10, description: "Week 6 phonics and quantitative assessment." },
+      { key: "cat1", name: "1st Continuous Assessment Test (CAT)", maxScore: 10, description: "Mid-term written & oral practical test." },
+      { key: "cat2", name: "2nd CAT", maxScore: 10, description: "Post-midterm assessment." },
+      { key: "exam", name: "Terminal Examination", maxScore: 60, description: "End of term comprehensive examination." },
     ],
   },
   PRIMARY: {
-    tierKey: "PRIMARY",
-    tierTitle: "Basic Primary 1 – 5",
-    applicableClasses: ["Primary 1", "Primary 2", "Primary 3", "Primary 4", "Primary 5"],
     description: "4-Part CA (40 Marks) + Internal Exam (30 Marks) + External Exam (30 Marks) = 100 Marks.",
-    totalMaxScore: 100,
     components: [
-      { id: "comp-pri-1", name: "1st Assessment", key: "assessment1", maxScore: 10, weight: 10, description: "Classroom assessment 1." },
-      { id: "comp-pri-2", name: "2nd Assessment", key: "assessment2", maxScore: 10, weight: 10, description: "Classroom assessment 2." },
-      { id: "comp-pri-3", name: "1st CAT", key: "cat1", maxScore: 10, weight: 10, description: "1st Continuous Assessment Test." },
-      { id: "comp-pri-4", name: "2nd CAT", key: "cat2", maxScore: 10, weight: 10, description: "2nd Continuous Assessment Test." },
-      { id: "comp-pri-5", name: "Internal Examination", key: "examInternal", maxScore: 30, weight: 30, description: "Internal school-moderated terminal theory examination." },
-      { id: "comp-pri-6", name: "External Examination", key: "examExternal", maxScore: 30, weight: 30, description: "Standardized ministry external examination." },
+      { key: "assessment1", name: "1st Assessment", maxScore: 10, description: "Classroom assessment 1." },
+      { key: "assessment2", name: "2nd Assessment", maxScore: 10, description: "Classroom assessment 2." },
+      { key: "cat1", name: "1st CAT", maxScore: 10, description: "1st Continuous Assessment Test." },
+      { key: "cat2", name: "2nd CAT", maxScore: 10, description: "2nd Continuous Assessment Test." },
+      { key: "examInternal", name: "Internal Examination", maxScore: 30, description: "Internal school-moderated terminal theory examination." },
+      { key: "examExternal", name: "External Examination", maxScore: 30, description: "Standardized ministry external examination." },
     ],
   },
   SECONDARY: {
-    tierKey: "SECONDARY",
-    tierTitle: "Junior Secondary (JSS 1-3) & Senior Secondary (SS 1-3)",
-    applicableClasses: ["JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"],
     description: "4-Part CA (40 Marks) + Final Terminal CBT & Theory Exam (60 Marks) = 100 Marks.",
-    totalMaxScore: 100,
     components: [
-      { id: "comp-sec-1", name: "1st Assessment", key: "assessment1", maxScore: 10, weight: 10, description: "Week 3 subject assignment & practical." },
-      { id: "comp-sec-2", name: "2nd Assessment", key: "assessment2", maxScore: 10, weight: 10, description: "Week 6 term project & presentation." },
-      { id: "comp-sec-3", name: "1st Continuous Assessment Test (CAT)", key: "cat1", maxScore: 10, weight: 10, description: "1st Continuous Assessment Test (10 Marks)." },
-      { id: "comp-sec-4", name: "2nd CAT", key: "cat2", maxScore: 10, weight: 10, description: "2nd Continuous Assessment Test (10 Marks)." },
-      { id: "comp-sec-5", name: "Final Terminal Examination", key: "exam", maxScore: 60, weight: 60, description: "Comprehensive Computer-Based Testing & Theory Examination (60 Marks)." },
+      { key: "assessment1", name: "1st Assessment", maxScore: 10, description: "Week 3 subject assignment & practical." },
+      { key: "assessment2", name: "2nd Assessment", maxScore: 10, description: "Week 6 term project & presentation." },
+      { key: "cat1", name: "1st Continuous Assessment Test (CAT)", maxScore: 10, description: "1st Continuous Assessment Test (10 Marks)." },
+      { key: "cat2", name: "2nd CAT", maxScore: 10, description: "2nd Continuous Assessment Test (10 Marks)." },
+      { key: "exam", name: "Final Terminal Examination", maxScore: 60, description: "Comprehensive Computer-Based Testing & Theory Examination (60 Marks)." },
     ],
   },
 };
+
+// -------------------------------------------------------------
+// The terminal circular has no baseline either.
+//
+// A newsletter is a message to families, and the one compiled in here carried a
+// resumption date, four dated highlights, a fee deadline and a bank account
+// nobody owns. The school writes its own per term (/api/newsletter); a term with
+// nothing filed prints no circular rather than an invented one.
+// -------------------------------------------------------------
 
 // -------------------------------------------------------------
 // Activity Templates have no baseline.
@@ -632,30 +697,6 @@ export const INITIAL_CBT_QUESTIONS: CBTQuestionRecord[] = [];
 export const INITIAL_INMAIL: InmailMessage[] = [];
 export const INITIAL_SUBJECT_SCORES: SubjectScoreRecord[] = [];
 export const INITIAL_PSYCHOMOTOR: PsychomotorRecord[] = [];
-
-// Every field below prints on the end-of-term circular that goes home with a pupil, so the
-// school writes it. The previous defaults invented a resumption date, four dated highlights,
-// a fee deadline, the Director's thank-you address and — worst — a Guaranty Trust Bank
-// account number that belongs to nobody. An empty field is a question; a filled-in one is
-// an instruction, and families pay instructions.
-export const DEFAULT_NEWSLETTER: NewsletterRecord = {
-  id: "nl-default",
-  session: "2025/2026",
-  term: "First Term",
-  themeColor: "royal",
-  principalName: "",
-  principalMessage: "",
-  nextTermResumption: "",
-  eventsAndHighlights: [],
-  feePolicyAndDeadlines: "",
-  bankAccountDetails: {
-    bankName: "",
-    accountName: "",
-    accountNumber: "",
-  },
-  customNotes: "",
-  updatedAt: undefined,
-};
 
 // Helper: Broadcast event across browser tabs
 function broadcast(eventType: string, payload?: any) {
@@ -2680,31 +2721,60 @@ export function useRealtimeSubjectTemplates() {
 }
 
 // -------------------------------------------------------------
-// Hook: Real-Time Dynamic Newsletter Store
+// Hook: The terminal circular, one per session and term
 // -------------------------------------------------------------
+// The words on the back of every report card. They used to be one browser's
+// localStorage value shared by no machine and by no term: a card printed for
+// Third Term carried the resumption date and fee deadline written for First
+// under a heading that said Third Term. A bulletin is now filed against the
+// session and term it was written for (/api/newsletter), and a term with no
+// bulletin prints none rather than borrowing another's.
+//
+// `bulletinsSource` is what the screens say out loud: "server" means these are
+// the school's filed circulars, "device" means the school's list could not be
+// read and this machine is showing its own last copy.
+function isBulletinShape(value: unknown): value is NewsletterRecord {
+  const record = value as NewsletterRecord | null;
+  return !!record && typeof record.session === "string" && typeof record.term === "string";
+}
+
+function readDeviceBulletins(): NewsletterRecord[] {
+  if (typeof window === "undefined") return [];
+  const stored = localStorage.getItem(STORAGE_KEYS.NEWSLETTER);
+  if (!stored) return [];
+  try {
+    const parsed = JSON.parse(stored);
+    // A browser holding the old single-object bulletin shows nothing rather than
+    // a circular with no term on it: the term is the whole point of the row.
+    return Array.isArray(parsed) ? parsed.filter(isBulletinShape) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function useRealtimeNewsletter() {
-  const [newsletter, setNewsletter] = useState<NewsletterRecord>(DEFAULT_NEWSLETTER);
+  const [bulletins, setBulletins] = useState<NewsletterRecord[]>([]);
+  const [bulletinsSource, setBulletinsSource] = useState<"server" | "device">("device");
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem(STORAGE_KEYS.NEWSLETTER);
-      if (stored) {
-        try {
-          setNewsletter(JSON.parse(stored));
-        } catch {}
-      } else {
-        localStorage.setItem(STORAGE_KEYS.NEWSLETTER, JSON.stringify(DEFAULT_NEWSLETTER));
-      }
+    setBulletins(readDeviceBulletins());
+
+    if (isSupabaseConfigured) {
+      fetchNewslettersFromSupabase().then((serverBulletins) => {
+        // null means nothing was read, so this browser keeps its own copy rather
+        // than presenting "no circular has been filed" as a fact about the school.
+        if (!serverBulletins) return;
+        setBulletins(serverBulletins);
+        setBulletinsSource("server");
+        localStorage.setItem(STORAGE_KEYS.NEWSLETTER, JSON.stringify(serverBulletins));
+      });
     }
 
     let channel: BroadcastChannel | null = null;
     if (typeof window !== "undefined" && "BroadcastChannel" in window) {
       channel = new BroadcastChannel(CHANNEL_NAME);
       channel.onmessage = (event) => {
-        if (event.data?.type === "NEWSLETTER_UPDATED") {
-          const stored = localStorage.getItem(STORAGE_KEYS.NEWSLETTER);
-          if (stored) setNewsletter(JSON.parse(stored));
-        }
+        if (event.data?.type === "NEWSLETTER_UPDATED") setBulletins(readDeviceBulletins());
       };
     }
     return () => {
@@ -2712,60 +2782,231 @@ export function useRealtimeNewsletter() {
     };
   }, []);
 
-  const updateNewsletter = (updates: Partial<NewsletterRecord>) => {
-    const updated: NewsletterRecord = {
-      ...newsletter,
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    };
-    setNewsletter(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.NEWSLETTER, JSON.stringify(updated));
+  const showServerBulletins = (): Promise<boolean> => {
+    if (!isSupabaseConfigured) return Promise.resolve(false);
+    return fetchNewslettersFromSupabase().then((serverBulletins) => {
+      if (!serverBulletins) return false;
+      setBulletins(serverBulletins);
+      setBulletinsSource("server");
+      localStorage.setItem(STORAGE_KEYS.NEWSLETTER, JSON.stringify(serverBulletins));
       broadcast("NEWSLETTER_UPDATED");
-    }
+      return true;
+    });
   };
 
-  const resetNewsletter = () => {
-    setNewsletter(DEFAULT_NEWSLETTER);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.NEWSLETTER, JSON.stringify(DEFAULT_NEWSLETTER));
-      broadcast("NEWSLETTER_UPDATED");
+  /** The circular filed for one session and term, or null when that term has none. */
+  const newsletterFor = (session: string, term: string): NewsletterRecord | null =>
+    bulletins.find((bulletin) => bulletin.session === session && bulletin.term === term) ?? null;
+
+  /**
+   * Files the circular for the term it is labelled with, then shows the school's
+   * answer back rather than the draft that was sent.
+   */
+  const saveBulletin = async (record: NewsletterRecord): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database, so nothing was filed" };
     }
+
+    const outcome = await saveNewsletterOnServer(record);
+    if (outcome.ok) await showServerBulletins();
+    return outcome;
   };
 
   return {
-    newsletter,
-    updateNewsletter,
-    resetNewsletter,
+    bulletins,
+    bulletinsSource,
+    newsletterFor,
+    saveBulletin,
+    reloadBulletins: showServerBulletins,
   };
 }
 
 // -------------------------------------------------------------
-// Hook: Real-Time Dynamic CA Structure Store (Assignable by Super Admin & Exam Officer)
+// Hook: The report card theme (the school's one standing choice)
 // -------------------------------------------------------------
-export function useRealtimeCAStructure() {
-  const [caStructures, setCAStructures] = useState<Record<string, TierCAStructure>>(DEFAULT_CA_STRUCTURES);
+// Which of the six schemes the cards are printed in. It is one row on the
+// school's records (/api/report-theme); before that row is read a screen shows
+// the portal's built-in scheme and says that is what it is doing. Picking a
+// different scheme on the score-card screen is a choice about the sheets in the
+// printer and does not come near this value.
+const BUILT_IN_REPORT_THEME: ReportTheme = "royal";
+
+interface ThemeOnDevice {
+  theme: ReportTheme;
+  updatedBy: string;
+  updatedAt: string | null;
+}
+
+function readDeviceTheme(): ThemeOnDevice | null {
+  if (typeof window === "undefined") return null;
+  const stored = localStorage.getItem(STORAGE_KEYS.REPORT_THEME);
+  if (!stored) return null;
+  try {
+    const parsed = JSON.parse(stored) as { theme?: unknown; updatedBy?: unknown; updatedAt?: unknown };
+    if (typeof parsed?.theme !== "string") return null;
+    return {
+      theme: parsed.theme as ReportTheme,
+      updatedBy: typeof parsed.updatedBy === "string" ? parsed.updatedBy : "",
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function storeThemeOnDevice(cached: ThemeOnDevice) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.REPORT_THEME, JSON.stringify(cached));
+  broadcast("REPORT_THEME_UPDATED");
+}
+
+export function useRealtimeReportTheme() {
+  const [theme, setTheme] = useState<ReportTheme>(BUILT_IN_REPORT_THEME);
+  const [themeUpdatedBy, setThemeUpdatedBy] = useState("");
+  const [themeUpdatedAt, setThemeUpdatedAt] = useState<string | null>(null);
+  const [themeSource, setThemeSource] = useState<"server" | "device">("device");
+
+  const adopt = (cached: ThemeOnDevice | null) => {
+    if (!cached) return;
+    setTheme(cached.theme);
+    setThemeUpdatedBy(cached.updatedBy);
+    setThemeUpdatedAt(cached.updatedAt);
+  };
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem(STORAGE_KEYS.CA_STRUCTURES);
-      if (stored) {
-        try {
-          setCAStructures(JSON.parse(stored));
-        } catch {}
-      } else {
-        localStorage.setItem(STORAGE_KEYS.CA_STRUCTURES, JSON.stringify(DEFAULT_CA_STRUCTURES));
-      }
+    adopt(readDeviceTheme());
+
+    if (isSupabaseConfigured) {
+      fetchReportThemeFromSupabase().then((filed) => {
+        // null means the row could not be read — or has never been filed — so
+        // this machine keeps showing the built-in scheme and says where it is from.
+        if (!filed) return;
+        storeThemeOnDevice(filed);
+        adopt(filed);
+        setThemeSource("server");
+      });
     }
 
     let channel: BroadcastChannel | null = null;
     if (typeof window !== "undefined" && "BroadcastChannel" in window) {
       channel = new BroadcastChannel(CHANNEL_NAME);
       channel.onmessage = (event) => {
-        if (event.data?.type === "CA_STRUCTURES_UPDATED") {
-          const stored = localStorage.getItem(STORAGE_KEYS.CA_STRUCTURES);
-          if (stored) setCAStructures(JSON.parse(stored));
-        }
+        if (event.data?.type !== "REPORT_THEME_UPDATED") return;
+        // A purge deletes the cached theme, so the screen goes back to the
+        // built-in scheme and says that is what it is showing.
+        const cachedTheme = readDeviceTheme();
+        adopt(cachedTheme ?? { theme: BUILT_IN_REPORT_THEME, updatedBy: "", updatedAt: null });
+        if (!cachedTheme) setThemeSource("device");
+      };
+    }
+    return () => {
+      channel?.close();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const showServerTheme = (): Promise<boolean> => {
+    if (!isSupabaseConfigured) return Promise.resolve(false);
+    return fetchReportThemeFromSupabase().then((filed) => {
+      if (!filed) return false;
+      storeThemeOnDevice(filed);
+      adopt(filed);
+      setThemeSource("server");
+      return true;
+    });
+  };
+
+  /** Files the school's theme, then reads it back so the screen shows the answer. */
+  const fileTheme = async (next: ReportTheme): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database, so nothing was filed" };
+    }
+
+    const outcome = await saveReportThemeOnServer(next);
+    if (outcome.ok) await showServerTheme();
+    return outcome;
+  };
+
+  return {
+    theme,
+    themeSource,
+    themeUpdatedBy,
+    themeUpdatedAt,
+    fileTheme,
+    reloadTheme: showServerTheme,
+  };
+}
+
+// -------------------------------------------------------------
+// Hook: The CA component structure of each tier
+// -------------------------------------------------------------
+// What a tier's assessment is made of. This used to be four distributions
+// compiled into the portal and editable only in one browser's localStorage, so
+// every machine disagreed about what the school's assessment was — and the
+// invented one won until somebody typed over it.
+//
+// What filing a structure does NOT do is change a computed mark. The gradebook
+// and /api/ca still add the five columns written into that code, so the CA screen
+// says plainly that this record is what the school states, not a re-grading.
+function readDeviceStructures(): Record<string, CAStructureFile> {
+  if (typeof window === "undefined") return {};
+  const stored = localStorage.getItem(STORAGE_KEYS.CA_STRUCTURES);
+  if (!stored) return {};
+  try {
+    const parsed = JSON.parse(stored) as Record<string, { components?: unknown; description?: unknown }>;
+    const files: Record<string, CAStructureFile> = {};
+    for (const [tierKey, value] of Object.entries(parsed ?? {})) {
+      if (!Array.isArray(value?.components)) continue;
+      const key = tierKey as CATierKey;
+      if (!CA_TIER_KEYS.includes(key)) continue;
+      files[key] = {
+        tierKey: key,
+        description: typeof value.description === "string" ? value.description : "",
+        updatedBy: "",
+        updatedAt: null,
+        components: value.components.flatMap((entry) => {
+          const component = entry as { key?: unknown; name?: unknown; maxScore?: unknown; description?: unknown };
+          if (typeof component?.name !== "string" || !component.name) return [];
+          return [
+            {
+              key: typeof component.key === "string" ? component.key : component.name.toLowerCase().replace(/\W+/g, "_"),
+              name: component.name,
+              maxScore: Number(component.maxScore) || 0,
+              description: typeof component.description === "string" ? component.description : "",
+            },
+          ];
+        }),
+      };
+    }
+    return files;
+  } catch {
+    return {};
+  }
+}
+
+export function useRealtimeCAStructure() {
+  const [filed, setFiled] = useState<Record<string, CAStructureFile>>({});
+  const [caStructuresSource, setCAStructuresSource] = useState<"server" | "device">("device");
+
+  useEffect(() => {
+    setFiled(readDeviceStructures());
+
+    if (isSupabaseConfigured) {
+      fetchCAStructuresFromSupabase().then((serverStructures) => {
+        // null means nothing was read, so the device copy stays rather than an
+        // empty set of tiers the school may well have filed already.
+        if (!serverStructures) return;
+        setFiled(serverStructures);
+        setCAStructuresSource("server");
+        localStorage.setItem(STORAGE_KEYS.CA_STRUCTURES, JSON.stringify(serverStructures));
+      });
+    }
+
+    let channel: BroadcastChannel | null = null;
+    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+      channel = new BroadcastChannel(CHANNEL_NAME);
+      channel.onmessage = (event) => {
+        if (event.data?.type === "CA_STRUCTURES_UPDATED") setFiled(readDeviceStructures());
       };
     }
     return () => {
@@ -2773,35 +3014,79 @@ export function useRealtimeCAStructure() {
     };
   }, []);
 
-  const updateTierCAComponents = (tierKey: string, components: CAComponentItem[]) => {
-    const totalMaxScore = components.reduce((sum, c) => sum + (c.maxScore || 0), 0);
-    const updated = {
-      ...caStructures,
-      [tierKey]: {
-        ...caStructures[tierKey],
-        components,
-        totalMaxScore,
-      },
-    };
-    setCAStructures(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.CA_STRUCTURES, JSON.stringify(updated));
+  const showServerStructures = (): Promise<boolean> => {
+    if (!isSupabaseConfigured) return Promise.resolve(false);
+    return fetchCAStructuresFromSupabase().then((serverStructures) => {
+      if (!serverStructures) return false;
+      setFiled(serverStructures);
+      setCAStructuresSource("server");
+      localStorage.setItem(STORAGE_KEYS.CA_STRUCTURES, JSON.stringify(serverStructures));
       broadcast("CA_STRUCTURES_UPDATED");
-    }
+      return true;
+    });
   };
 
-  const resetCAStructuresToDefault = () => {
-    setCAStructures(DEFAULT_CA_STRUCTURES);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.CA_STRUCTURES, JSON.stringify(DEFAULT_CA_STRUCTURES));
-      broadcast("CA_STRUCTURES_UPDATED");
+  // The four tiers always appear on the screen; a tier with no filed row appears
+  // with no components, which the screen calls what it is.
+  const caStructures = useMemo(() => {
+    const map = {} as Record<CATierKey, TierCAStructure>;
+    for (const tierKey of CA_TIER_KEYS) {
+      const structure = filed[tierKey];
+      map[tierKey] = {
+        tierKey,
+        tierTitle: CA_TIER_LABELS[tierKey].tierTitle,
+        applicableClasses: CA_TIER_LABELS[tierKey].applicableClasses,
+        components: structure?.components ?? [],
+        description: structure?.description ?? "",
+        updatedBy: structure?.updatedBy ?? "",
+        updatedAt: structure?.updatedAt ?? null,
+      };
     }
+    return map;
+  }, [filed]);
+
+  /** Files one tier's whole component list, then shows the school's answer back. */
+  const fileTierStructure = async (
+    tierKey: CATierKey,
+    structure: { components: CAComponentItem[]; description: string }
+  ): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database, so nothing was filed" };
+    }
+
+    const outcome = await saveCAStructuresOnServer([{ tierKey, components: structure.components, description: structure.description }]);
+    if (outcome.ok) await showServerStructures();
+    return outcome;
+  };
+
+  /**
+   * Files the built-in starting outline for all four tiers, for an office that
+   * agrees with it and wants to correct it afterwards. Nothing is filed until
+   * this button is pressed, and the toast says it is an outline rather than the
+   * school's approved structure.
+   */
+  const fileStandardOutline = async (): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database, so nothing was filed" };
+    }
+
+    const structures: CAStructureInput[] = CA_TIER_KEYS.map((tierKey) => ({
+      tierKey,
+      description: STANDARD_CA_OUTLINE[tierKey].description,
+      components: STANDARD_CA_OUTLINE[tierKey].components,
+    }));
+
+    const outcome = await saveCAStructuresOnServer(structures);
+    if (outcome.ok) await showServerStructures();
+    return outcome;
   };
 
   return {
     caStructures,
-    updateTierCAComponents,
-    resetCAStructuresToDefault,
+    caStructuresSource,
+    fileTierStructure,
+    fileStandardOutline,
+    reloadCAStructures: showServerStructures,
   };
 }
 
@@ -3158,6 +3443,9 @@ export function purgeAllDemoData() {
   localStorage.setItem(STORAGE_KEYS.SUBJECTS, JSON.stringify([]));
   localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify([]));
   localStorage.setItem(STORAGE_KEYS.TIMETABLE, JSON.stringify([]));
+  localStorage.setItem(STORAGE_KEYS.CA_STRUCTURES, JSON.stringify({}));
+  localStorage.setItem(STORAGE_KEYS.NEWSLETTER, JSON.stringify([]));
+  localStorage.removeItem(STORAGE_KEYS.REPORT_THEME);
   localStorage.setItem(STORAGE_KEYS.CBT_CONFIG, JSON.stringify({ ...DEFAULT_CBT_CONFIG, isOpen: false }));
   localStorage.removeItem(STORAGE_KEYS.AUTH_SESSION);
   broadcast("STUDENTS_UPDATED");
@@ -3174,6 +3462,7 @@ export function purgeAllDemoData() {
   broadcast("CLASSES_UPDATED");
   broadcast("NEWSLETTER_UPDATED");
   broadcast("CA_STRUCTURES_UPDATED");
+  broadcast("REPORT_THEME_UPDATED");
   broadcast("ACTIVITY_TEMPLATES_UPDATED");
   broadcast("TIMETABLE_UPDATED");
   broadcast("CBT_CONFIG_UPDATED");
@@ -3195,9 +3484,12 @@ export function restoreDefaultSeedData() {
   localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(DEFAULT_CLASSES));
   localStorage.setItem(STORAGE_KEYS.TRAITS, JSON.stringify(DEFAULT_TRAITS));
   localStorage.setItem(STORAGE_KEYS.GRADING_SCALES, JSON.stringify(DEFAULT_GRADING_TIERS));
-  localStorage.setItem(STORAGE_KEYS.CA_STRUCTURES, JSON.stringify(DEFAULT_CA_STRUCTURES));
+  // The CA structures and the circulars have no built-in answer to put back:
+  // what this browser holds is either what the school filed or nothing, and
+  // "nothing" is what a fresh device copy means.
+  localStorage.setItem(STORAGE_KEYS.CA_STRUCTURES, JSON.stringify({}));
   localStorage.setItem(STORAGE_KEYS.ACTIVITY_TEMPLATES, JSON.stringify([]));
-  localStorage.setItem(STORAGE_KEYS.NEWSLETTER, JSON.stringify(DEFAULT_NEWSLETTER));
+  localStorage.setItem(STORAGE_KEYS.NEWSLETTER, JSON.stringify([]));
   localStorage.setItem(STORAGE_KEYS.CBT_CONFIG, JSON.stringify(DEFAULT_CBT_CONFIG));
   broadcast("STUDENTS_UPDATED");
   broadcast("SUBJECT_SCORES_UPDATED");

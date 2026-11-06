@@ -15,7 +15,6 @@ import {
   useRealtimeAuth,
   useRealtimeCBTConfig,
 } from "@/lib/realtime-store";
-import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   ArrowLeft,
   Save,
@@ -41,7 +40,7 @@ import {
 export default function SettingsPage() {
   const router = useRouter();
   const { currentUser, purgeAllSessions } = useRealtimeAuth();
-  const { newsletter, updateNewsletter } = useRealtimeNewsletter();
+  const { bulletinsSource, newsletterFor } = useRealtimeNewsletter();
   const { cbtConfig, configSource, updateCBTConfig, toggleCBTAccess } = useRealtimeCBTConfig();
 
   const [schoolName, setSchoolName] = useState<string>(SCHOOL_INFO.name);
@@ -68,13 +67,13 @@ export default function SettingsPage() {
     setCurrentTerm(schoolConfig.current_term);
   }, [schoolConfig]);
 
-  // Newsletter settings local state
-  const [newsletterTitle, setNewsletterTitle] = useState(newsletter.title || "");
-  // The inputs used to open pre-filled with "Monday, 12th January 2026" and a
-  // house title, so the first Save filed a resumption date the school had never
-  // set — and it printed on every child's bulletin. Blank means "not announced".
-  const [resumptionDate, setResumptionDate] = useState(newsletter.nextTermResumption || newsletter.resumptionDate || "");
-  const [principalName, setPrincipalName] = useState(newsletter.principalName || "");
+  // The circular is one row per session and term on the school's records now, and
+  // filing it replaces the whole row. So this screen reads the one belonging to
+  // the session and term the school is in and shows it, and points at the editor
+  // that writes it — three boxes here that saved on their own would have blanked
+  // the principal's address, the events list and the bank details with every Save.
+  const filedBulletin =
+    schoolConfig === null ? null : newsletterFor(schoolConfig.current_session, schoolConfig.current_term);
 
   // CBT Configuration local state
   const [cbtExamMode, setCBTExamMode] = useState(cbtConfig.activeExamMode || "");
@@ -92,12 +91,6 @@ export default function SettingsPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateNewsletter({
-      title: newsletterTitle,
-      resumptionDate: resumptionDate,
-      nextTermResumption: resumptionDate,
-      principalName: principalName,
-    });
 
     setSavingSchool(true);
     setSchoolSaveProblem(null);
@@ -122,7 +115,7 @@ export default function SettingsPage() {
 
     if (!ok) {
       setSchoolSaveProblem(
-        `Nothing above reached the school's records: ${reason ?? "the portal server did not answer"}. The session, term, name and address are still whatever the school has on file. The bulletin wording is on this device only.`
+        `Nothing above reached the school's records: ${reason ?? "the portal server did not answer"}. The session, term, name and address are still whatever the school has on file.`
       );
       return;
     }
@@ -161,7 +154,7 @@ export default function SettingsPage() {
   const handlePurge = () => {
     if (
       confirm(
-        "Clear the demo copies held on this browser (pupils, staff, scores, invoices, this browser's copies of the calendar, the activity blueprints, timetable and question bank, and inmail)? Only this browser is affected, these copies cannot be brought back, and anything already filed on the school's own records stays on the school's records — reopen those screens and the filed lists return."
+        "Clear the demo copies held on this browser (pupils, staff, scores, invoices, this browser's copies of the calendar, the activity blueprints, timetable, question bank, CA structures, card theme and circulars, and inmail)? Only this browser is affected, these copies cannot be brought back, and anything already filed on the school's own records stays on the school's records — reopen those screens and the filed lists return. The cached circular carries the school's bank details, which is the main reason to clear it on a shared machine."
       )
     ) {
       purgeAllDemoData();
@@ -226,8 +219,6 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <DeviceOnlyNotice what="The CBT lockdown setting" />
-
         {/* Toast Alert */}
         {toastMessage && (
           <div className="bg-[#0a1128] text-white border border-cyan-400 px-5 py-3 rounded-2xl text-xs font-bold flex items-center gap-2.5 z-50 animate-in fade-in shadow-xl">
@@ -241,8 +232,8 @@ export default function SettingsPage() {
             <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
             <span>
               The school&apos;s name, address, session and term are saved on its records — every device that opens the
-              portal now reads these values. The bulletin wording below is still kept on this device only, so type it on
-              the machine that prints the cards.
+              portal now reads these values. The term&apos;s circular is a separate record: it is filed, and read from,
+              under Setup → Report &amp; Newsletter Templates.
             </span>
           </div>
         )}
@@ -519,48 +510,68 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                {/* Scorecard Newsletter Defaults */}
+                {/* The term's circular, read from the school's records */}
                 <div className="pt-2">
                   <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
                     <FileText className="w-4 h-4 text-cyan-600" />
                     Scorecard End-of-Term Address &amp; Signatory
                   </h3>
 
-                  <div className="space-y-3 pt-3">
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">Terminal Bulletin Title</label>
-                      <input
-                        type="text"
-                        value={newsletterTitle}
-                        onChange={(e) => setNewsletterTitle(e.target.value)}
-                        placeholder="e.g. End-of-Term Bulletin (not announced yet)"
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-[#0000FF] placeholder:font-normal placeholder:text-slate-400"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block font-bold text-slate-700 mb-1">Next Term Resumption Date</label>
-                        <input
-                          type="text"
-                          value={resumptionDate}
-                          onChange={(e) => setResumptionDate(e.target.value)}
-                          placeholder="Not announced — cards print &quot;To be announced&quot;"
-                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-semibold outline-none focus:border-[#0000FF] placeholder:font-normal placeholder:text-slate-400"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block font-bold text-slate-700 mb-1">Principal / Signatory Full Title</label>
-                        <input
-                          type="text"
-                          value={principalName}
-                          onChange={(e) => setPrincipalName(e.target.value)}
-                          placeholder="Name of the principal who signs the report card"
-                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-bold outline-none focus:border-[#0000FF]"
-                        />
-                      </div>
-                    </div>
+                  <div className="space-y-2 pt-3">
+                    <p className="text-[11px] text-slate-500 leading-snug">
+                      These are not boxes to type in. The circular is one record per session and term, and it is written
+                      where it is read from — Setup → Report &amp; Newsletter Templates.
+                    </p>
+                    {schoolConfig === null ? (
+                      <p className="text-[11px] font-bold text-amber-800">
+                        The school&apos;s session and term have not been read, so this screen cannot say which circular
+                        is the current one.
+                      </p>
+                    ) : bulletinsSource !== "server" ? (
+                      <p className="text-[11px] font-bold text-amber-800">
+                        The circulars could not be read from the school&apos;s records, so whether{" "}
+                        {schoolConfig.current_term} of {schoolConfig.current_session} has one is not known here.
+                      </p>
+                    ) : filedBulletin === null ? (
+                      <p className="text-[11px] text-slate-600">
+                        No circular is filed for {schoolConfig.current_term} of {schoolConfig.current_session}. Cards
+                        printed for that term say they have none.
+                      </p>
+                    ) : (
+                      <dl className="text-[11px] space-y-1">
+                        <div className="flex gap-2">
+                          <dt className="font-bold text-slate-600 w-28 shrink-0">Bulletin</dt>
+                          <dd className="text-slate-800">{filedBulletin.title || <em>Untitled</em>}</dd>
+                        </div>
+                        <div className="flex gap-2">
+                          <dt className="font-bold text-slate-600 w-28 shrink-0">Signatory</dt>
+                          <dd className="text-slate-800">{filedBulletin.principalName || <em>Not filed</em>}</dd>
+                        </div>
+                        <div className="flex gap-2">
+                          <dt className="font-bold text-slate-600 w-28 shrink-0">Resumption</dt>
+                          <dd className="text-slate-800">
+                            {filedBulletin.nextTermResumption || <em>Not announced</em>}
+                          </dd>
+                        </div>
+                        <div className="flex gap-2">
+                          <dt className="font-bold text-slate-600 w-28 shrink-0">Written</dt>
+                          <dd className="text-slate-800">
+                            {filedBulletin.updatedBy || "somebody at the school"}
+                            {filedBulletin.updatedAt
+                              ? ` on ${new Date(filedBulletin.updatedAt).toLocaleDateString()}`
+                              : ""}
+                            .
+                          </dd>
+                        </div>
+                      </dl>
+                    )}
+                    <Link
+                      href="/setup/report-templates"
+                      className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#0000FF] hover:text-blue-800"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      Open the circular editor
+                    </Link>
                   </div>
                 </div>
 
