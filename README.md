@@ -78,7 +78,7 @@ protection rule*: branch name pattern `main`, then tick **Require a pull request
 and **Require status checks to pass** → choose `CI / build`. Until that is set, a broken build can
 be live without anyone deciding it should be.
 
-### 4. The portal is multi-machine for the records, the money and the card — and for the class and subject lists and the exam; the calendar is not
+### 4. The portal is multi-machine for the records, the money, the card, the class and subject lists, the exam and the term calendar
 
 A clerk's entry now reaches every other machine for: pupils, staff and logins, the class arms the
 school runs, the subject list and the subject packages, invoices, the fee
@@ -86,6 +86,7 @@ schedule, payments and receipts, CA and exam marks, the grading scales, the scho
 session / term, published results, closed terms, the list of rated traits, what the school owns and
 every unit of stock that moved in or out of its stores, the timetable with the number of periods and
 breaks a school day actually has, the duty roster with who filed it and against which date, the
+milestones the office dates a term by and the activity blueprints they are scheduled from, the
 questions the exam office sets and the sittings candidates finish (as attempts, never as marks) and
 the switch that shuts the exam portal, and —
 once the form teacher presses *File
@@ -93,11 +94,12 @@ this class into the school's records* on *Traits & Psychomotor* — the characte
 attendance ratings that fill the other half of a child's card. That was the `P0`–`P2` work and it
 depends on `supabase/operations_state.sql`, `supabase/traits_assessments.sql`,
 `supabase/inventory.sql`, `supabase/timetable.sql`, `supabase/staff_duties.sql`,
-`supabase/classes_and_subjects.sql` and `supabase/cbt.sql` having been run. Still browser-local: the
-calendar, the CA component structure, the report theme and newsletter, and
+`supabase/classes_and_subjects.sql`, `supabase/cbt.sql` and `supabase/calendar.sql` having been run.
+Still browser-local: the CA component structure, the report theme and newsletter, and
 Inmail — each of those screens carries a *Kept on this browser* notice so nobody mistakes it for a
 record (the timetable screen keeps one, because the teacher names it groups by are still only on this
-device). See
+device; the calendar screen shows one only while its two lists cannot be read from the school's
+records). See
 *Current limitations* and the `P0`–`P4` order in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ### Cloning this repository for the live school
@@ -106,7 +108,7 @@ Everything that must change, in the order that avoids surprises:
 
 1. New Supabase project → run every file in *Database setup* below, in that order, including
    `supabase/operations_state.sql`, `supabase/traits_assessments.sql`, `supabase/inventory.sql`,
-   `supabase/timetable.sql` and `supabase/staff_duties.sql`.
+   `supabase/timetable.sql`, `supabase/staff_duties.sql` and `supabase/calendar.sql`.
    The `GRANT` block at the
    end of each is what lets the server touch the new tables (privileges belong to the
    `service_role`, so a new project needs them again); a clone that skips it shows
@@ -320,10 +322,26 @@ Run these in the Supabase SQL editor, in order:
     `/api/cbt/settings` answer the `503` that names this file, *Settings → CBT Configuration* and the
     sidebar badge work from that browser's copy and label themselves as such, *CBT* refuses to launch
     a paper it cannot read, and the CA grid prints no CBT chip and says the sittings could not be read.
+13. [`supabase/calendar.sql`](supabase/calendar.sql) — the term the school plans. It creates
+    `school_calendar_events` (one milestone per session, term and title — the unique key is what stops
+    a button pressed twice from doubling the calendar) and `activity_templates` (one blueprint per
+    title: who the activity is for, who leads it, where, what it costs, how long it runs). **It seeds
+    nothing.** The seven milestones *Populate Term Milestones* offers and the six blueprints the portal
+    used to ship with ₦450,000 budgets and named coordinators were written by whoever built the
+    software, so they now reach the records only when somebody presses the button that calls them a
+    starting outline — and every one lands undated. `date_range` is text, never a date column, because
+    the school's own wording is a span ("Nov 18 - 20, 2025"); an empty one means *the date has not been
+    fixed*, which the screen prints in those words instead of "TBD". A milestone's category widens
+    beyond the four the form offers so a scheduled sports day is not filed as "Academic". Filing needs
+    the session and term the school says it is in, and a term the portal does not recognise is refused
+    by a `CHECK`. Until you run it, `/api/calendar` and `/api/activity-templates` answer the `503` that
+    names this file, *Setup → Calendar* says both of its lists are still this browser's copy, and every
+    *File…* button on that screen answers *Nothing was filed on the school's records* with this
+    sentence.
 
 `app_accounts`, `guardian_students`, both inventory tables, both timetable tables, `staff_duties`,
-`class_arms`, `subjects`, `subject_templates` and all three CBT tables deliberately have RLS enabled
-with **no** policies,
+`class_arms`, `subjects`, `subject_templates`, all three CBT tables and both calendar tables
+deliberately have RLS enabled with **no** policies,
 so only the server (holding the service-role key) can read them. The browser's anon key sees nothing,
 including the hashes.
 
@@ -363,6 +381,8 @@ Inside that, each data route also checks the role:
 | `/api/cbt/questions` | every signed-in role (a candidate has to be served the paper the browser marks) | super admin, exam officer (one question or a batch of up to 200; an option list of 2–6 whose right index is inside it, marks 1–100, and only a numeric id is ever removed) |
 | `/api/cbt/sessions` | super admin, exam officer, teacher, QA tester, parent (**own children only**); `class_name` / `admission_no` / `session` / `term` filter it, newest first | the same four minus the QA tester — the candidate login files its own sitting, and the office may file one for a supervised room. The pupil, their name and their class come from `students`, never the request; a score above the paper's marks is refused; `synced_to_ca` is always filed `false`. `DELETE`: super admin, exam officer only |
 | `/api/cbt/settings` | every signed-in role, **including a candidate** — the locked screen has to read the switch and the notice it prints | super admin, exam officer (opening without naming what the module is used for, or without the hours it runs in, is refused; `updated_by` is the login that moved it) |
+| `/api/calendar` | super admin, exam officer, QA tester (`session` and `term` narrow it; the screen's two roles are the only ones the sidebar lets near it) | super admin, exam officer (one milestone or a batch of up to 100; the term must be one the portal knows and the session must come with it, a blank date stays blank, and a title already filed in that session and term is refused with `409` instead of overwriting it. `PATCH` moves one row's status and nothing else; `DELETE` takes only uuid ids) |
+| `/api/activity-templates` | super admin, exam officer, QA tester | super admin, exam officer (every field but the title may be blank and stays blank, `duration_days` 1–30; a blueprint with a title already on the list is refused rather than written over) |
 
 `/api/payments` POST is the money path. The receipt is filed first and the invoice balance moved
 second; if the balance cannot be moved, the receipt that was just written is withdrawn and the
@@ -477,16 +497,19 @@ cannot break the build. Nothing in `rca-sms/` reaches production.
 
 Be aware of what this system does **not** do today:
 
-- **Five screens still keep their work in the browser.** Each one now says so on screen, with a
-  *Kept on this browser* notice: Inmail, the CA component structure, the school
-  calendar and activity templates, and the report-card theme with the terminal newsletter. None of them has a route behind it, so a second
+- **Three screens still keep their work in the browser.** Each one now says so on screen, with a
+  *Kept on this browser* notice: Inmail, the CA component structure, and the
+  report-card theme with the terminal newsletter. None of them has a route behind it, so a second
   machine cannot see the typing and the data is lost if the device is cleared. (*Academics* keeps a
   notice of its own: the lessons are on the school's records and so are the arms they are grouped
-  by, but the teacher names the grid reads come from this device's staff list.) What *is*
+  by, but the teacher names the grid reads come from this device's staff list. *Setup → Calendar*
+  shows its notice only while the two lists cannot be read from `school_calendar_events` and
+  `activity_templates`, i.e. until `supabase/calendar.sql` has been run.) What *is*
   multi-machine: pupils, staff, logins, invoices, fee payments and receipts, CA/exam marks and
   grades, the grading scales, the fee schedule, the school's own name / session / term, published
   results, closed terms, the trait rubric, the stores register and its movement log, the timetable
-  and its day shape, the class arms, the subject list and the subject packages, the questions the
+  and its day shape, the class arms, the subject list and the subject packages, the milestones the
+  office dates a term by and the activity blueprints they are scheduled from, the questions the
   exam office sets, the sittings candidates finish, the switch that shuts the exam portal, and the
   character assessments once they are filed. A finished sitting is filed as an **attempt**
   (`synced_to_ca` is always written `false`): the mark itself still only reaches the database when a

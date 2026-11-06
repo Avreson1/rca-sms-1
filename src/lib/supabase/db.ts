@@ -13,6 +13,8 @@ import {
   CBTQuestionRecord,
   CBTConfigRecord,
   CBTSittingRecord,
+  CalendarEventRecord,
+  ActivityTemplateRecord,
 } from "../realtime-store";
 import { DEFAULT_TIMETABLE_DAYS, DEFAULT_TIMETABLE_PERIODS, type TimetablePeriod } from "../timetable/day-shape";
 
@@ -2420,4 +2422,238 @@ export async function countCBTSittingsForTerm(
   return readList<{ id: string }>(
     `/api/cbt/sessions?session=${encodeURIComponent(session)}&term=${encodeURIComponent(term)}&limit=1000`
   ).then(({ rows, reason }) => ({ value: rows ? rows.length : null, reason }));
+}
+
+// ============================================================================
+// 16. THE TERM CALENDAR AND THE ACTIVITY TEMPLATES
+// ============================================================================
+// A term's dates decide when families send a child with a uniform, when staff
+// meet the score-entry deadline, and what the circular prints. They were typed
+// into one browser and kept in that browser's localStorage, so the office's
+// machine was the only one that knew them and every other screen showed an empty
+// calendar with no way to tell "no plans" from "not typed yet".
+//
+// Nothing here is optimistic. The milestone list is re-read from the school's
+// records after every write, so a row the office was refused never appears on
+// screen — and a row that only this browser invented cannot be edited, because
+// the server says so rather than quietly updating nothing.
+
+interface CalendarEventRow {
+  id: string;
+  session: string;
+  term: string;
+  title: string;
+  date_range: string | null;
+  description: string | null;
+  category: string;
+  status: string;
+}
+
+function toCalendarEventRecord(row: CalendarEventRow): CalendarEventRecord {
+  return {
+    id: row.id,
+    title: row.title,
+    // An empty date is the school saying "not fixed yet". It is kept empty here
+    // so the screen can print those words instead of a placeholder date.
+    dateRange: row.date_range ?? "",
+    category: row.category as CalendarEventRecord["category"],
+    term: row.term as CalendarEventRecord["term"],
+    session: row.session,
+    description: row.description ?? "",
+    status: row.status as CalendarEventRecord["status"],
+  };
+}
+
+export async function fetchCalendarEventsFromSupabase(): Promise<CalendarEventRecord[] | null> {
+  const rows = await requestJson<CalendarEventRow[]>("/api/calendar", "The school calendar");
+  if (!rows) return null;
+  return rows.map(toCalendarEventRecord);
+}
+
+/** The milestone as the calendar screen knows it; `id` is absent when it is new. */
+export interface CalendarEventInput {
+  id?: string;
+  session: string;
+  term: string;
+  title: string;
+  dateRange: string;
+  description: string;
+  category: CalendarEventRecord["category"];
+  status: CalendarEventRecord["status"];
+}
+
+/** Files one milestone, or the starting outline the screen offers, in one call. */
+export async function saveCalendarEventsOnServer(
+  list: CalendarEventInput[]
+): Promise<{ ok: boolean; reason: string | null }> {
+  const reason = await postQuiet(
+    "/api/calendar",
+    list.map((event) => ({
+      id: event.id,
+      session: event.session,
+      term: event.term,
+      title: event.title,
+      date_range: event.dateRange,
+      description: event.description,
+      category: event.category,
+      status: event.status,
+    }))
+  );
+  if (reason) reportSyncFailure(`The milestone was NOT filed on the school's calendar: ${reason}.`);
+  else reportSyncSaved(`${list.length} milestone${list.length === 1 ? "" : "s"} filed on the school's calendar.`);
+  return { ok: !reason, reason };
+}
+
+/**
+ * Moves one milestone between Upcoming, Active and Completed.
+ *
+ * This is the only field the screen changes in place, and it sends the status
+ * alone rather than the whole row: re-sending a stale title would overwrite what
+ * somebody else corrected in the meantime.
+ */
+export async function setCalendarStatusOnServer(
+  id: string,
+  status: CalendarEventRecord["status"]
+): Promise<{ ok: boolean; reason: string | null }> {
+  try {
+    const response = await fetch("/api/calendar", {
+      method: "PATCH",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status }),
+    });
+    if (!response.ok) {
+      const reason = await serverReason(response);
+      reportSyncFailure(`The milestone's status was NOT changed on the school's calendar: ${reason}.`);
+      return { ok: false, reason };
+    }
+    reportSyncSaved(`Calendar milestone marked ${status.toLowerCase()} on the school's calendar.`);
+    return { ok: true, reason: null };
+  } catch (error) {
+    console.warn("API /api/calendar status change failed", error);
+    const reason = "the portal server did not answer";
+    reportSyncFailure(`The milestone's status was NOT changed on the school's calendar: ${reason}.`);
+    return { ok: false, reason };
+  }
+}
+
+/** Removes milestones — and says plainly when the browser had nothing to remove. */
+export async function removeCalendarEventsOnServer(
+  ids: string[]
+): Promise<{ ok: boolean; reason: string | null; removed: number }> {
+  try {
+    const response = await fetch("/api/calendar", {
+      method: "DELETE",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    if (!response.ok) {
+      const reason = await serverReason(response);
+      reportSyncFailure(`The milestone was NOT removed from the school's calendar: ${reason}.`);
+      return { ok: false, reason, removed: 0 };
+    }
+
+    const payload = (await response.json().catch(() => null)) as { data?: { removed?: number } } | null;
+    const removed = Number(payload?.data?.removed) || 0;
+    reportSyncSaved(
+      removed === 1
+        ? "Milestone removed from the school's calendar."
+        : `${removed} milestones removed from the school's calendar.`
+    );
+    return { ok: true, reason: null, removed };
+  } catch (error) {
+    console.warn("API /api/calendar delete failed", error);
+    const reason = "the portal server did not answer";
+    reportSyncFailure(`The milestone was NOT removed from the school's calendar: ${reason}.`);
+    return { ok: false, reason, removed: 0 };
+  }
+}
+
+interface ActivityTemplateRow {
+  id: string;
+  title: string;
+  category: string;
+  target_section: string | null;
+  coordinator: string | null;
+  venue: string | null;
+  budget: string | null;
+  objectives: string | null;
+  duration_days: number | string | null;
+}
+
+function toActivityTemplateRecord(row: ActivityTemplateRow): ActivityTemplateRecord {
+  return {
+    id: row.id,
+    title: row.title,
+    category: row.category as ActivityTemplateRecord["category"],
+    // Blank stays blank. "Unassigned", "Main Campus Hall" and "₦0" used to be
+    // typed in here, and each one read as a decision the school had made.
+    targetSection: row.target_section ?? "",
+    coordinator: row.coordinator ?? "",
+    venue: row.venue ?? "",
+    budget: row.budget ?? "",
+    objectives: row.objectives ?? "",
+    defaultDurationDays: Number(row.duration_days) || 1,
+  };
+}
+
+export async function fetchActivityTemplatesFromSupabase(): Promise<ActivityTemplateRecord[] | null> {
+  const rows = await requestJson<ActivityTemplateRow[]>("/api/activity-templates", "The activity templates");
+  if (!rows) return null;
+  return rows.map(toActivityTemplateRecord);
+}
+
+export interface ActivityTemplateInput {
+  id?: string;
+  title: string;
+  category: ActivityTemplateRecord["category"];
+  targetSection: string;
+  coordinator: string;
+  venue: string;
+  budget: string;
+  objectives: string;
+  defaultDurationDays: number;
+}
+
+export async function saveActivityTemplateOnServer(
+  template: ActivityTemplateInput
+): Promise<{ ok: boolean; reason: string | null }> {
+  const reason = await postQuiet("/api/activity-templates", {
+    id: template.id,
+    title: template.title,
+    category: template.category,
+    targetSection: template.targetSection,
+    coordinator: template.coordinator,
+    venue: template.venue,
+    budget: template.budget,
+    objectives: template.objectives,
+    defaultDurationDays: template.defaultDurationDays,
+  });
+  if (reason) reportSyncFailure(`The activity template was NOT filed on the school's records: ${reason}.`);
+  else reportSyncSaved(`“${template.title}” filed on the school's activity templates.`);
+  return { ok: !reason, reason };
+}
+
+export async function removeActivityTemplateOnServer(id: string): Promise<{ ok: boolean; reason: string | null }> {
+  try {
+    const response = await fetch("/api/activity-templates", {
+      method: "DELETE",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [id] }),
+    });
+    if (!response.ok) {
+      const reason = await serverReason(response);
+      reportSyncFailure(`The activity template was NOT removed from the school's records: ${reason}.`);
+      return { ok: false, reason };
+    }
+    reportSyncSaved("Activity template removed from the school's records.");
+    return { ok: true, reason: null };
+  } catch (error) {
+    console.warn("API /api/activity-templates delete failed", error);
+    const reason = "the portal server did not answer";
+    reportSyncFailure(`The activity template was NOT removed from the school's records: ${reason}.`);
+    return { ok: false, reason };
+  }
 }

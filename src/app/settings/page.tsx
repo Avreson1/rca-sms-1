@@ -161,7 +161,7 @@ export default function SettingsPage() {
   const handlePurge = () => {
     if (
       confirm(
-        "Clear the demo copies held on this browser (pupils, staff, scores, invoices, calendar, timetable, question bank and inmail)? Only this browser is affected, the lists cannot be brought back, and anything already filed on the school's own records stays on the school's records."
+        "Clear the demo copies held on this browser (pupils, staff, scores, invoices, this browser's copies of the calendar, the activity blueprints, timetable and question bank, and inmail)? Only this browser is affected, these copies cannot be brought back, and anything already filed on the school's own records stays on the school's records — reopen those screens and the filed lists return."
       )
     ) {
       purgeAllDemoData();

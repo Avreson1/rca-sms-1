@@ -204,7 +204,7 @@ sitting and the switch.
 8. **Daily Duty Roster (`/operations/duties`)**: Who is on duty for which part of which named day, filed against a real staff record by an office login that is recorded on the row. The week is built on the school's own date (`Africa/Lagos`, not the host's), a teacher or bursar reads only the rows filed against their own staff number, and the dashboard prints today's duties beside the designations the register holds. One duty per person per part of a day is enforced by the database, not the screen. `supabase/staff_duties.sql` has to be run for any of it to hold data; until then both the roster and the panel say the roster could not be read, and refuse to print an empty week in its place.
 
 ### Setup & Configuration Suite (`/setup/*`)
-1. **Academic Calendar (`/setup/calendar`)**: 12-week term schedule, holiday markers, exam windows, and activity template library.
+1. **Academic Calendar (`/setup/calendar`)**: The term's milestones and the activity blueprints they are scheduled from, filed on the school's records so every machine reads the same dates. A milestone carries the session and term the school says it is in, its date as the school's own words (blank means *the date has not fixed*, never *TBD*), one of eight categories so a sports day is not filed as *Academic*, and a status an office login moves; the same title in the same session and term is refused instead of doubled. A blueprint may be left blank in every field but its name, and blanks print as *not said* rather than as a venue, a coordinator or a budget the portal guessed. `supabase/calendar.sql` has to be run for any of it to hold data; until then both lists are this browser's copy, the screen says so, and every *File…* button refuses with the sentence naming that file. It seeds nothing — the seven starter milestones and the six sample blueprints the portal used to ship arrive only when somebody presses the button that calls them a starting outline, and they arrive undated.
 2. **Sections (`/setup/sections`)**: Creche, Nursery, Primary, JSS, and SSS section configuration.
 3. **Classes (`/setup/classes`)**: The arms the school actually runs, filed on its own records. An arm is named, placed in a section, given a form master from the staff register and a capacity; the number printed against it is the children counted from `students`, never a figure typed into this screen. An arm that still holds pupils is refused on deletion with the arms named. `supabase/classes_and_subjects.sql` has to be run for any of it to hold data; until then the screen works from this browser's list and says so.
 4. **Subjects (`/setup/subjects`)**: Master directory of subjects, filed per name and band on the school's records, with the arms each is taught to held as names (single add, bulk add, CSV import, CSV export). A subject whose CA marks are still filed is refused on deletion and named, because removing the line would orphan the marks.
@@ -254,6 +254,13 @@ The database architecture is designed with **Supabase PostgreSQL**, utilizing Ro
     the hours it runs in, the notice a locked screen prints, and who moved it last — created by
     `supabase/cbt.sql` rather than `schema.sql`, which also adds the sitting columns the older file
     never gave `cbt_exam_sessions`.
+12. `public.school_calendar_events`: one milestone per session, term and title — the date as the
+    school wrote it (`date_range` is text; empty means the date has not been fixed, which the screen
+    prints in those words), the category, the status, and which login filed or corrected the row.
+    Created by `supabase/calendar.sql`, which seeds no row.
+13. `public.activity_templates`: a reusable activity blueprint — its name, category, who it is for,
+    who leads it, where it is held, what it costs, the objectives and how many days it runs — with
+    every field but the title allowed to stay empty. Also created by `supabase/calendar.sql`.
 
 Every feature built after `schema.sql` ships its own file in `supabase/` (the list, in run order, is
 in [DEPLOYMENT.md](DEPLOYMENT.md)): each creates or extends its tables, enables RLS with **no**

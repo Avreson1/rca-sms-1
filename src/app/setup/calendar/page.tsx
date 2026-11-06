@@ -27,22 +27,115 @@ import {
   Users,
   Target,
   BookmarkPlus,
+  TriangleAlert,
 } from "lucide-react";
+
+const CALENDAR_CATEGORIES: CalendarEventRecord["category"][] = [
+  "Academic",
+  "Examination",
+  "Holiday",
+  "Administrative",
+];
+
+/**
+ * What a blueprint says, in the blueprint's own words, with the gaps named.
+ *
+ * A scheduled milestone keeps this text after the template is gone, which is why
+ * the parts the school left blank are written as blank instead of dropped: a
+ * circular drawn from this row should not look like an event with no venue when
+ * the truth is that nobody has said one yet.
+ */
+function templateNotes(template: ActivityTemplateRecord): string {
+  const stated = [
+    template.targetSection ? `For: ${template.targetSection}` : "",
+    template.coordinator ? `Led by: ${template.coordinator}` : "",
+    template.venue ? `Venue: ${template.venue}` : "",
+    template.budget ? `Budget: ${template.budget}` : "",
+    template.objectives ? `Objectives: ${template.objectives}` : "",
+  ].filter(Boolean);
+
+  const notSaid = [
+    template.targetSection ? "" : "who it is for",
+    template.coordinator ? "" : "who leads it",
+    template.venue ? "" : "where it is held",
+    template.budget ? "" : "what it costs",
+  ].filter(Boolean);
+
+  return [
+    `From the activity blueprint “${template.title}” (${template.category}).`,
+    `Planned length: ${template.defaultDurationDays} day${template.defaultDurationDays === 1 ? "" : "s"}.`,
+    stated.length > 0 ? stated.join(". ") + "." : "",
+    notSaid.length > 0 ? `Still not decided by the school: ${notSaid.join(", ")}.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * The starting outline the "Populate" button files when a school asks for it.
+ *
+ * These used to arrive dated "September 8, 2025" and marked Completed, which is a
+ * history the school never lived. They come in undated and upcoming, so the dates
+ * and the conclusions are the office's to make.
+ */
+const STARTER_MILESTONES: {
+  title: string;
+  category: CalendarEventRecord["category"];
+  description: string;
+}[] = [
+  {
+    title: "Staff Resumption & Pre-Term Harmonization Workshop",
+    category: "Administrative",
+    description: "Curriculum harmonization, test pool development, and staff onboarding.",
+  },
+  {
+    title: "Student Resumption & Commencement of Lectures",
+    category: "Academic",
+    description: "All returning and newly admitted students commence classroom lectures.",
+  },
+  {
+    title: "Continuous Assessment (Test 1) Week",
+    category: "Examination",
+    description: "Classroom Test 1 assessments across all subjects (10 Marks).",
+  },
+  {
+    title: "Mid-Term Examination & Open Day",
+    category: "Academic",
+    description: "Parent-Teacher interactive consultation and mid-term grade reviews.",
+  },
+  {
+    title: "Proctored CBT Examination Week",
+    category: "Examination",
+    description:
+      "Computer-Based Testing in the ICT lab; each finished sitting is filed on the school's records as an attempt for the gradebook.",
+  },
+  {
+    title: "Final Examination & Score Entry Deadline",
+    category: "Examination",
+    description: "Theory examinations and final Continuous Assessment gradebook locking.",
+  },
+  {
+    title: "Result Compilation, Speech & Prize-Giving Day",
+    category: "Administrative",
+    description: "Official report card release and vacation commencement.",
+  },
+];
 
 export default function AcademicCalendarPage() {
   const {
     calendarEvents,
-    addCalendarEvent,
-    updateCalendarEvent,
+    calendarSource,
+    addCalendarEvents,
+    setMilestoneStatus,
     deleteCalendarEvent,
     clearAllCalendarEvents,
   } = useRealtimeCalendar();
 
   const {
     activityTemplates,
+    activityTemplatesSource,
     addActivityTemplate,
     deleteActivityTemplate,
-    resetActivityTemplatesToDefault,
   } = useRealtimeActivityTemplates();
 
   // Milestones are stamped with the session and term the school says it is in. The
@@ -59,19 +152,25 @@ export default function AcademicCalendarPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const [isFiling, setIsFiling] = useState(false);
 
   // Calendar Event Form State
   const [newTitle, setNewTitle] = useState("");
   const [newDateRange, setNewDateRange] = useState("");
   const [newCat, setNewCat] = useState<CalendarEventRecord["category"]>("Academic");
-  const [newTerm, setNewTerm] = useState<CalendarEventRecord["term"]>("First Term");
+  // Filed under the term the school says it is in, not the first one the portal
+  // has always defaulted to — a school resuming in Third Term was filing its
+  // milestones into a term that had closed.
+  const [newTerm, setNewTerm] = useState<CalendarEventRecord["term"]>(scope.term as CalendarEventRecord["term"]);
   const [newDesc, setNewDesc] = useState("");
   const [newStatus, setNewStatus] = useState<CalendarEventRecord["status"]>("Upcoming");
 
-  // Activity Template Form State
+  // Activity Template Form State — every box starts empty, because a box the
+  // portal filled says something about the school that the school has not said.
   const [actTitle, setActTitle] = useState("");
   const [actCategory, setActCategory] = useState<ActivityTemplateRecord["category"]>("Sports");
-  const [actTargetSection, setActTargetSection] = useState("All School Sections");
+  const [actTargetSection, setActTargetSection] = useState("");
   const [actCoordinator, setActCoordinator] = useState("");
   const [actVenue, setActVenue] = useState("");
   const [actBudget, setActBudget] = useState("");
@@ -80,149 +179,214 @@ export default function AcademicCalendarPage() {
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 2500);
+    setTimeout(() => setToastMessage(null), 5000);
   };
 
-  const handleAddEvent = (e: React.FormEvent) => {
+  const handleAddEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim()) return;
+    const title = newTitle.trim();
+    if (!title) return;
 
-    addCalendarEvent({
-      title: newTitle.trim(),
-      dateRange: newDateRange.trim() || "TBD",
-      category: newCat,
-      term: newTerm,
-      session: scope.session,
-      description: newDesc.trim() || "Official academic milestone.",
-      status: newStatus,
-    });
+    setIsFiling(true);
+    const outcome = await addCalendarEvents([
+      {
+        title,
+        // An unfilled box stays unfilled. The portal used to type "TBD" here,
+        // which made a date nobody had decided look like one on the record.
+        dateRange: newDateRange.trim(),
+        category: newCat,
+        term: newTerm,
+        session: scope.session,
+        description: newDesc.trim(),
+        status: newStatus,
+      },
+    ]);
+    setIsFiling(false);
 
+    if (!outcome.ok) {
+      setRefusal(outcome.reason ?? "the milestone was not filed on the school's calendar");
+      return;
+    }
+
+    setRefusal(null);
     setIsModalOpen(false);
     setNewTitle("");
     setNewDateRange("");
     setNewDesc("");
     setNewStatus("Upcoming");
-    showToast("Calendar milestone saved on this browser.");
+    showToast(
+      `“${title}” filed on the school's calendar for ${newTerm} of ${scope.session}.${
+        newDateRange.trim() ? "" : " It is undated, because the school has not fixed a date."
+      }`
+    );
   };
 
-  const handleCreateActivityTemplate = (e: React.FormEvent) => {
+  const handleCreateActivityTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!actTitle.trim()) return;
+    const title = actTitle.trim();
+    if (!title) return;
 
-    addActivityTemplate({
-      title: actTitle.trim(),
+    setIsFiling(true);
+    const outcome = await addActivityTemplate({
+      title,
       category: actCategory,
-      targetSection: actTargetSection.trim() || "All School Sections",
-      coordinator: actCoordinator.trim() || "Unassigned",
-      venue: actVenue.trim() || "Main Campus Hall",
-      budget: actBudget.trim() || "₦0",
-      objectives: actObjectives.trim() || "Standard co-curricular activity.",
+      targetSection: actTargetSection.trim(),
+      coordinator: actCoordinator.trim(),
+      venue: actVenue.trim(),
+      budget: actBudget.trim(),
+      objectives: actObjectives.trim(),
       defaultDurationDays: Number(actDuration) || 1,
     });
+    setIsFiling(false);
 
+    if (!outcome.ok) {
+      setRefusal(outcome.reason ?? "the template was not filed on the school's records");
+      return;
+    }
+
+    setRefusal(null);
     setIsActivityModalOpen(false);
     setActTitle("");
+    setActTargetSection("");
     setActCoordinator("");
     setActVenue("");
     setActBudget("");
     setActObjectives("");
     setActDuration(1);
-    showToast("Activity template saved on this browser — other machines will not see it.");
+    showToast(`“${title}” filed on the school's activity templates — every machine now offers the same blueprint.`);
   };
 
-  const handleInstantiateActivityIntoCalendar = (template: ActivityTemplateRecord) => {
-    const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    addCalendarEvent({
-      title: template.title,
-      dateRange: `${todayStr} (${template.defaultDurationDays} Day${template.defaultDurationDays > 1 ? "s" : ""})`,
-      category: template.category === "Sports" || template.category === "Cultural" || template.category === "Excursion" || template.category === "Club" ? "Academic" : (template.category as any),
-      term: scope.term as any,
-      session: scope.session,
-      description: `[Activity Template: ${template.targetSection}] Coordinator: ${template.coordinator}. Venue: ${template.venue}. Budget: ${template.budget}. Objectives: ${template.objectives}`,
-      status: "Upcoming",
-    });
+  const handleScheduleTemplate = async (template: ActivityTemplateRecord) => {
+    setIsFiling(true);
+    const outcome = await addCalendarEvents([
+      {
+        title: template.title,
+        // A blueprint says how long an event runs, never when. This used to file
+        // it with today's date, which put a plan on the calendar the office had
+        // not made and marked a day as the school's when it was only the day the
+        // button was pressed.
+        dateRange: "",
+        category: template.category,
+        term: scope.term as CalendarEventRecord["term"],
+        session: scope.session,
+        description: templateNotes(template),
+        status: "Upcoming",
+      },
+    ]);
+    setIsFiling(false);
 
-    showToast(`Scheduled "${template.title}" into the ${scope.term}, ${scope.session} calendar on this browser.`);
+    if (!outcome.ok) {
+      setRefusal(outcome.reason ?? "the activity was not scheduled on the school's calendar");
+      return;
+    }
+
+    setRefusal(null);
+    setActiveTab("calendar");
+    showToast(
+      `“${template.title}” scheduled into ${scope.term} of ${scope.session}, undated — set the date when the school fixes it.`
+    );
   };
 
-  const handleSeedStandardTermMilestones = () => {
-    // These used to arrive dated "September 8, 2025" and marked Completed, which is a
-    // history the school never lived: seeded in the next session, the calendar claimed
-    // seven past events had happened. They come in as undated, upcoming rows to edit.
-    const defaultMilestones: Omit<CalendarEventRecord, "id">[] = [
-      {
-        title: "Staff Resumption & Pre-Term Harmonization Workshop",
-        dateRange: "Set the date",
-        category: "Administrative",
+  const handleSeedStandardTermMilestones = async () => {
+    setIsFiling(true);
+    const outcome = await addCalendarEvents(
+      STARTER_MILESTONES.map((milestone) => ({
+        ...milestone,
+        dateRange: "",
         term: scope.term as CalendarEventRecord["term"],
         session: scope.session,
-        description: "Curriculum harmonization, test pool development, and staff onboarding.",
-        status: "Upcoming",
-      },
-      {
-        title: "Student Resumption & Commencement of Lectures",
-        dateRange: "Set the date",
-        category: "Academic",
-        term: scope.term as CalendarEventRecord["term"],
-        session: scope.session,
-        description: "All returning and newly admitted students commence classroom lectures.",
-        status: "Upcoming",
-      },
-      {
-        title: "Continuous Assessment (Test 1) Week",
-        dateRange: "Set the date",
-        category: "Examination",
-        term: scope.term as CalendarEventRecord["term"],
-        session: scope.session,
-        description: "Classroom Test 1 assessments across all subjects (10 Marks).",
-        status: "Upcoming",
-      },
-      {
-        title: "Mid-Term Examination & Open Day",
-        dateRange: "Set the date",
-        category: "Academic",
-        term: scope.term as CalendarEventRecord["term"],
-        session: scope.session,
-        description: "Parent-Teacher interactive consultation and mid-term grade reviews.",
-        status: "Upcoming",
-      },
-      {
-        title: "Proctored CBT Examination Week",
-        dateRange: "Set the date",
-        category: "Examination",
-        term: scope.term as CalendarEventRecord["term"],
-        session: scope.session,
-        description: "Online Computer-Based Testing in the ICT Lab; the score shows on that machine for a teacher to file.",
-        status: "Upcoming",
-      },
-      {
-        title: "Final Examination & Score Entry Deadline",
-        dateRange: "Set the date",
-        category: "Examination",
-        term: scope.term as CalendarEventRecord["term"],
-        session: scope.session,
-        description: "Theory examinations and final Continuous Assessment gradebook locking.",
-        status: "Upcoming",
-      },
-      {
-        title: "Result Compilation, Speech & Prize-Giving Day",
-        dateRange: "Set the date",
-        category: "Administrative",
-        term: scope.term as CalendarEventRecord["term"],
-        session: scope.session,
-        description: "Official report card release and vacation commencement.",
-        status: "Upcoming",
-      },
-    ];
+        status: "Upcoming" as const,
+      }))
+    );
+    setIsFiling(false);
 
-    defaultMilestones.forEach((m) => addCalendarEvent(m));
-    showToast("Starter milestones added on this browser only, undated and upcoming — set each date as the school fixes it.");
+    if (!outcome.ok) {
+      setRefusal(outcome.reason ?? "the starter milestones were not filed on the school's calendar");
+      return;
+    }
+
+    setRefusal(null);
+    showToast(
+      `${STARTER_MILESTONES.length} starter milestones filed on the school's calendar for ${scope.term} of ${scope.session}, undated and upcoming. Every machine sees them; set each date as the school fixes it.`
+    );
   };
 
-  const filteredEvents = calendarEvents.filter((ev) => {
-    if (termFilter === "All") return true;
-    return ev.term === termFilter;
-  });
+  const handleSetStatus = async (event: CalendarEventRecord, status: CalendarEventRecord["status"]) => {
+    setIsFiling(true);
+    const outcome = await setMilestoneStatus(event.id, status);
+    setIsFiling(false);
+
+    if (!outcome.ok) {
+      setRefusal(outcome.reason ?? `the status of “${event.title}” was not changed on the school's calendar`);
+      return;
+    }
+
+    setRefusal(null);
+    showToast(`“${event.title}” marked ${status.toLowerCase()} on the school's calendar for every machine.`);
+  };
+
+  const handleDeleteEvent = async (event: CalendarEventRecord) => {
+    if (!confirm(`Remove “${event.title}” from the school's calendar? Every machine loses it with this one, and there is no copy to bring it back from.`)) return;
+
+    setIsFiling(true);
+    const outcome = await deleteCalendarEvent(event.id);
+    setIsFiling(false);
+
+    if (!outcome.ok) {
+      setRefusal(outcome.reason ?? `“${event.title}” was not removed from the school's calendar`);
+      return;
+    }
+
+    setRefusal(null);
+    showToast(`“${event.title}” removed from the school's calendar.`);
+  };
+
+  const handleClearCalendar = async () => {
+    if (
+      !confirm(
+        `Clear all ${calendarEvents.length} milestones on the school's calendar? This is not this browser's copy alone — every machine loses them, including the ones filed under other sessions and terms, and nothing keeps them.`
+      )
+    )
+      return;
+
+    setIsFiling(true);
+    const outcome = await clearAllCalendarEvents();
+    setIsFiling(false);
+
+    if (!outcome.ok) {
+      setRefusal(outcome.reason ?? "the calendar was not cleared");
+      return;
+    }
+
+    setRefusal(null);
+    showToast("The school's calendar is empty on every machine.");
+  };
+
+  const handleDeleteTemplate = async (template: ActivityTemplateRecord) => {
+    if (!confirm(`Remove the blueprint “${template.title}” from the school's activity templates? Milestones already filed from it keep their own text.`)) return;
+
+    setIsFiling(true);
+    const outcome = await deleteActivityTemplate(template.id);
+    setIsFiling(false);
+
+    if (!outcome.ok) {
+      setRefusal(outcome.reason ?? `“${template.title}” was not removed from the school's templates`);
+      return;
+    }
+
+    setRefusal(null);
+    showToast(`“${template.title}” removed from the school's activity templates.`);
+  };
+
+  // The calendar on screen is this session's. A milestone filed under last year's
+  // session belongs to last year's circular, so it is not dropped silently — the
+  // screen counts them and says where they are.
+  const sessionEvents = calendarEvents.filter((ev) => ev.session === scope.session);
+  const otherSessions = [...new Set(calendarEvents.filter((ev) => ev.session !== scope.session).map((ev) => ev.session))];
+  const filteredEvents =
+    termFilter === "All" ? sessionEvents : sessionEvents.filter((ev) => ev.term === termFilter);
+  const templatesFromDevice = activityTemplatesSource === "device";
+  const calendarFromDevice = calendarSource === "device";
 
   return (
     <DashboardShell>
@@ -257,26 +421,40 @@ export default function AcademicCalendarPage() {
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
               Current Session: <strong className="text-slate-800">{scope.session}</strong> • Term:{" "}
-              <strong className="text-[#0000FF]">{scope.term}</strong> • Scheduled Events:{" "}
-              <strong className="text-slate-800">{calendarEvents.length}</strong> • Activity Templates:{" "}
+              <strong className="text-[#0000FF]">{scope.term}</strong> • Milestones this session:{" "}
+              <strong className="text-slate-800">{sessionEvents.length}</strong> • Activity templates:{" "}
               <strong className="text-slate-800">{activityTemplates.length}</strong>
+            </p>
+            <p className="text-[11px] text-slate-500 mt-1">
+              {calendarFromDevice && templatesFromDevice
+                ? "Neither list has been read from the school's records, so what is below is this browser's own copy."
+                : calendarFromDevice
+                  ? "The activity templates are the school's records; the milestone list below is still this browser's copy."
+                  : templatesFromDevice
+                    ? "The milestones below are the school's records; the activity templates are still this browser's copy."
+                    : "Both lists are the school's own records — what you file here is what every other machine shows."}
             </p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
             {activeTab === "calendar" ? (
               <>
-                {calendarEvents.length === 0 && (
+                {sessionEvents.length === 0 && (
                   <button
-                    onClick={handleSeedStandardTermMilestones}
-                    className="px-3.5 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                    onClick={() => void handleSeedStandardTermMilestones()}
+                    disabled={isFiling}
+                    className="px-3.5 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:cursor-wait disabled:opacity-60"
+                    title="Files the standard term outline on the school's records, undated and upcoming, for every machine to see."
                   >
                     <Sparkles className="w-3.5 h-3.5 text-[#0000FF]" />
-                    Populate Term Milestones
+                    {isFiling ? "Filing on the school's records…" : "Populate Term Milestones"}
                   </button>
                 )}
                 <button
-                  onClick={() => setIsModalOpen(true)}
+                  onClick={() => {
+                    setRefusal(null);
+                    setIsModalOpen(true);
+                  }}
                   className="px-4 py-2 text-xs font-bold bg-[#0000FF] hover:bg-blue-700 text-white rounded-xl transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
@@ -284,27 +462,40 @@ export default function AcademicCalendarPage() {
                 </button>
               </>
             ) : (
-              <>
-                <button
-                  onClick={resetActivityTemplatesToDefault}
-                  className="px-3.5 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-cyan-600" />
-                  Reset Default Templates
-                </button>
-                <button
-                  onClick={() => setIsActivityModalOpen(true)}
-                  className="px-4 py-2 text-xs font-bold bg-[#0000FF] hover:bg-blue-700 text-white rounded-xl transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  Create Activity Template
-                </button>
-              </>
+              <button
+                onClick={() => {
+                  setRefusal(null);
+                  setIsActivityModalOpen(true);
+                }}
+                className="px-4 py-2 text-xs font-bold bg-[#0000FF] hover:bg-blue-700 text-white rounded-xl transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                Create Activity Template
+              </button>
             )}
           </div>
         </div>
 
-        <DeviceOnlyNotice what="The school calendar and the activity templates" />
+        {(calendarFromDevice || templatesFromDevice) && (
+          <DeviceOnlyNotice
+            what={
+              calendarFromDevice && templatesFromDevice
+                ? "The school calendar and the activity templates"
+                : calendarFromDevice
+                  ? "The milestone list on this screen"
+                  : "The activity templates on this screen"
+            }
+          />
+        )}
+
+        {refusal && (
+          <div className="p-3 bg-rose-50 border border-rose-200 text-rose-900 text-xs font-bold rounded-xl flex items-start gap-2 animate-in fade-in">
+            <TriangleAlert className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+            <span>
+              <strong>Nothing was filed on the school&apos;s records.</strong> {refusal}
+            </span>
+          </div>
+        )}
 
         {/* Tab Selector */}
         <div className="flex border-b border-slate-200 gap-4">
@@ -317,7 +508,7 @@ export default function AcademicCalendarPage() {
             }`}
           >
             <Calendar className="w-4 h-4" />
-            <span>Academic Calendar Schedule ({calendarEvents.length})</span>
+            <span>Academic Calendar Schedule ({sessionEvents.length} this session)</span>
           </button>
 
           <button
@@ -360,22 +551,23 @@ export default function AcademicCalendarPage() {
 
               {calendarEvents.length > 0 && (
                 <button
-                  onClick={() => {
-                    if (
-                      confirm(
-                        "Clear every calendar milestone stored on this browser? Other machines keep theirs, and this browser's list cannot be brought back."
-                      )
-                    ) {
-                      clearAllCalendarEvents();
-                    }
-                  }}
-                  className="text-xs text-[#FF0000] hover:text-red-700 font-bold flex items-center gap-1 cursor-pointer"
+                  onClick={() => void handleClearCalendar()}
+                  disabled={isFiling}
+                  className="text-xs text-[#FF0000] hover:text-red-700 font-bold flex items-center gap-1 cursor-pointer disabled:cursor-wait disabled:opacity-60"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  Clear Calendar Events
+                  Clear the school&apos;s calendar
                 </button>
               )}
             </div>
+
+            {otherSessions.length > 0 && (
+              <p className="text-[11px] text-slate-500">
+                The school&apos;s calendar also holds {calendarEvents.length - sessionEvents.length} milestone
+                {calendarEvents.length - sessionEvents.length === 1 ? "" : "s"} filed under{" "}
+                {otherSessions.join(" and ")}. Switch the session on the school config screen to see them.
+              </p>
+            )}
 
             {/* Timeline View */}
             <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-6">
@@ -392,9 +584,13 @@ export default function AcademicCalendarPage() {
               {filteredEvents.length === 0 ? (
                 <div className="py-12 text-center text-slate-400 space-y-3">
                   <Calendar className="w-12 h-12 mx-auto text-slate-300 stroke-1" />
-                  <div className="text-sm font-bold text-slate-700">No Calendar Milestones Found</div>
-                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                    No events currently scheduled. Click &apos;Add Calendar Milestone&apos; or switch to Activity Templates to schedule events.
+                  <div className="text-sm font-bold text-slate-700">Nothing on this part of the calendar</div>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    {sessionEvents.length === 0
+                      ? calendarFromDevice
+                        ? "This browser holds milestones of its own, but none of them are the school's records, so nothing here is a date another machine would agree to. Connect the portal to the school database before filing a term's plan."
+                        : `No milestone is filed on the school's calendar for ${scope.session}. Use "Add Calendar Milestone" to file one, or "Populate Term Milestones" to file the standard outline undated and adjust each date as the school fixes it.`
+                      : `Nothing here falls in ${termFilter === "All" ? "this session" : termFilter}. ${sessionEvents.length} milestone${sessionEvents.length === 1 ? " is filed elsewhere in" : "s are filed elsewhere in"} ${scope.session}.`}
                   </p>
                 </div>
               ) : (
@@ -415,8 +611,14 @@ export default function AcademicCalendarPage() {
                       <div className="space-y-1.5 bg-slate-50/70 hover:bg-white p-4 rounded-2xl border border-slate-200/80 hover:border-blue-300 transition-all shadow-2xs">
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-mono font-black text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200">
-                              {ev.dateRange}
+                            <span
+                              className={`text-xs font-mono font-black px-2 py-0.5 rounded border ${
+                                ev.dateRange
+                                  ? "text-slate-800 bg-white border-slate-200"
+                                  : "text-amber-800 bg-amber-50 border-amber-200"
+                              }`}
+                            >
+                              {ev.dateRange || "Date not fixed"}
                             </span>
                             <span
                               className={`text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider ${
@@ -426,6 +628,14 @@ export default function AcademicCalendarPage() {
                                   ? "bg-blue-100 text-[#0000FF] border border-blue-200"
                                   : ev.category === "Holiday"
                                   ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                  : ev.category === "Sports"
+                                  ? "bg-orange-100 text-orange-800 border border-orange-200"
+                                  : ev.category === "Cultural"
+                                  ? "bg-pink-100 text-pink-800 border border-pink-200"
+                                  : ev.category === "Excursion"
+                                  ? "bg-teal-100 text-teal-800 border border-teal-200"
+                                  : ev.category === "Club"
+                                  ? "bg-indigo-100 text-indigo-800 border border-indigo-200"
                                   : "bg-slate-100 text-slate-800 border border-slate-200"
                               }`}
                             >
@@ -449,19 +659,21 @@ export default function AcademicCalendarPage() {
                           <div className="flex items-center gap-2">
                             <select
                               value={ev.status}
+                              disabled={isFiling}
                               onChange={(e) =>
-                                updateCalendarEvent(ev.id, { status: e.target.value as CalendarEventRecord["status"] })
+                                void handleSetStatus(ev, e.target.value as CalendarEventRecord["status"])
                               }
-                              className="text-[10px] font-bold bg-white border border-slate-200 rounded-lg px-2 py-1 text-slate-700 cursor-pointer shadow-2xs"
+                              className="text-[10px] font-bold bg-white border border-slate-200 rounded-lg px-2 py-1 text-slate-700 cursor-pointer shadow-2xs disabled:cursor-wait"
                             >
                               <option value="Upcoming">Upcoming</option>
                               <option value="Current">Active / Current</option>
                               <option value="Completed">Completed</option>
                             </select>
                             <button
-                              onClick={() => deleteCalendarEvent(ev.id)}
-                              className="text-slate-400 hover:text-[#FF0000] p-1.5 transition-all cursor-pointer rounded-lg hover:bg-rose-50"
-                              title="Delete Milestone"
+                              onClick={() => void handleDeleteEvent(ev)}
+                              disabled={isFiling}
+                              className="text-slate-400 hover:text-[#FF0000] p-1.5 transition-all cursor-pointer rounded-lg hover:bg-rose-50 disabled:cursor-wait disabled:opacity-50"
+                              title="Remove this milestone from the school's calendar"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -469,7 +681,9 @@ export default function AcademicCalendarPage() {
                         </div>
 
                         <h4 className="text-sm font-black text-slate-900">{ev.title}</h4>
-                        <p className="text-xs text-slate-600 leading-relaxed">{ev.description}</p>
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          {ev.description || (calendarFromDevice ? "" : "The school has written no notes for this milestone.")}
+                        </p>
                       </div>
                     </div>
                   ))}
@@ -489,11 +703,16 @@ export default function AcademicCalendarPage() {
                 </div>
                 <h3 className="text-xl font-black text-white">Input Templates for Extracurricular & Co-Curricular Activities</h3>
                 <p className="text-xs text-blue-200/80 max-w-2xl mt-1 leading-relaxed">
-                  Design reusable activity blueprints for sports tournaments, science exhibitions, cultural festivals, student excursions, career symposiums, and PTA deliberations. Instantiate any template into the live academic calendar with 1 click.
+                  A blueprint is one activity the school runs often, written down once — who it is for, who leads it,
+                  where it is held, what it costs and how long it takes. Scheduling one files a milestone on the
+                  school&apos;s calendar carrying this text, undated until the office fixes a date.
                 </p>
               </div>
               <button
-                onClick={() => setIsActivityModalOpen(true)}
+                onClick={() => {
+                  setRefusal(null);
+                  setIsActivityModalOpen(true);
+                }}
                 className="px-4 py-2.5 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer"
               >
                 <BookmarkPlus className="w-4 h-4 text-blue-950" />
@@ -501,8 +720,18 @@ export default function AcademicCalendarPage() {
               </button>
             </div>
 
-            {/* Grid of Activity Templates */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {activityTemplates.length === 0 ? (
+              <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center space-y-2 shadow-xs">
+                <Activity className="w-10 h-10 mx-auto text-slate-300 stroke-1" />
+                <div className="text-sm font-bold text-slate-700">The school has written no activity blueprints</div>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  {templatesFromDevice
+                    ? "What this browser holds is its own copy, and the portal no longer fills the list with invented events. Connect the portal to the school database, then file the activities the school actually runs."
+                    : "Nothing is filed on the school's records, so no other machine has a template to offer. Use “Create Activity Template” to file one; leave any box you have not decided blank."}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {activityTemplates.map((template) => (
                 <div
                   key={template.id}
@@ -514,9 +743,10 @@ export default function AcademicCalendarPage() {
                         {template.category}
                       </span>
                       <button
-                        onClick={() => deleteActivityTemplate(template.id)}
-                        className="text-slate-300 hover:text-[#FF0000] p-1 transition-colors"
-                        title="Delete Template"
+                        onClick={() => void handleDeleteTemplate(template)}
+                        disabled={isFiling}
+                        className="text-slate-300 hover:text-[#FF0000] p-1 transition-colors cursor-pointer disabled:cursor-wait disabled:opacity-50"
+                        title="Remove this blueprint from the school's activity templates"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -528,39 +758,55 @@ export default function AcademicCalendarPage() {
                       <div className="flex items-center gap-2 text-[11px]">
                         <Users className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
                         <span className="font-semibold text-slate-500">Section:</span>
-                        <span className="font-bold text-slate-800 truncate">{template.targetSection}</span>
+                        <span className={`font-bold truncate ${template.targetSection ? "text-slate-800" : "text-slate-400 italic"}`}>
+                          {template.targetSection || "not said"}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2 text-[11px]">
                         <Target className="w-3.5 h-3.5 text-cyan-600 flex-shrink-0" />
                         <span className="font-semibold text-slate-500">Coordinator:</span>
-                        <span className="font-bold text-slate-800 truncate">{template.coordinator}</span>
+                        <span className={`font-bold truncate ${template.coordinator ? "text-slate-800" : "text-slate-400 italic"}`}>
+                          {template.coordinator || "not said"}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2 text-[11px]">
                         <MapPin className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />
                         <span className="font-semibold text-slate-500">Venue:</span>
-                        <span className="font-bold text-slate-800 truncate">{template.venue}</span>
+                        <span className={`font-bold truncate ${template.venue ? "text-slate-800" : "text-slate-400 italic"}`}>
+                          {template.venue || "not said"}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2 text-[11px]">
                         <DollarSign className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
                         <span className="font-semibold text-slate-500">Budget:</span>
-                        <span className="font-bold text-emerald-700">{template.budget}</span>
+                        <span className={`font-bold ${template.budget ? "text-emerald-700" : "text-slate-400 italic"}`}>
+                          {template.budget || "not said"}
+                        </span>
                         <span className="text-slate-400">•</span>
-                        <span className="font-bold text-slate-700">{template.defaultDurationDays} Day(s)</span>
+                        <span className="font-bold text-slate-700">
+                          {template.defaultDurationDays} day{template.defaultDurationDays === 1 ? "" : "s"} planned
+                        </span>
                       </div>
                     </div>
 
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Objectives & Scope</span>
-                      <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">{template.objectives}</p>
+                      <p className={`text-xs line-clamp-2 leading-relaxed ${template.objectives ? "text-slate-600" : "text-slate-400 italic"}`}>
+                        {template.objectives || "The school has written no objectives for this blueprint."}
+                      </p>
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                    <span className="text-[10px] text-slate-400 font-semibold">Ready for dispatch</span>
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-slate-400 font-semibold">
+                      {calendarFromDevice ? "Not on the school's calendar yet" : "Filing this adds a milestone every machine sees"}
+                    </span>
                     <button
                       type="button"
-                      onClick={() => handleInstantiateActivityIntoCalendar(template)}
-                      className="px-3.5 py-1.5 bg-[#0000FF] hover:bg-cyan-500 hover:text-slate-950 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      onClick={() => void handleScheduleTemplate(template)}
+                      disabled={isFiling}
+                      className="px-3.5 py-1.5 bg-[#0000FF] hover:bg-cyan-500 hover:text-slate-950 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:cursor-wait disabled:opacity-60"
+                      title="Files a milestone on the school's calendar under the current session and term, undated."
                     >
                       <Send className="w-3 h-3" />
                       <span>Schedule into Term</span>
@@ -568,7 +814,8 @@ export default function AcademicCalendarPage() {
                   </div>
                 </div>
               ))}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -589,6 +836,11 @@ export default function AcademicCalendarPage() {
                 </button>
               </div>
 
+              <p className="text-[11px] text-slate-500 -mt-1">
+                Files on the school&apos;s calendar under <strong>{scope.session}</strong>, the session the portal
+                says the school is in now.
+              </p>
+
               <form onSubmit={handleAddEvent} className="space-y-3.5 text-xs">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Milestone / Event Title</label>
@@ -607,11 +859,15 @@ export default function AcademicCalendarPage() {
                     <label className="block font-bold text-slate-700 mb-1">Date or Range</label>
                     <input
                       type="text"
-                      placeholder="e.g. Nov 18, 2025"
+                      placeholder="Leave blank until the school fixes it"
                       value={newDateRange}
                       onChange={(e) => setNewDateRange(e.target.value)}
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:border-[#0000FF]"
                     />
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      The portal does not fill this in. Blank shows as &quot;Date not fixed&quot; rather than a day
+                      nobody chose.
+                    </p>
                   </div>
 
                   <div>
@@ -621,11 +877,16 @@ export default function AcademicCalendarPage() {
                       onChange={(e) => setNewCat(e.target.value as CalendarEventRecord["category"])}
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold outline-none focus:border-[#0000FF]"
                     >
-                      <option value="Academic">Academic</option>
-                      <option value="Examination">Examination</option>
-                      <option value="Holiday">Holiday</option>
-                      <option value="Administrative">Administrative</option>
+                      {CALENDAR_CATEGORIES.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
                     </select>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      A milestone brought in from a sports, cultural, excursion or club blueprint keeps that
+                      category; the four above are what this screen offers to type.
+                    </p>
                   </div>
                 </div>
 
@@ -678,9 +939,10 @@ export default function AcademicCalendarPage() {
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-xl bg-[#0000FF] hover:bg-blue-700 text-white font-black cursor-pointer shadow-md shadow-blue-600/30"
+                    disabled={isFiling}
+                    className="px-5 py-2 rounded-xl bg-[#0000FF] hover:bg-blue-700 text-white font-black cursor-pointer shadow-md shadow-blue-600/30 disabled:cursor-wait disabled:opacity-60"
                   >
-                    Add Milestone
+                    {isFiling ? "Filing…" : "File on the school's calendar"}
                   </button>
                 </div>
               </form>
@@ -705,6 +967,12 @@ export default function AcademicCalendarPage() {
                 </button>
               </div>
 
+              <p className="text-[11px] text-slate-500 -mt-1">
+                Every box may be left blank. A blank stays blank on the school&apos;s records and reads
+                &quot;not said&quot; on the card — the portal no longer fills in a coordinator, a venue or a budget
+                for an activity the school has not described.
+              </p>
+
               <form onSubmit={handleCreateActivityTemplate} className="space-y-3.5 text-xs">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Activity Title</label>
@@ -723,7 +991,7 @@ export default function AcademicCalendarPage() {
                     <label className="block font-bold text-slate-700 mb-1">Activity Category</label>
                     <select
                       value={actCategory}
-                      onChange={(e) => setActCategory(e.target.value as any)}
+                      onChange={(e) => setActCategory(e.target.value as ActivityTemplateRecord["category"])}
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold outline-none focus:border-[#0000FF]"
                     >
                       <option value="Sports">Sports</option>
@@ -817,9 +1085,10 @@ export default function AcademicCalendarPage() {
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-xl bg-[#0000FF] hover:bg-blue-700 text-white font-black cursor-pointer shadow-md shadow-blue-600/30"
+                    disabled={isFiling}
+                    className="px-5 py-2 rounded-xl bg-[#0000FF] hover:bg-blue-700 text-white font-black cursor-pointer shadow-md shadow-blue-600/30 disabled:cursor-wait disabled:opacity-60"
                   >
-                    Save Template
+                    {isFiling ? "Filing…" : "File on the school's records"}
                   </button>
                 </div>
               </form>

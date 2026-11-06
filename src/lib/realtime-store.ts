@@ -48,6 +48,15 @@ import {
   type CBTQuestionInput,
   fetchCBTConfigFromSupabase,
   saveCBTConfigOnServer,
+  fetchCalendarEventsFromSupabase,
+  saveCalendarEventsOnServer,
+  setCalendarStatusOnServer,
+  removeCalendarEventsOnServer,
+  type CalendarEventInput,
+  fetchActivityTemplatesFromSupabase,
+  saveActivityTemplateOnServer,
+  removeActivityTemplateOnServer,
+  type ActivityTemplateInput,
 } from "./supabase/db";
 
 // Channel for instant multi-tab & multi-window event synchronization
@@ -66,6 +75,10 @@ const STORAGE_KEYS = {
   INVOICES: "rca_invoices_store_v6",
   FEES: "rca_fees_store_v6",
   CBT_QUESTIONS: "rca_cbt_questions_store_v6",
+  // The calendar and the activity blueprints are on the school's records now
+  // (/api/calendar, /api/activity-templates). These keys stay so a machine can
+  // still show something when the school's list cannot be read, and so the
+  // settings purge can clear that device copy.
   CALENDAR: "rca_calendar_store_v6",
   INMAIL: "rca_inmail_store_v6",
   NEWSLETTER: "rca_newsletter_store_v6",
@@ -248,11 +261,28 @@ export interface FeeComponentRecord {
   term?: string;
 }
 
+/**
+ * One milestone on the school's calendar.
+ *
+ * `dateRange` is the school's own words — "Nov 18 - 20, 2025", "Resumption
+ * week" — and empty means the date has not been fixed yet, which the screens say
+ * in those words rather than printing "TBD". `category` carries the four the
+ * Add form offers plus the four an activity blueprint can arrive with: a sports
+ * day written as "Academic" is what a printed circular would then get wrong.
+ */
 export interface CalendarEventRecord {
   id: string;
   title: string;
   dateRange: string;
-  category: "Academic" | "Examination" | "Holiday" | "Administrative";
+  category:
+    | "Academic"
+    | "Examination"
+    | "Holiday"
+    | "Administrative"
+    | "Sports"
+    | "Cultural"
+    | "Excursion"
+    | "Club";
   term: "First Term" | "Second Term" | "Third Term";
   session: string;
   description: string;
@@ -343,6 +373,14 @@ export interface TierCAStructure {
   description: string;
 }
 
+/**
+ * A reusable activity blueprint, as the school wrote it.
+ *
+ * Every field but `title` and `defaultDurationDays` is allowed to be empty, and
+ * empty is printed as "not said". The portal used to fill a gap with
+ * "Unassigned", "Main Campus Hall", "₦0" and "Standard co-curricular activity."
+ * — each of which reads as a decision the school had made, ₦0 most of all.
+ */
 export interface ActivityTemplateRecord {
   id: string;
   title: string;
@@ -518,76 +556,16 @@ export const DEFAULT_CA_STRUCTURES: Record<string, TierCAStructure> = {
 };
 
 // -------------------------------------------------------------
-// Activity Templates Baseline for Academic Calendar
+// Activity Templates have no baseline.
+//
+// Six were compiled in here — an inter-house championship at ₦450,000, a
+// robotics expo, a cultural festival, an industrial tour, a career symposium and
+// a PTA assembly, each with a named coordinator, a venue and a budget figure.
+// Nobody at this school typed any of them, and "Reset Default Templates" put
+// them back over a list the school had written for itself. The blueprints now
+// come from the school's own records (/api/activity-templates), and a school
+// that has written none is shown an empty list and told so.
 // -------------------------------------------------------------
-export const DEFAULT_ACTIVITY_TEMPLATES: ActivityTemplateRecord[] = [
-  {
-    id: "act-sports",
-    title: "Inter-House Athletic Sports Championship",
-    category: "Sports",
-    targetSection: "All School Sections (EY, Primary, Secondary)",
-    coordinator: "Head of Physical & Health Education",
-    venue: "RCA Sports Pavilion & Track",
-    budget: "₦450,000",
-    objectives: "Foster sportsmanship, physical fitness, teamwork, and athletic talent identification.",
-    defaultDurationDays: 2,
-  },
-  {
-    id: "act-science",
-    title: "Annual Science, Robotics & Innovation Expo",
-    category: "Academic",
-    targetSection: "Primary 3 - 5, JSS 1 - 3, SS 1 - 3",
-    coordinator: "Dean of Science & Technology",
-    venue: "School Multipurpose Hall & STEM Laboratories",
-    budget: "₦350,000",
-    objectives: "Showcase student-built engineering models, robotic prototypes, and scientific experiments.",
-    defaultDurationDays: 1,
-  },
-  {
-    id: "act-cultural",
-    title: "National Heritage & Cultural Diversity Festival",
-    category: "Cultural",
-    targetSection: "All Enrolled Students & Faculty",
-    coordinator: "Department of Humanities & Arts",
-    venue: "Main Auditorium & Courtyard",
-    budget: "₦280,000",
-    objectives: "Celebrate Nigerian cultural diversity through traditional cuisine, folklore, dance, and attires.",
-    defaultDurationDays: 1,
-  },
-  {
-    id: "act-excursion",
-    title: "Educational Field Excursion & Industrial Tour",
-    category: "Excursion",
-    targetSection: "Secondary School (JSS 1 - SS 3)",
-    coordinator: "Vice Principal (Academics)",
-    venue: "National Museum & Technology Innovation Hub, Jos",
-    budget: "₦520,000",
-    objectives: "Bridge classroom learning with real-world technological applications and historical heritage.",
-    defaultDurationDays: 1,
-  },
-  {
-    id: "act-career",
-    title: "Career Mentorship & Future Leaders Symposium",
-    category: "Academic",
-    targetSection: "SS 1 – SS 3",
-    coordinator: "Guidance & Counseling Directorate",
-    venue: "E-Library Conference Suite",
-    budget: "₦180,000",
-    objectives: "Provide vocational guidance, university matriculation advice, and industry mentoring.",
-    defaultDurationDays: 1,
-  },
-  {
-    id: "act-pta",
-    title: "Parent-Teacher Consultative Assembly (PTA)",
-    category: "Administrative",
-    targetSection: "All Parents & Guardians",
-    coordinator: "Principal & PTA Executive Committee",
-    venue: "School Chapel / Central Hall",
-    budget: "₦120,000",
-    objectives: "Deliberate on institutional advancement, academic welfare, and developmental projects.",
-    defaultDurationDays: 1,
-  },
-];
 
 // -------------------------------------------------------------
 // Standard Educational Traits Baseline (Configurable)
@@ -2343,10 +2321,17 @@ export function useRealtimeSubjects() {
 }
 
 // -------------------------------------------------------------
-// Hook: Real-Time Academic Calendar Store
+// Hook: The Academic Calendar (the school's own term plan)
 // -------------------------------------------------------------
+// The dates a term runs by decide when families send a child with a uniform and
+// when staff meet the score-entry deadline, so a list kept in one browser was
+// never the school's plan — it was one person's cache. `calendarSource` is the
+// part the screen needs: rows that came off this device can look identical to
+// the school's calendar while being nothing anybody else has seen, and a circular
+// drawn from them would publish dates no office filed.
 export function useRealtimeCalendar() {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEventRecord[]>(INITIAL_CALENDAR);
+  const [calendarSource, setCalendarSource] = useState<"server" | "device">("device");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -2358,6 +2343,17 @@ export function useRealtimeCalendar() {
       } else {
         localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(INITIAL_CALENDAR));
       }
+    }
+
+    if (isSupabaseConfigured) {
+      fetchCalendarEventsFromSupabase().then((serverEvents) => {
+        // null means the calendar was not read, so the device copy stays on
+        // screen rather than an empty term the school may not have planned.
+        if (serverEvents === null) return;
+        setCalendarEvents(serverEvents);
+        setCalendarSource("server");
+        localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(serverEvents));
+      });
     }
 
     let channel: BroadcastChannel | null = null;
@@ -2375,52 +2371,93 @@ export function useRealtimeCalendar() {
     };
   }, []);
 
-  const addCalendarEvent = (newEvent: Omit<CalendarEventRecord, "id">) => {
-    const ev: CalendarEventRecord = {
-      ...newEvent,
-      id: `cal-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-    };
-    const updated = [ev, ...calendarEvents];
-    setCalendarEvents(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(updated));
+  /** Puts the school's own calendar on screen, and says whether it was read. */
+  const showServerCalendar = (): Promise<boolean> => {
+    if (!isSupabaseConfigured) return Promise.resolve(false);
+    return fetchCalendarEventsFromSupabase().then((serverEvents) => {
+      if (serverEvents === null) return false;
+      setCalendarEvents(serverEvents);
+      setCalendarSource("server");
+      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(serverEvents));
       broadcast("CALENDAR_UPDATED");
-    }
-    return ev;
+      return true;
+    });
   };
 
-  const updateCalendarEvent = (id: string, updates: Partial<CalendarEventRecord>) => {
-    const updated = calendarEvents.map((e) => (e.id === id ? { ...e, ...updates } : e));
-    setCalendarEvents(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(updated));
-      broadcast("CALENDAR_UPDATED");
+  /**
+   * Files milestones on the school's calendar, then shows the calendar back as
+   * the server stored it. A row the office was refused never appears on screen,
+   * so a date nobody approved cannot be picked up by the next circular.
+   */
+  const addCalendarEvents = async (
+    list: Omit<CalendarEventInput, "id">[]
+  ): Promise<{ ok: boolean; saved: number; reason: string | null }> => {
+    if (list.length === 0) return { ok: false, saved: 0, reason: "No milestone was sent." };
+
+    if (!isSupabaseConfigured) {
+      return {
+        ok: false,
+        saved: 0,
+        reason: "this device is not connected to the school database, so no milestone was filed",
+      };
     }
+
+    const outcome = await saveCalendarEventsOnServer(list);
+    if (outcome.reason) return { ok: false, saved: 0, reason: outcome.reason };
+
+    await showServerCalendar();
+    return { ok: true, saved: list.length, reason: null };
   };
 
-  const deleteCalendarEvent = (id: string) => {
-    const updated = calendarEvents.filter((e) => e.id !== id);
-    setCalendarEvents(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(updated));
-      broadcast("CALENDAR_UPDATED");
+  const setMilestoneStatus = async (
+    id: string,
+    status: CalendarEventRecord["status"]
+  ): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database" };
     }
+
+    const outcome = await setCalendarStatusOnServer(id, status);
+    if (outcome.ok) await showServerCalendar();
+    return outcome;
   };
 
-  const clearAllCalendarEvents = () => {
-    setCalendarEvents([]);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify([]));
-      broadcast("CALENDAR_UPDATED");
+  const deleteCalendarEvent = async (id: string): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database" };
     }
+
+    const outcome = await removeCalendarEventsOnServer([id]);
+    if (outcome.ok) await showServerCalendar();
+    return { ok: outcome.ok, reason: outcome.reason };
+  };
+
+  /**
+   * Clears the school's calendar.
+   *
+   * This is the one action on the screen that takes dates away from every other
+   * machine, and it cannot be undone — there is no archive of a term's plan.
+   */
+  const clearAllCalendarEvents = async (): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database" };
+    }
+
+    // The server decides which of these are rows at all — a browser-invented id
+    // is not one, and it says so rather than quietly removing nothing.
+    const outcome = await removeCalendarEventsOnServer(calendarEvents.map((event) => event.id));
+    if (outcome.ok) await showServerCalendar();
+    return { ok: outcome.ok, reason: outcome.reason };
   };
 
   return {
     calendarEvents,
-    addCalendarEvent,
-    updateCalendarEvent,
+    calendarSource,
+    addCalendarEvents,
+    setMilestoneStatus,
     deleteCalendarEvent,
     clearAllCalendarEvents,
+    reloadCalendar: showServerCalendar,
   };
 }
 
@@ -2769,10 +2806,16 @@ export function useRealtimeCAStructure() {
 }
 
 // -------------------------------------------------------------
-// Hook: Real-Time Activity Templates Store
+// Hook: Activity Templates (the school's own blueprints)
 // -------------------------------------------------------------
+// A template is copied into a milestone when the office schedules one, so its
+// words — coordinator, venue, budget — end up on the published plan. Keeping
+// them in one browser meant the copy a family saw could be a draft nobody else
+// had approved, and the six templates compiled into the portal were not this
+// school's at all. `activityTemplatesSource` is what the screen says out loud.
 export function useRealtimeActivityTemplates() {
-  const [activityTemplates, setActivityTemplates] = useState<ActivityTemplateRecord[]>(DEFAULT_ACTIVITY_TEMPLATES);
+  const [activityTemplates, setActivityTemplates] = useState<ActivityTemplateRecord[]>([]);
+  const [activityTemplatesSource, setActivityTemplatesSource] = useState<"server" | "device">("device");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -2782,8 +2825,19 @@ export function useRealtimeActivityTemplates() {
           setActivityTemplates(JSON.parse(stored));
         } catch {}
       } else {
-        localStorage.setItem(STORAGE_KEYS.ACTIVITY_TEMPLATES, JSON.stringify(DEFAULT_ACTIVITY_TEMPLATES));
+        localStorage.setItem(STORAGE_KEYS.ACTIVITY_TEMPLATES, JSON.stringify([]));
       }
+    }
+
+    if (isSupabaseConfigured) {
+      fetchActivityTemplatesFromSupabase().then((serverTemplates) => {
+        // null means nothing was read, so the device copy stays rather than an
+        // empty blueprint list the school may not actually have.
+        if (serverTemplates === null) return;
+        setActivityTemplates(serverTemplates);
+        setActivityTemplatesSource("server");
+        localStorage.setItem(STORAGE_KEYS.ACTIVITY_TEMPLATES, JSON.stringify(serverTemplates));
+      });
     }
 
     let channel: BroadcastChannel | null = null;
@@ -2801,42 +2855,52 @@ export function useRealtimeActivityTemplates() {
     };
   }, []);
 
-  const addActivityTemplate = (template: Omit<ActivityTemplateRecord, "id">) => {
-    const newRecord: ActivityTemplateRecord = {
-      ...template,
-      id: `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-    };
-    const updated = [newRecord, ...activityTemplates];
-    setActivityTemplates(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.ACTIVITY_TEMPLATES, JSON.stringify(updated));
+  const showServerTemplates = (): Promise<boolean> => {
+    if (!isSupabaseConfigured) return Promise.resolve(false);
+    return fetchActivityTemplatesFromSupabase().then((serverTemplates) => {
+      if (serverTemplates === null) return false;
+      setActivityTemplates(serverTemplates);
+      setActivityTemplatesSource("server");
+      localStorage.setItem(STORAGE_KEYS.ACTIVITY_TEMPLATES, JSON.stringify(serverTemplates));
       broadcast("ACTIVITY_TEMPLATES_UPDATED");
-    }
-    return newRecord;
+      return true;
+    });
   };
 
-  const deleteActivityTemplate = (id: string) => {
-    const updated = activityTemplates.filter((a) => a.id !== id);
-    setActivityTemplates(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.ACTIVITY_TEMPLATES, JSON.stringify(updated));
-      broadcast("ACTIVITY_TEMPLATES_UPDATED");
+  /**
+   * Files a blueprint on the school's records, then shows the list back as the
+   * server stored it. A template the office was refused — a title that is
+   * already on the list, a duration that is not a length of days — never reaches
+   * the screen, so it cannot be scheduled into a term from a cache.
+   */
+  const addActivityTemplate = async (
+    template: Omit<ActivityTemplateInput, "id">
+  ): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database, so no template was filed" };
     }
+
+    const outcome = await saveActivityTemplateOnServer(template);
+    if (outcome.ok) await showServerTemplates();
+    return outcome;
   };
 
-  const resetActivityTemplatesToDefault = () => {
-    setActivityTemplates(DEFAULT_ACTIVITY_TEMPLATES);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.ACTIVITY_TEMPLATES, JSON.stringify(DEFAULT_ACTIVITY_TEMPLATES));
-      broadcast("ACTIVITY_TEMPLATES_UPDATED");
+  const deleteActivityTemplate = async (id: string): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database" };
     }
+
+    const outcome = await removeActivityTemplateOnServer(id);
+    if (outcome.ok) await showServerTemplates();
+    return outcome;
   };
 
   return {
     activityTemplates,
+    activityTemplatesSource,
     addActivityTemplate,
     deleteActivityTemplate,
-    resetActivityTemplatesToDefault,
+    reloadActivityTemplates: showServerTemplates,
   };
 }
 
@@ -3132,7 +3196,7 @@ export function restoreDefaultSeedData() {
   localStorage.setItem(STORAGE_KEYS.TRAITS, JSON.stringify(DEFAULT_TRAITS));
   localStorage.setItem(STORAGE_KEYS.GRADING_SCALES, JSON.stringify(DEFAULT_GRADING_TIERS));
   localStorage.setItem(STORAGE_KEYS.CA_STRUCTURES, JSON.stringify(DEFAULT_CA_STRUCTURES));
-  localStorage.setItem(STORAGE_KEYS.ACTIVITY_TEMPLATES, JSON.stringify(DEFAULT_ACTIVITY_TEMPLATES));
+  localStorage.setItem(STORAGE_KEYS.ACTIVITY_TEMPLATES, JSON.stringify([]));
   localStorage.setItem(STORAGE_KEYS.NEWSLETTER, JSON.stringify(DEFAULT_NEWSLETTER));
   localStorage.setItem(STORAGE_KEYS.CBT_CONFIG, JSON.stringify(DEFAULT_CBT_CONFIG));
   broadcast("STUDENTS_UPDATED");

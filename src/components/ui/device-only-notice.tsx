@@ -5,12 +5,12 @@ import { TriangleAlert } from "lucide-react";
 /**
  * Said out loud on every screen whose Save button only reaches this browser.
  *
- * Much of the portal's configuration — the calendar, the CA structure, the
- * newsletter theme and the inmail drafts — is written to localStorage and was
- * described on screen as saved, synchronised or broadcast to the school. It is
- * none of those: a second machine never sees it, and clearing the browser's data
- * loses it. Rather than leave each screen inventing its own reassuring sentence,
- * they point at the same fact.
+ * Much of the portal's configuration — the CA structure, the newsletter theme
+ * and the inmail drafts — is written to localStorage and was described on screen
+ * as saved, synchronised or broadcast to the school. It is none of those: a
+ * second machine never sees it, and clearing the browser's data loses it.
+ * Rather than leave each screen inventing its own reassuring sentence, they
+ * point at the same fact.
  *
  * What the school's records DO hold: pupils, staff and their logins, the class
  * arms, the subject list and the subject packages, the fee schedule, filed CA
@@ -20,9 +20,10 @@ import { TriangleAlert } from "lucide-react";
  * issued or received, the timetable for the session and term it is labelled with,
  * what each member of staff is designated as and who is on duty on a given day,
  * the CBT question bank, the sittings filed as attempts and the switch that opens
- * or shuts the module, and — once the form teacher files them from Operations →
- * Traits & Psychomotor — the character, psychomotor and attendance ratings that
- * fill the other half of a child's card.
+ * or shuts the module, the term calendar with its milestones and the activity
+ * blueprints the office schedules from, and — once the form teacher files them
+ * from Operations → Traits & Psychomotor — the character, psychomotor and
+ * attendance ratings that fill the other half of a child's card.
  */
 export function DeviceOnlyNotice({ what, className = "" }: { what: string; className?: string }) {
   return (
@@ -36,8 +37,8 @@ export function DeviceOnlyNotice({ what, className = "" }: { what: string; class
         arms, the subject list and the subject packages, the fee schedule, filed CA marks, invoices and the receipts
         filed against them, the grading scales, the current session and term, released results, closed terms, the trait
         rubric, the stores register with its stock movements, the timetable once it is filed, who is on duty on a given
-        day, the CBT questions, the sittings and the open/close switch, and the character assessments once they are
-        filed.
+        day, the CBT questions, the sittings and the open/close switch, the term&apos;s milestones and the activity
+        blueprints once they are filed, and the character assessments once they are filed.
       </p>
     </div>
   );
