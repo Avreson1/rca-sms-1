@@ -229,7 +229,7 @@ export default function SetupGradingPage() {
             </div>
             <button
               onClick={handleAddBracket}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-[#0000FF] font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer"
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-[#0000FF] font-bold text-xs rounded-xl transition-all flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add Grade Bracket</span>

@@ -85,7 +85,7 @@ export default function InmailPage() {
 
           <button
             onClick={() => setIsComposing(true)}
-            className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 self-start md:self-auto cursor-pointer"
+            className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 self-start md:self-auto cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             Compose Inmail
@@ -276,7 +276,7 @@ export default function InmailPage() {
               <span>{SCHOOL_INFO.name} internal memos • kept on this browser</span>
               <button
                 onClick={() => setIsComposing(true)}
-                className="font-bold text-blue-600 hover:text-blue-700 cursor-pointer"
+                className="font-bold text-blue-600 hover:text-blue-700 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 Quick Reply →
               </button>

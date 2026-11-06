@@ -237,7 +237,7 @@ export default function SetupReportTemplatesPage() {
             </div>
             <button
               type="submit"
-              className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Save className="w-4 h-4" />
               Save Newsletter

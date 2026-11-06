@@ -192,15 +192,15 @@ export default function SetupSectionsPage() {
                 </div>
 
                 <div className="space-y-3 pt-3 border-t border-slate-100">
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between text-xs">
-                    <div>
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between gap-3 text-xs">
+                    <div className="min-w-0">
                       <span className="text-slate-400 block text-[10px] uppercase font-bold">Head of Section</span>
                       {editingSectionId === sec.id ? (
-                        <div className="flex items-center gap-1 mt-1">
+                        <div className="flex items-center gap-1 mt-1 min-w-0">
                           <select
                             defaultValue={currentHead}
                             onChange={(e) => handleUpdateSectionHead(sec.id, e.target.value)}
-                            className="text-xs p-1 bg-white border border-blue-400 rounded font-bold text-slate-800"
+                            className="text-xs p-1 bg-white border border-blue-400 rounded font-bold text-slate-800 min-w-0 w-full max-w-[15rem]"
                           >
                             <option value="">Unassigned</option>
                             {staff.map((st) => (
@@ -211,7 +211,7 @@ export default function SetupSectionsPage() {
                           </select>
                           <button
                             onClick={() => setEditingSectionId(null)}
-                            className="text-[10px] text-slate-400 hover:text-slate-600 font-bold px-1"
+                            className="shrink-0 text-[10px] text-slate-400 hover:text-slate-600 font-bold px-1"
                           >
                             ✕
                           </button>

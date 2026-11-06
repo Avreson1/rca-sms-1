@@ -206,7 +206,7 @@ export default function SettingsPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={handlePurgeSessions}
-              className="px-4 py-2 text-xs font-bold bg-rose-50 hover:bg-[#FF0000] text-rose-700 hover:text-white border border-rose-200 rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold bg-rose-50 hover:bg-[#FF0000] text-rose-700 hover:text-white border border-rose-200 rounded-xl transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
               <span>Purge Active Sessions</span>

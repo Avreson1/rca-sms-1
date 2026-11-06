@@ -50,7 +50,7 @@ export default function SetupPassScoresPage() {
             type="button"
             disabled
             title="Nothing on this screen is saved to the school database"
-            className="px-5 py-2.5 text-xs font-black bg-slate-200 text-slate-500 rounded-xl flex items-center gap-1.5 self-start md:self-auto cursor-not-allowed"
+            className="px-5 py-2.5 text-xs font-black bg-slate-200 text-slate-500 rounded-xl flex items-center gap-1.5 whitespace-nowrap shrink-0 self-start md:self-auto cursor-not-allowed"
           >
             <Save className="w-4 h-4" />
             Save Benchmarks

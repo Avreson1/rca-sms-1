@@ -406,7 +406,7 @@ export default function SetupSubjectsPage() {
                     setSelectedClasses([...ALL_CLASSES]);
                     setIsModalOpen(true);
                   }}
-                  className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   Add First Subject
@@ -417,7 +417,7 @@ export default function SetupSubjectsPage() {
                     setSelectedClasses([...ALL_CLASSES]);
                     setIsModalOpen(true);
                   }}
-                  className="px-4 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   <Layers className="w-4 h-4 text-blue-600" />
                   Batch Add Multiple

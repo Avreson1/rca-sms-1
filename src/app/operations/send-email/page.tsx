@@ -110,7 +110,7 @@ export default function SendEmailBroadcastPage() {
                   type="button"
                   onClick={handleCopy}
                   disabled={!composedMessage.trim()}
-                  className="px-4 py-2.5 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white border border-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+                  className="px-4 py-2.5 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white border border-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   <Copy className="w-3.5 h-3.5" />
                   {copied ? "Copied to clipboard" : "Copy message"}
@@ -119,7 +119,7 @@ export default function SendEmailBroadcastPage() {
                   type="button"
                   disabled
                   title="No email provider is connected to this portal"
-                  className="px-5 py-2.5 bg-slate-200 text-slate-500 font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-not-allowed"
+                  className="px-5 py-2.5 bg-slate-200 text-slate-500 font-bold text-xs rounded-xl flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-not-allowed"
                 >
                   <Send className="w-3.5 h-3.5" />
                   Send Email Broadcast

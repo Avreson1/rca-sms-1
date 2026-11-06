@@ -256,7 +256,7 @@ export default function CAStructurePage() {
               {canEdit && (
                 <button
                   onClick={handleAddComponent}
-                  className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   <Plus className="w-4 h-4 text-[#0000FF]" />
                   <span>Add Assessment</span>

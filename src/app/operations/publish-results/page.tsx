@@ -177,7 +177,7 @@ export default function PublishResultsPage() {
             </select>
             <button
               onClick={() => void loadPublications()}
-              className="px-3 py-2 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+              className="px-3 py-2 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 shadow-xs cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               Re-read
