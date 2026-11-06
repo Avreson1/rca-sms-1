@@ -12,6 +12,8 @@ import {
 } from "@/lib/realtime-store";
 import {
   closeTermOnServer,
+  countCBTSittingsForTerm,
+  fetchAssessmentsFromSupabase,
   fetchClosedTermsFromSupabase,
   fetchPublicationsFromSupabase,
   reopenTermOnServer,
@@ -73,6 +75,14 @@ export default function EndTermOperationsPage() {
     value: null,
     reason: null,
   });
+  const [cbtCount, setCbtCount] = useState<{ value: number | null; reason: string | null }>({
+    value: null,
+    reason: null,
+  });
+  const [traitCount, setTraitCount] = useState<{ value: number | null; reason: string | null }>({
+    value: null,
+    reason: null,
+  });
 
   const [message, setMessage] = useState<{ kind: "ok" | "bad"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -89,14 +99,21 @@ export default function EndTermOperationsPage() {
 
   const loadState = useCallback(async () => {
     setClosed((previous) => ({ ...previous, loading: true }));
-    const [closings, publications] = await Promise.all([
+    const [closings, publications, sittings, assessments] = await Promise.all([
       fetchClosedTermsFromSupabase(),
       fetchPublicationsFromSupabase(session, selectedTerm),
+      countCBTSittingsForTerm(session, selectedTerm),
+      fetchAssessmentsFromSupabase({ session, terms: [selectedTerm] }),
     ]);
     setClosed({ rows: closings.rows, reason: closings.reason, loading: false });
     setReleasedCount({
       value: publications.reason ? null : (publications.rows ?? []).length,
       reason: publications.reason,
+    });
+    setCbtCount(sittings);
+    setTraitCount({
+      value: assessments === null ? null : new Set(assessments.map((row) => row.studentId)).size,
+      reason: assessments === null ? "the school's assessment list could not be read" : null,
     });
   }, [session, selectedTerm]);
 
@@ -196,15 +213,25 @@ export default function EndTermOperationsPage() {
     },
     {
       label: "Behavioural traits",
-      detail: "kept on each teacher's own device — the school's records hold no trait rows to check",
-      state: "unknown",
+      detail:
+        traitCount.reason !== null
+          ? traitCount.reason
+          : `${traitCount.value} of ${students.length} pupils have their ratings filed${
+              traitCount.value === 0 ? " — every card would print the other half empty" : ""
+            }`,
+      state: traitCount.value === null ? "unknown" : traitCount.value === 0 ? "bad" : traitCount.value < students.length ? "partial" : "ok",
       href: "/operations/traits-assessments",
       hrefLabel: "Open traits",
     },
     {
-      label: "CBT assessments",
-      detail: "no portal screen writes CBT sessions to the school's records yet, so nothing here can confirm them",
-      state: "unknown",
+      label: "CBT sittings",
+      detail:
+        cbtCount.reason !== null
+          ? `the sitting list could not be read: ${cbtCount.reason}`
+          : `${cbtCount.value} attempt(s) filed${
+              cbtCount.value === 0 ? " — nobody has run the engine, or its attempts were never filed" : ""
+            }. An attempt is not a mark; none of these fill the exam column by themselves.`,
+      state: cbtCount.reason !== null ? "unknown" : cbtCount.value === 0 ? "partial" : "ok",
       href: "/cbt",
       hrefLabel: "Open CBT",
     },

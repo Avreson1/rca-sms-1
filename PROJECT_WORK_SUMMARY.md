@@ -117,22 +117,36 @@ Because developmental evaluation differs drastically between daycare toddlers an
 
 ---
 
-## 💻 4. Computer-Based Testing (CBT) & AI Anti-Malpractice Proctoring (`/cbt`)
+## 💻 4. Computer-Based Testing (`/cbt`) — a browser-graded paper on the school's records
 
-A full Computer-Based Testing application with real-time proctoring safeguards has been engineered:
+The exam runs, and is marked, inside the browser that serves it: the questions carry their own right
+answer because there is no server-side marker. What the school's records hold is the paper, the
+sitting and the switch.
 
-- **Assessment Simulation Room**: Timed testing interface, live countdown clock, question pagination, answer selection, and submission review.
-- **AI Anti-Malpractice Failsafe & Strike System**:
-  1. *Tab Switch & Window Blur Detection*: Listens to the `visibilitychange` and `blur` events; triggers immediate violation strikes if a candidate navigates away or switches tabs.
-  2. *Fullscreen Enforcement*: Monitors fullscreen state and penalizes candidates if fullscreen is exited.
-  3. *Shortcut & DevTools Blocking*: Intercepts keyboard shortcuts (F12, Ctrl+Shift+I, Ctrl+C, Ctrl+V, PrintScreen).
-  4. *Ambient Audio/Noise Spike Simulation*: Simulates sound level auditing for test room integrity.
-  5. *3-Strikes Immediate Expulsion*:
-     - Strike 1 & Strike 2: Severe alert modals warning the candidate.
-     - Strike 3: Automatic candidate expulsion, test session termination, and automatic sync of **0 marks** to the CA gradebook.
-- **Real-Time CA Exam Synchronization**: Completed examination scores scale directly into the student's 60-point Continuous Assessment Exam column in the live gradebook.
-- **Question Bank Administration**: Interactive question creator and universal CSV question bank upload/download with downloadable template.
-- **Global CBT Portal Toggle**: Super Admins and Exam Officers can open or lock down CBT testing school-wide from System Settings (`/settings`).
+- **The paper is the school's, not the machine's** (`cbt_questions` via `/api/cbt/questions`). The
+  exam office types a question or loads a CSV on the *CBT* screen's manage tab, previews it, and
+  files it; every other machine then serves the same paper. Nothing is filed until the office presses
+  *File these n question(s)*, and a CSV row the school refuses comes back named.
+- **The sitting is filed as an attempt** (`cbt_exam_sessions` via `/api/cbt/sessions`). When a sitting
+  ends, the browser posts the figure it worked out, the question count and the incident log; the
+  server resolves the pupil from `students`, refuses anyone who is not on the register, refuses a
+  score above the paper's marks, refuses a closed term, and writes `synced_to_ca` **false**. No CBT
+  figure reaches a mark column by itself — *Update CA* shows the attempt beside each pupil's name and
+  the person enters the mark.
+- **The lockdown switch is one switch for every machine** (`cbt_settings` via `/api/cbt/settings`).
+  It cannot be opened without naming what the module is being used for and the hours it runs in, it
+  records who moved it last, and the candidate-facing closed screen prints the school's own notice.
+  Candidates read the switch (a locked door must say who shut it) but cannot move it.
+- **Proctoring is four browser listeners, and the screen says so**: full-screen exit, tab or window
+  focus loss, the blocked shortcuts (copy, paste, print-screen, right-click, F12), and the third
+  strike that ends the sitting and scores it 0. There is **no camera, microphone, face or gaze
+  check** — the old "AI Video Proctor" panel and its `Math.random()` decibel meter were removed
+  because a child believed their face was being watched. The incident log is filed beside the
+  attempt as *what a browser detected*.
+- **Answers are not shown to the people who must not read them.** The marked bank list, the answer
+  highlight and the CSV export (which carries the answers) are limited to the two logins that write
+  the bank; a candidate is not shown the bank at all, and an empty bank refuses to launch rather than
+  serving the five sample questions that used to be written into the page's own source.
 
 ---
 
@@ -236,6 +250,15 @@ The database architecture is designed with **Supabase PostgreSQL**, utilizing Ro
 8. `public.transactions`: Payment transactions, reference numbers, payment channels, and timestamps.
 9. `public.audit_logs`: Administrative change history and system audit trail.
 10. `public.inmail_messages`: Internal messaging mailbox, sender, recipient, subject, body, read status.
+11. `public.cbt_settings`: the switch that opens or shuts the exam portal, the purpose it is open for,
+    the hours it runs in, the notice a locked screen prints, and who moved it last — created by
+    `supabase/cbt.sql` rather than `schema.sql`, which also adds the sitting columns the older file
+    never gave `cbt_exam_sessions`.
+
+Every feature built after `schema.sql` ships its own file in `supabase/` (the list, in run order, is
+in [DEPLOYMENT.md](DEPLOYMENT.md)): each creates or extends its tables, enables RLS with **no**
+policies, and grants the table to `service_role` alone. A project that ran only `schema.sql` has the
+tables but no access to them, so those screens fall back to the copy held on the browser and say so.
 
 ### Realtime Publications:
 - Enabled on `students`, `staff`, `ca_scores`, `cbt_exam_sessions`, `invoices`, `transactions`, and `grading_tiers` for instant live updates across client sessions.

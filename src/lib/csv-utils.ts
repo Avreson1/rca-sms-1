@@ -192,16 +192,20 @@ export function downloadSampleTemplate(
       exportToCSV(
         "rca_cbt_question_bank_template.csv",
         [
+          "Subject (leave blank to join the paper named on the screen)",
+          "Class Arm (leave blank to join the paper named on the screen)",
           "Question Text",
           "Option A",
           "Option B",
           "Option C",
           "Option D",
           "Correct Option Number (1 for A, 2 for B, 3 for C, 4 for D)",
-          "Marks Allocation",
+          "Marks Allocation (1 to 100)",
         ],
         [
           [
+            "Computer Studies",
+            "SS 1",
             "What is the capital city of Plateau State?",
             "Bukuru",
             "Jos",
@@ -211,6 +215,8 @@ export function downloadSampleTemplate(
             10,
           ],
           [
+            "Computer Studies",
+            "SS 1",
             "Which protocol is used for secure web browsing?",
             "FTP",
             "HTTP",

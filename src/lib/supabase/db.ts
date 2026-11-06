@@ -10,6 +10,9 @@ import {
   ClassArmRecord,
   SubjectRecord,
   SubjectTemplateRecord,
+  CBTQuestionRecord,
+  CBTConfigRecord,
+  CBTSittingRecord,
 } from "../realtime-store";
 import { DEFAULT_TIMETABLE_DAYS, DEFAULT_TIMETABLE_PERIODS, type TimetablePeriod } from "../timetable/day-shape";
 
@@ -2118,4 +2121,303 @@ export async function removeSubjectTemplatesOnServer(ids: string[]): Promise<{ o
     reportSyncFailure(`The subject package was NOT removed from the school's list: ${reason}.`);
     return { ok: false, reason };
   }
+}
+
+// ============================================================================
+// 15. THE CBT BANK, THE SITTINGS AND THE LOCKDOWN SWITCH
+// ============================================================================
+// The question bank decided what a candidate was examined on, the switch decided
+// whether they may be examined at all, and the sittings were the only evidence a
+// child sat anything. All three lived in one browser, so the paper, the window
+// and the record were each whatever that machine last typed. Nothing here is
+// optimistic: the bank on screen is re-read from the school's records after a
+// write, and a sitting that was not filed says it was not filed.
+
+interface CBTQuestionRow {
+  id: number;
+  subject: string;
+  class_name: string;
+  question_text: string;
+  options: string[] | null;
+  correct_answer_index: number;
+  marks: number;
+}
+
+function toCBTQuestionRecord(row: CBTQuestionRow): CBTQuestionRecord {
+  return {
+    id: String(row.id),
+    subject: row.subject,
+    className: row.class_name,
+    questionText: row.question_text,
+    options: Array.isArray(row.options) ? row.options : [],
+    // The engine reads `correctOptionIndex`; the column is named for the answer
+    // it is, so the two are mapped here and nowhere else.
+    correctOptionIndex: row.correct_answer_index,
+    marks: row.marks,
+  };
+}
+
+export async function fetchCBTQuestionsFromSupabase(): Promise<CBTQuestionRecord[] | null> {
+  const rows = await requestJson<CBTQuestionRow[]>("/api/cbt/questions", "The exam question bank");
+  if (!rows) return null;
+  return rows.map(toCBTQuestionRecord);
+}
+
+export interface CBTQuestionInput {
+  /** The bank's own number. Absent means a question the school has never filed. */
+  id?: string;
+  subject: string;
+  className: string;
+  questionText: string;
+  options: string[];
+  /** Zero-based: option A is 0. The screen counts from A, the records store the index. */
+  correctOptionIndex: number;
+  marks: number;
+}
+
+/** Files one question or a whole imported paper, then leaves the reload to the caller. */
+export async function saveCBTQuestionsOnServer(
+  list: CBTQuestionInput[]
+): Promise<{ ok: boolean; saved: number; reason: string | null }> {
+  const reason = await postQuiet(
+    "/api/cbt/questions",
+    list.map((question) => ({
+      id: question.id,
+      subject: question.subject,
+      class_name: question.className,
+      question_text: question.questionText,
+      options: question.options,
+      correct_option_index: question.correctOptionIndex,
+      marks: question.marks,
+    }))
+  );
+  if (reason) {
+    reportSyncFailure(`The questions were NOT filed on the school's exam bank: ${reason}.`);
+    return { ok: false, saved: 0, reason };
+  }
+  reportSyncSaved(
+    `${list.length} question${list.length === 1 ? "" : "s"} filed on the school's exam bank — every machine now serves this paper.`
+  );
+  return { ok: true, saved: list.length, reason: null };
+}
+
+export async function removeCBTQuestionOnServer(id: string): Promise<{ ok: boolean; reason: string | null }> {
+  try {
+    const response = await fetch("/api/cbt/questions", {
+      method: "DELETE",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [id] }),
+    });
+    if (!response.ok) {
+      const reason = await serverReason(response);
+      reportSyncFailure(`The question was NOT removed from the school's exam bank: ${reason}.`);
+      return { ok: false, reason };
+    }
+    reportSyncSaved("Question removed from the school's exam bank.");
+    return { ok: true, reason: null };
+  } catch (error) {
+    console.warn("API /api/cbt/questions delete failed", error);
+    const reason = "the portal server did not answer";
+    reportSyncFailure(`The question was NOT removed from the school's exam bank: ${reason}.`);
+    return { ok: false, reason };
+  }
+}
+
+interface CBTConfigRow {
+  is_open: boolean;
+  active_exam_mode: string;
+  scheduled_window: string;
+  offline_message: string;
+  updated_by: string;
+  updated_at: string;
+}
+
+function toCBTConfigRecord(row: CBTConfigRow): CBTConfigRecord {
+  return {
+    isOpen: row.is_open === true,
+    activeExamMode: row.active_exam_mode ?? "",
+    scheduledWindow: row.scheduled_window ?? "",
+    offlineMessage: row.offline_message ?? "",
+    allowAdminBypass: true,
+    updatedAt: row.updated_at ?? undefined,
+    updatedBy: row.updated_by || undefined,
+  };
+}
+
+/**
+ * The school's CBT switch, or null when this device cannot reach it.
+ *
+ * A parent's browser has to be able to read it, because the notice a candidate
+ * is given when the module is shut comes from here.
+ */
+export async function fetchCBTConfigFromSupabase(): Promise<CBTConfigRecord | null> {
+  const row = await requestJson<CBTConfigRow>("/api/cbt/settings", "The CBT open/closed switch");
+  if (!row) return null;
+  return toCBTConfigRecord(row);
+}
+
+/** Moves the switch, and returns what the school now holds rather than what was typed. */
+export async function saveCBTConfigOnServer(
+  updates: Partial<CBTConfigRecord>
+): Promise<{ ok: boolean; config: CBTConfigRecord | null; reason: string | null }> {
+  try {
+    const response = await fetch("/api/cbt/settings", {
+      method: "PUT",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        is_open: updates.isOpen,
+        active_exam_mode: updates.activeExamMode ?? "",
+        scheduled_window: updates.scheduledWindow ?? "",
+        offline_message: updates.offlineMessage ?? "",
+      }),
+    });
+    if (!response.ok) {
+      const reason = await serverReason(response);
+      reportSyncFailure(`The CBT switch was NOT changed on the school's records: ${reason}.`);
+      return { ok: false, config: null, reason };
+    }
+
+    const payload = (await response.json().catch(() => null)) as { data?: CBTConfigRow } | null;
+    const filed = payload?.data ? toCBTConfigRecord(payload.data) : null;
+    reportSyncSaved(
+      filed?.isOpen
+        ? "The CBT module is open on the school's records — every machine sees the switch."
+        : "The CBT module is closed on the school's records — candidates are turned away on every machine."
+    );
+    return { ok: true, config: filed, reason: null };
+  } catch (error) {
+    console.warn("API /api/cbt/settings put failed", error);
+    const reason = "the portal server did not answer";
+    reportSyncFailure(`The CBT switch was NOT changed on the school's records: ${reason}.`);
+    return { ok: false, config: null, reason };
+  }
+}
+
+export interface CBTSittingInput {
+  admissionNo: string;
+  session: string;
+  term: string;
+  /** Empty when the paper mixed subjects — the records then hold no subject to name. */
+  subject: string;
+  questionCount: number;
+  cbtScore: number;
+  maxMarks: number;
+  strikes: number;
+  isExpelled: boolean;
+  malpracticeLogs: { type: string; severity: string; description: string; at: string }[];
+}
+
+/**
+ * Files one finished sitting on the school's records.
+ *
+ * The score is the browser's arithmetic and the route re-resolves the pupil from
+ * the register, so a sitting cannot be attached to a name this machine invented.
+ * It is still not a mark: the gradebook column changes when a person enters it.
+ */
+export async function recordCBTSittingOnServer(
+  sitting: CBTSittingInput
+): Promise<{ ok: boolean; reason: string | null }> {
+  try {
+    const response = await fetch("/api/cbt/sessions", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(sitting),
+    });
+    if (!response.ok) {
+      const reason = await serverReason(response);
+      reportSyncFailure(`This sitting was NOT filed on the school's records: ${reason}.`);
+      return { ok: false, reason };
+    }
+    reportSyncSaved("Sitting filed on the school's records. The mark itself is still entered by a teacher or the exam office.");
+    return { ok: true, reason: null };
+  } catch (error) {
+    console.warn("API /api/cbt/sessions post failed", error);
+    const reason = "the portal server did not answer";
+    reportSyncFailure(`This sitting was NOT filed on the school's records: ${reason}.`);
+    return { ok: false, reason };
+  }
+}
+
+interface CBTSittingRow {
+  id: string;
+  admission_no: string;
+  student_name: string;
+  class_name: string;
+  session: string;
+  term: string;
+  subject: string | null;
+  question_count: number | null;
+  cbt_score: number | string | null;
+  max_marks: number | string | null;
+  strikes: number | null;
+  is_expelled: boolean | null;
+  completed_at: string | null;
+}
+
+function toCBTSittingRecord(row: CBTSittingRow): CBTSittingRecord {
+  return {
+    id: row.id,
+    admissionNo: row.admission_no,
+    studentName: row.student_name,
+    className: row.class_name,
+    session: row.session,
+    term: row.term,
+    subject: row.subject ?? "",
+    questionCount: Number(row.question_count) || 0,
+    cbtScore: Number(row.cbt_score) || 0,
+    maxMarks: Number(row.max_marks) || 0,
+    strikes: Number(row.strikes) || 0,
+    isExpelled: row.is_expelled === true,
+    completedAt: row.completed_at ?? "",
+  };
+}
+
+/** Sittings as the school holds them, newest first, for one narrowed query. */
+async function readCBTSittings(query: { [key: string]: string }, label: string): Promise<CBTSittingRecord[] | null> {
+  const params = new URLSearchParams(query);
+  const rows = await requestJson<CBTSittingRow[]>(`/api/cbt/sessions?${params.toString()}`, label);
+  return rows ? rows.map(toCBTSittingRecord) : null;
+}
+
+/** Sittings filed for one pupil in one session and term, newest first. */
+export function fetchCBTSittingsOnServer(
+  admissionNo: string,
+  session: string,
+  term: string
+): Promise<CBTSittingRecord[] | null> {
+  return readCBTSittings({ admission_no: admissionNo, session, term }, "The sittings filed for this pupil");
+}
+
+/**
+ * Sittings filed for one class in one session and term, newest first.
+ *
+ * The CA entry grid is where an attempt becomes a mark, so it has to see the
+ * attempts the school holds rather than the one this particular browser happened
+ * to run. Rows come back newest first, so the caller takes each pupil's first.
+ */
+export function fetchCBTSittingsForClass(
+  className: string,
+  session: string,
+  term: string
+): Promise<CBTSittingRecord[] | null> {
+  return readCBTSittings({ class_name: className, session, term }, "The sittings filed for this class");
+}
+
+/**
+ * Sittings filed in one session and term, for the end-of-term checklist.
+ *
+ * Counted rather than assumed: the checklist used to say no portal screen wrote
+ * a CBT session to the records, which stopped being true the moment the engine
+ * filed its attempts. What it still cannot say is that any of them became a mark.
+ */
+export async function countCBTSittingsForTerm(
+  session: string,
+  term: string
+): Promise<{ value: number | null; reason: string | null }> {
+  return readList<{ id: string }>(
+    `/api/cbt/sessions?session=${encodeURIComponent(session)}&term=${encodeURIComponent(term)}&limit=1000`
+  ).then(({ rows, reason }) => ({ value: rows ? rows.length : null, reason }));
 }

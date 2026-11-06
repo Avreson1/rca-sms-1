@@ -12,9 +12,12 @@ import {
   useRealtimeSubjectScores,
   useRealtimeAuth,
   calculateGradeForClass,
-  StudentRecord,
+  type CBTSittingRecord,
+  type StudentRecord,
 } from "@/lib/realtime-store";
 import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
+import { fetchCBTSittingsForClass } from "@/lib/supabase/db";
 import { useSchoolConfig, effectiveScope } from "@/lib/school-config";
 import { exportToCSV, parseCSV, downloadSampleTemplate } from "@/lib/csv-utils";
 import {
@@ -29,6 +32,12 @@ import {
   Sliders,
   FileDown,
 } from "lucide-react";
+
+/** A sitting with no readable timestamp says so instead of printing `Invalid Date`. */
+function formatSittingTime(value: string): string {
+  const at = new Date(value);
+  return Number.isNaN(at.getTime()) ? "no date on the record" : at.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+}
 
 export default function UpdateCAPage() {
   const { students, updateStudentScore, bulkUpdateScores, saveCaScores, overlayFiledScores } = useRealtimeStudents();
@@ -116,6 +125,43 @@ export default function UpdateCAPage() {
     overlayFiledScores(selectedSubject, selectedClass, filedMarks);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filedLoaded, selectedSubject, selectedClass, filedMarks]);
+
+  // The CBT figure beside a pupil's name is the attempt the school holds, not the
+  // sitting this browser happened to run. A teacher who never opened the engine
+  // still has to see what the class sat before deciding whether it becomes a mark.
+  const sittingKey = `${selectedClass}::${schoolScope.session}::${schoolScope.term}`;
+  const [cbtSittings, setCbtSittings] = useState<{ key: string; newest: Record<string, CBTSittingRecord> | null }>({
+    key: "",
+    newest: null,
+  });
+  // The chips on screen belong to this arm and no other: a read still in flight,
+  // or one that returned a different arm, shows nothing rather than a guess.
+  const cbtAttemptsRead = cbtSittings.key === sittingKey ? cbtSittings.newest : null;
+  const cbtAttemptsPending = isSupabaseConfigured && cbtSittings.key !== sittingKey;
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let stale = false;
+    void fetchCBTSittingsForClass(
+      selectedClass === "all" ? "" : selectedClass,
+      schoolScope.session,
+      schoolScope.term
+    ).then((rows) => {
+      if (stale) return;
+      const byPupil: Record<string, CBTSittingRecord> = {};
+      // The list comes back newest first, so the first row per pupil is their
+      // latest sitting and every later retake is left out. A read that failed
+      // is kept as `null`, which is not the same as an arm nobody sat anything.
+      (rows ?? []).forEach((s) => {
+        const no = s.admissionNo.trim().toUpperCase();
+        if (!byPupil[no]) byPupil[no] = s;
+      });
+      setCbtSittings({ key: sittingKey, newest: rows === null ? null : byPupil });
+    });
+    return () => {
+      stale = true;
+    };
+  }, [sittingKey, selectedClass, schoolScope.session, schoolScope.term]);
 
   // CSV Score Upload Modal
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
@@ -320,6 +366,19 @@ export default function UpdateCAPage() {
     return { avg, max, min, passRate };
   }, [filteredStudents]);
 
+  // Where the chips under the names came from, said plainly. A blank column is
+  // easy to read as "nobody sat anything" when what happened is that the list
+  // could not be read at all.
+  const cbtAttemptsNote = !isSupabaseConfigured
+    ? "No CBT chip is shown: this browser is not connected to the school's database."
+    : cbtAttemptsPending
+      ? "Reading the sittings filed for this arm…"
+      : cbtAttemptsRead === null
+        ? `The sittings for ${schoolScope.term} ${schoolScope.session} could not be read, so no chip is shown — a name with no chip may still have sat one.`
+        : Object.keys(cbtAttemptsRead).length === 0
+          ? `The school's records hold no CBT sitting for this arm in ${schoolScope.term} ${schoolScope.session}, so there is no figure to adopt.`
+          : `A chip under a name is that pupil's latest sitting on the school's records for ${schoolScope.term} ${schoolScope.session}. A sitting is an attempt, not a mark: the Exam column changes when you type in it and save.`;
+
   return (
     <DashboardShell>
       <div className="space-y-6">
@@ -498,6 +557,7 @@ export default function UpdateCAPage() {
               <p className="text-[11px] text-slate-500">
                 Formula: Test 1 (10) + Test 2 (10) + Project (10) + Mid-Term (10) + Exam (60) = Total (100).
               </p>
+              <p className="text-[11px] text-slate-500">{cbtAttemptsNote}</p>
             </div>
             <span className="text-xs bg-slate-200 text-slate-700 font-bold px-2.5 py-0.5 rounded-full">
               {filteredStudents.length} Students Listed
@@ -531,6 +591,11 @@ export default function UpdateCAPage() {
                     student.caScores.exam;
 
                   const gradeInfo = calculateGradeForClass(total, student.className, gradingTiers);
+                  // The newest sitting filed for this pupil on the school's records,
+                  // if they sat one this term.
+                  const sitting = cbtAttemptsRead
+                    ? cbtAttemptsRead[student.admissionNo.trim().toUpperCase()]
+                    : undefined;
 
                   return (
                     <tr key={student.id} className="hover:bg-blue-50/20 transition-colors">
@@ -542,16 +607,17 @@ export default function UpdateCAPage() {
                           <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.2 rounded border border-blue-100">
                             {student.className}
                           </span>
-                          {student.cbtSyncStatus && (
-                            <span className={`inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.2 rounded ${
-                              student.cbtSyncStatus.isExpelled
-                                ? "bg-red-100 text-red-700"
-                                : "bg-emerald-100 text-emerald-800"
-                            }`}>
+                          {sitting && (
+                            <span
+                              title={`Attempt filed ${formatSittingTime(sitting.completedAt)} · ${sitting.questionCount} question(s) · not entered as a mark`}
+                              className={`inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.2 rounded ${
+                                sitting.isExpelled ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-800"
+                              }`}
+                            >
                               <Cpu className="w-2.5 h-2.5" />
-                              {student.cbtSyncStatus.isExpelled
-                                ? "CBT (0)"
-                                : `CBT: ${student.cbtSyncStatus.cbtScore}/${student.cbtSyncStatus.maxMarks}`}
+                              {sitting.isExpelled
+                                ? `CBT ended at strike 3 (0/${sitting.maxMarks})`
+                                : `CBT attempt: ${sitting.cbtScore}/${sitting.maxMarks}`}
                             </span>
                           )}
                         </div>

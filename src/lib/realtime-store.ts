@@ -42,6 +42,12 @@ import {
   saveSubjectTemplatesOnServer,
   removeSubjectTemplatesOnServer,
   type SubjectTemplateInput,
+  fetchCBTQuestionsFromSupabase,
+  saveCBTQuestionsOnServer,
+  removeCBTQuestionOnServer,
+  type CBTQuestionInput,
+  fetchCBTConfigFromSupabase,
+  saveCBTConfigOnServer,
 } from "./supabase/db";
 
 // Channel for instant multi-tab & multi-window event synchronization
@@ -94,13 +100,6 @@ export interface StudentRecord {
     project: number; // Max 10
     midTerm: number; // Max 10
     exam: number; // Max 60
-  };
-  cbtSyncStatus?: {
-    syncedAt: string;
-    cbtScore: number;
-    maxMarks: number;
-    assessmentName: string;
-    isExpelled?: boolean;
   };
 }
 
@@ -281,6 +280,30 @@ export interface CBTQuestionRecord {
   category?: string;
 }
 
+/**
+ * One finished sitting, as the school's records hold it.
+ *
+ * The score is the browser's own arithmetic — marking still happens there, which
+ * is why this is an attempt and not a mark. `syncedToCa` is false on every row
+ * the CBT engine files, and stays false until a person moves the figure into the
+ * gradebook.
+ */
+export interface CBTSittingRecord {
+  id: string;
+  admissionNo: string;
+  studentName: string;
+  className: string;
+  session: string;
+  term: string;
+  subject: string;
+  questionCount: number;
+  cbtScore: number;
+  maxMarks: number;
+  strikes: number;
+  isExpelled: boolean;
+  completedAt: string;
+}
+
 export interface NewsletterRecord {
   id: string;
   session: string;
@@ -360,7 +383,6 @@ export interface InmailMessage {
 export interface CBTConfigRecord {
   isOpen: boolean; // Master toggle: true = Open for Exams, false = Closed / Offline Lockdown
   activeExamMode: string; // e.g. "Terminal Examination", "Continuous Assessment Test (CAT)", "Mid-Term Assessment", "Mock & Revision Practice", "Closed / Maintenance"
-  targetClasses?: string[];
   scheduledWindow: string; // e.g. "Monday - Friday (8:00 AM - 2:00 PM)"
   offlineMessage: string; // Notice displayed to candidates when CBT is closed
   allowAdminBypass?: boolean; // Super Admin / Exam Officer preview capability
@@ -369,18 +391,20 @@ export interface CBTConfigRecord {
 }
 
 export const DEFAULT_CBT_CONFIG: CBTConfigRecord = {
-  isOpen: true,
-  // Mode, window and the candidate notice start blank: a fresh browser used to
-  // arrive pre-filled with "Terminal Examination", "Monday - Friday (8:00 AM -
-  // 2:00 PM)" and a finished lockdown paragraph, so the CBT screen read out a
-  // schedule and wording the school had never set. Blank means not announced.
+  // Shut, and blank, until the school's own switch row is read. A browser that
+  // has not reached the database must not present an exam module as open to a
+  // candidate, and a fresh install used to arrive pre-filled with "Terminal
+  // Examination", "Monday - Friday (8:00 AM - 2:00 PM)" and a finished lockdown
+  // paragraph — a schedule and wording the school had never set. Blank means not
+  // announced; the candidate notice on the closed screen says so rather than
+  // inventing one.
+  isOpen: false,
   activeExamMode: "",
-  targetClasses: ["All Classes"],
   scheduledWindow: "",
   offlineMessage: "",
   allowAdminBypass: true,
-  // No updatedAt / updatedBy either: nobody has changed anything on this browser
-  // yet, and the defaults used to sign the row "Super Administrator, 1 January 2026".
+  // No updatedAt / updatedBy either: nobody has changed anything yet, and the
+  // defaults used to sign the row "Super Administrator, 1 January 2026".
 };
 
 // -------------------------------------------------------------
@@ -1864,10 +1888,27 @@ export function useRealtimeStaff() {
 }
 
 // -------------------------------------------------------------
-// Hook: Real-Time CBT Questions Store
+// Hook: The Exam Question Bank (the school's records, this browser's copy only
+// as a fallback)
 // -------------------------------------------------------------
+// The bank decides what every candidate in the room is examined on, so it cannot
+// be whatever one machine imported. The device copy is kept only to show while
+// the school's bank is being read, and `questionsSource` says which of the two
+// is on screen — the CBT screen refuses to call a device copy a paper.
 export function useRealtimeCBTQuestions() {
   const [questions, setQuestions] = useState<CBTQuestionRecord[]>(INITIAL_CBT_QUESTIONS);
+  const [questionsSource, setQuestionsSource] = useState<"server" | "device">("device");
+
+  const showServerQuestions = (): Promise<boolean> => {
+    if (!isSupabaseConfigured) return Promise.resolve(false);
+    return fetchCBTQuestionsFromSupabase().then((serverQuestions) => {
+      if (serverQuestions === null) return false;
+      setQuestions(serverQuestions);
+      setQuestionsSource("server");
+      localStorage.setItem(STORAGE_KEYS.CBT_QUESTIONS, JSON.stringify(serverQuestions));
+      return true;
+    });
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1879,6 +1920,10 @@ export function useRealtimeCBTQuestions() {
       } else {
         localStorage.setItem(STORAGE_KEYS.CBT_QUESTIONS, JSON.stringify(INITIAL_CBT_QUESTIONS));
       }
+    }
+
+    if (isSupabaseConfigured) {
+      showServerQuestions();
     }
 
     let channel: BroadcastChannel | null = null;
@@ -1896,35 +1941,65 @@ export function useRealtimeCBTQuestions() {
     };
   }, []);
 
-  const addQuestion = (newQ: Omit<CBTQuestionRecord, "id">) => {
-    const q: CBTQuestionRecord = {
-      ...newQ,
-      id: questions.length + 1,
-    };
-    const updated = [...questions, q];
-    setQuestions(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.CBT_QUESTIONS, JSON.stringify(updated));
-      broadcast("CBT_QUESTIONS_UPDATED");
+  /**
+   * Files questions on the school's bank, then re-reads it.
+   *
+   * A question the school refused is not put on screen from the browser's copy:
+   * the list that appears afterwards is the list the database handed back, so an
+   * option set with no answer in it never reaches a candidate.
+   */
+  const addQuestions = async (
+    list: Omit<CBTQuestionInput, "id">[]
+  ): Promise<{ ok: boolean; saved: number; reason: string | null }> => {
+    if (list.length === 0) return { ok: false, saved: 0, reason: "No question was sent." };
+
+    if (!isSupabaseConfigured) {
+      return {
+        ok: false,
+        saved: 0,
+        reason: "this device is not connected to the school database, so no question was filed",
+      };
     }
+
+    const outcome = await saveCBTQuestionsOnServer(list);
+    if (!outcome.ok) return { ok: false, saved: 0, reason: outcome.reason };
+
+    await showServerQuestions();
+    return { ok: true, saved: outcome.saved, reason: null };
   };
 
-  const bulkAddQuestions = (newQuestions: Omit<CBTQuestionRecord, "id">[]) => {
-    let nextId = questions.length;
-    const added = newQuestions.map((q) => {
-      nextId++;
-      return { ...q, id: nextId };
-    });
-    const updated = [...questions, ...added];
-    setQuestions(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.CBT_QUESTIONS, JSON.stringify(updated));
-      broadcast("CBT_QUESTIONS_UPDATED");
+  /** Corrects a question already on the bank, keeping the number it is filed under. */
+  const updateQuestion = async (
+    question: CBTQuestionInput
+  ): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database, so nothing was corrected" };
     }
-    return added.length;
+    if (!question.id) return { ok: false, reason: "this question is not on the school's bank yet, so it has no record to correct" };
+
+    const outcome = await saveCBTQuestionsOnServer([question]);
+    if (outcome.ok) await showServerQuestions();
+    return { ok: outcome.ok, reason: outcome.reason };
   };
 
-  return { questions, addQuestion, bulkAddQuestions };
+  const removeQuestion = async (id: string): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database" };
+    }
+
+    const outcome = await removeCBTQuestionOnServer(id);
+    if (outcome.ok) await showServerQuestions();
+    return { ok: outcome.ok, reason: outcome.reason };
+  };
+
+  return {
+    questions,
+    questionsSource,
+    addQuestions,
+    updateQuestion,
+    removeQuestion,
+    reloadQuestions: showServerQuestions,
+  };
 }
 
 // -------------------------------------------------------------
@@ -2062,61 +2137,6 @@ export function useRealtimeInvoices() {
   };
 
   return { invoices, recordPayment, addInvoices };
-}
-
-// -------------------------------------------------------------
-// Sync CBT Score to Continuous Assessment (Exam Column: 0-60)
-// -------------------------------------------------------------
-export function syncCBTScoreToCA(
-  admissionNo: string,
-  cbtRawScore: number,
-  cbtMaxMarks: number,
-  targetCAField: "test1" | "test2" | "project" | "midTerm" | "exam" = "exam",
-  assessmentName: string = "CBT Assessment",
-  isExpelled: boolean = false
-): { success: boolean; scaledScore: number } {
-  if (typeof window === "undefined") return { success: false, scaledScore: 0 };
-
-  const stored = localStorage.getItem(STORAGE_KEYS.STUDENTS);
-  if (!stored) return { success: false, scaledScore: 0 };
-
-  try {
-    const studentList: StudentRecord[] = JSON.parse(stored);
-    const targetStudentIndex = studentList.findIndex(
-      (s) => s.admissionNo.trim().toUpperCase() === admissionNo.trim().toUpperCase()
-    );
-
-    if (targetStudentIndex === -1) return { success: false, scaledScore: 0 };
-
-    const maxLimits: Record<string, number> = { test1: 10, test2: 10, project: 10, midTerm: 10, exam: 60 };
-    const fieldMax = maxLimits[targetCAField] || 60;
-    const scaledScore = isExpelled
-      ? 0
-      : Math.min(fieldMax, Math.round((cbtRawScore / Math.max(1, cbtMaxMarks)) * fieldMax));
-
-    studentList[targetStudentIndex] = {
-      ...studentList[targetStudentIndex],
-      // The attempt is recorded, the mark is not. This used to write the scaled
-      // score into `caScores` for the chosen column, so a child's exam mark on
-      // this machine changed because somebody sat a practice run on it — with no
-      // server row, no name attached and no way to trace it. A CA entry screen
-      // shows the raw CBT figure below; a person decides whether it becomes a mark.
-      cbtSyncStatus: {
-        syncedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-        cbtScore: cbtRawScore,
-        maxMarks: cbtMaxMarks,
-        assessmentName,
-        isExpelled,
-      },
-    };
-
-    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(studentList));
-    broadcast("STUDENTS_UPDATED");
-    return { success: true, scaledScore };
-  } catch (error) {
-    console.error("Failed to sync CBT score to CA Gradebook:", error);
-    return { success: false, scaledScore: 0 };
-  }
 }
 
 // -------------------------------------------------------------
@@ -2951,10 +2971,28 @@ export function useRealtimeAuth() {
 }
 
 // -------------------------------------------------------------
-// Hook: Real-Time CBT Engine Configuration & Lockdown Store
+// Hook: The CBT lockdown switch (the school's records)
 // -------------------------------------------------------------
+// One row on the school's database says whether the module is open, what it is
+// being used for and what a candidate is told when it is shut. It used to be a
+// browser's localStorage under that name, so moving the switch in Settings
+// changed nothing on any other machine — an exam could be sat while the office
+// believed the module was closed. The device copy remains only as what is shown
+// before the row is read; `configSource` says which of the two is on screen.
 export function useRealtimeCBTConfig() {
   const [cbtConfig, setCBTConfig] = useState<CBTConfigRecord>(DEFAULT_CBT_CONFIG);
+  const [configSource, setConfigSource] = useState<"server" | "device">("device");
+
+  const showServerConfig = (): Promise<boolean> => {
+    if (!isSupabaseConfigured) return Promise.resolve(false);
+    return fetchCBTConfigFromSupabase().then((serverConfig) => {
+      if (serverConfig === null) return false;
+      setCBTConfig(serverConfig);
+      setConfigSource("server");
+      localStorage.setItem(STORAGE_KEYS.CBT_CONFIG, JSON.stringify(serverConfig));
+      return true;
+    });
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -2966,6 +3004,10 @@ export function useRealtimeCBTConfig() {
       } else {
         localStorage.setItem(STORAGE_KEYS.CBT_CONFIG, JSON.stringify(DEFAULT_CBT_CONFIG));
       }
+    }
+
+    if (isSupabaseConfigured) {
+      showServerConfig();
     }
 
     let channel: BroadcastChannel | null = null;
@@ -2987,38 +3029,50 @@ export function useRealtimeCBTConfig() {
     };
   }, []);
 
-  const updateCBTConfig = (updates: Partial<CBTConfigRecord>) => {
-    const updated: CBTConfigRecord = {
-      ...cbtConfig,
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    };
-    setCBTConfig(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.CBT_CONFIG, JSON.stringify(updated));
+  /**
+   * Saves the switch and the notice that goes with it, then shows what the
+   * school actually holds.
+   *
+   * Opening the module is refused unless it names a purpose and the hours it
+   * runs in, and the refusal is returned rather than smoothed over: a screen
+   * that looked open after a refusal would be the exact lie this table exists
+   * to stop.
+   */
+  const updateCBTConfig = async (
+    updates: Partial<CBTConfigRecord>
+  ): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      const local: CBTConfigRecord = { ...cbtConfig, ...updates, updatedAt: new Date().toISOString() };
+      setCBTConfig(local);
+      localStorage.setItem(STORAGE_KEYS.CBT_CONFIG, JSON.stringify(local));
       broadcast("CBT_CONFIG_UPDATED");
+      return {
+        ok: false,
+        reason: "this device is not connected to the school database, so the switch only moved on this browser",
+      };
     }
-    return updated;
+
+    const outcome = await saveCBTConfigOnServer(updates);
+    if (!outcome.ok) return { ok: false, reason: outcome.reason };
+
+    if (outcome.config) {
+      setCBTConfig(outcome.config);
+      setConfigSource("server");
+      localStorage.setItem(STORAGE_KEYS.CBT_CONFIG, JSON.stringify(outcome.config));
+    }
+    broadcast("CBT_CONFIG_UPDATED");
+    return { ok: true, reason: null };
   };
 
-  const toggleCBTAccess = (explicitState?: boolean) => {
-    const nextState = typeof explicitState === "boolean" ? explicitState : !cbtConfig.isOpen;
-    return updateCBTConfig({ isOpen: nextState });
-  };
-
-  const resetCBTConfig = () => {
-    setCBTConfig(DEFAULT_CBT_CONFIG);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.CBT_CONFIG, JSON.stringify(DEFAULT_CBT_CONFIG));
-      broadcast("CBT_CONFIG_UPDATED");
-    }
-  };
+  const toggleCBTAccess = (explicitState?: boolean) =>
+    updateCBTConfig({ isOpen: typeof explicitState === "boolean" ? explicitState : !cbtConfig.isOpen });
 
   return {
     cbtConfig,
+    configSource,
     updateCBTConfig,
     toggleCBTAccess,
-    resetCBTConfig,
+    reloadConfig: showServerConfig,
     isCBTOpen: cbtConfig.isOpen,
   };
 }

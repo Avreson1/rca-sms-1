@@ -5,16 +5,20 @@ import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
 import { effectiveScope, useSchoolConfig } from "@/lib/school-config";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   useRealtimeStudents,
+  useRealtimeClasses,
   useRealtimeCBTQuestions,
   useRealtimeCBTConfig,
   useRealtimeAuth,
-  syncCBTScoreToCA,
   type CBTQuestionRecord,
+  type CBTSittingRecord,
 } from "@/lib/realtime-store";
+import { fetchCBTSittingsOnServer, recordCBTSittingOnServer, type CBTQuestionInput } from "@/lib/supabase/db";
 import { exportToCSV, downloadSampleTemplate } from "@/lib/csv-utils";
 import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
+import { QuestionDesk } from "@/components/cbt/question-desk";
 import {
   Play,
   CheckCircle2,
@@ -25,6 +29,7 @@ import {
   ChevronLeft,
   RotateCcw,
   ShieldAlert,
+  TriangleAlert,
   AlertTriangle,
   Lock,
   Unlock,
@@ -36,14 +41,6 @@ import {
   Settings,
 } from "lucide-react";
 
-interface Question {
-  id: number;
-  questionText: string;
-  options: string[];
-  correctAnswerIndex: number;
-  marks: number;
-}
-
 interface MalpracticeEvent {
   id: string;
   timestamp: string;
@@ -52,84 +49,44 @@ interface MalpracticeEvent {
   description: string;
 }
 
-// Five ICT questions with their answers, typed into this file so an empty
-// browser bank still renders something. They are not a paper the school set, and
-// `correctAnswerIndex` ships in the client bundle, so a sitting drawn from here is
-// marked on screen but cannot be trusted as an assessment. `isSampleBank` below is
-// what says so, out loud, wherever these questions are counted.
-const DEFAULT_CBT_QUESTIONS: Question[] = [
-  {
-    id: 1,
-    questionText: "Which of the following computer network topologies requires a central hub or switch to connect all nodes?",
-    options: ["Ring Topology", "Star Topology", "Mesh Topology", "Bus Topology"],
-    correctAnswerIndex: 1,
-    marks: 10,
-  },
-  {
-    id: 2,
-    questionText: "In relational database management systems (RDBMS), what does the acronym ACID guarantee?",
-    options: [
-      "Accuracy, Consistency, Integrity, Durability",
-      "Atomicity, Consistency, Isolation, Durability",
-      "Authentication, Control, Identification, Data",
-      "Application, Configuration, Interface, Distribution",
-    ],
-    correctAnswerIndex: 1,
-    marks: 10,
-  },
-  {
-    id: 3,
-    questionText: "Which security protocol is standard for establishing an encrypted link between a web server and a browser?",
-    options: ["HTTP", "FTP", "HTTPS (SSL/TLS)", "SMTP"],
-    correctAnswerIndex: 2,
-    marks: 10,
-  },
-  {
-    id: 4,
-    questionText: "What is the primary role of the Arithmetic Logic Unit (ALU) within the central processing unit?",
-    options: [
-      "Allocating memory cache buffers",
-      "Executing arithmetic calculations and logical decisions",
-      "Regulating computer clock cycles",
-      "Decoding instruction cache registers",
-    ],
-    correctAnswerIndex: 1,
-    marks: 10,
-  },
-  {
-    id: 5,
-    questionText: "Which programming paradigm models software around data attributes and associated behavioral methods?",
-    options: [
-      "Procedural Programming",
-      "Object-Oriented Programming (OOP)",
-      "Declarative Programming",
-      "Logic Programming",
-    ],
-    correctAnswerIndex: 1,
-    marks: 10,
-  },
-];
+/** When a record was written, as the school's own timestamp states it. */
+function formatRecordedAt(value: string): string {
+  const at = new Date(value);
+  return Number.isNaN(at.getTime())
+    ? "no date on the record"
+    : at.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+}
 
-/** Shown wherever a paper drawn from the sample questions above could be mistaken for one the school set. */
-function SampleBankNotice({ compact = false }: { compact?: boolean }) {
+/**
+ * Said where an empty bank would otherwise look like a paper.
+ *
+ * The engine used to fill itself from five ICT questions typed into this file,
+ * answers included, so a browser with nothing imported examined a child on
+ * questions the school never set — and the answers were in the source anybody
+ * could open. That is why an empty bank stops a sitting instead of papering over
+ * it.
+ */
+function EmptyBankNotice({ onDevice }: { onDevice: boolean }) {
   return (
-    <div
-      className={`bg-amber-50 border border-amber-300 text-amber-900 rounded-lg ${
-        compact ? "px-2.5 py-1.5 text-[11px]" : "p-3 text-xs"
-      } leading-relaxed font-medium`}
-    >
-      <span className="font-black uppercase tracking-wider">Sample paper — not one the school set.</span>{" "}
-      The bank on this browser is empty, so the engine is serving the {DEFAULT_CBT_QUESTIONS.length} ICT questions
-      written into this page&apos;s source, and their correct answers are in the file the browser downloads. Use it to
-      try the machinery, never to examine a pupil. Import a real bank to end this notice.
+    <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-lg p-3 text-xs leading-relaxed font-medium">
+      <span className="font-black uppercase tracking-wider">No paper on the school&apos;s bank.</span>{" "}
+      {onDevice
+        ? "This browser has no copy of the school's question bank either, so there is nothing to sit. A sitting with no questions is not a short exam, it is no exam."
+        : "The school's exam bank was read and it is empty: nobody has filed a question yet. Set a paper below, or import one with the CSV template."}
     </div>
   );
 }
 
 export default function ProctoredCBTPage() {
   const { students } = useRealtimeStudents();
-  const { questions: storeQuestions } = useRealtimeCBTQuestions();
-  const { cbtConfig, toggleCBTAccess } = useRealtimeCBTConfig();
+  const { classes, classesSource } = useRealtimeClasses();
+  const {
+    questions: examQuestions,
+    questionsSource,
+    addQuestions,
+    removeQuestion,
+  } = useRealtimeCBTQuestions();
+  const { cbtConfig, configSource, toggleCBTAccess } = useRealtimeCBTConfig();
   const { currentUser } = useRealtimeAuth();
   const { config: school } = useSchoolConfig();
   // Only decides whether the closed-window screen also covers this visitor. It
@@ -138,26 +95,30 @@ export default function ProctoredCBTPage() {
   // the staff side of an exam portal that was shut.
   const currentRole = currentUser?.role ?? null;
   const isCandidate = currentRole === "STUDENT_PARENT";
+  // The two roles both CBT write routes accept: whoever sets the papers is the
+  // same person who opens and shuts the module. Everyone else sits what was set.
+  const isExamOffice = currentRole === "SUPER_ADMIN" || currentRole === "EXAM_OFFICER";
 
   // The school's own name and session, from its records. This heading used to
   // print a name and a session compiled into the portal, so a second campus
   // cloned from this code announced the first campus and a school that had moved
   // into the new session in Settings still examined children under the old one.
-  const { session: schoolSession } = effectiveScope(school, {
+  const { session: schoolSession, term: schoolTerm } = effectiveScope(school, {
     session: SCHOOL_INFO.currentSession,
     term: SCHOOL_INFO.currentTerm,
   });
   const schoolName = school?.school_name?.trim() || SCHOOL_INFO.name;
   const schoolShortName = school?.short_name?.trim() || SCHOOL_INFO.shortName;
 
-  const examQuestions = storeQuestions.length > 0 ? storeQuestions : DEFAULT_CBT_QUESTIONS;
-  const isSampleBank = storeQuestions.length === 0;
   const [activeTab, setActiveTab] = useState<"manage" | "simulate">("manage");
+  const [bankRefusal, setBankRefusal] = useState<string | null>(null);
+  const [switchRefusal, setSwitchRefusal] = useState<string | null>(null);
+  const [isSittingBeingFiled, setIsSittingBeingFiled] = useState(false);
 
   // Selected Candidate
   const [selectedStudentId, setSelectedStudentId] = useState<string>(students[0]?.id || "");
   // There was a made-up pupil here — "Enrolled Student, RCA/STD/2025/001, Primary 1" —
-  // that stood in whenever this browser's register was empty, so an empty school sat a
+  // that stood in whenever the register was empty, so an empty school sat a
   // phantom candidate through a proctored exam and printed its name on the watermark.
   const currentStudent = students.find((s) => s.id === selectedStudentId) || students[0] || null;
 
@@ -169,6 +130,11 @@ export default function ProctoredCBTPage() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isExpelled, setIsExpelled] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<{ scaledScore: number; target: string } | null>(null);
+  // What the school said about the sitting this screen just ended, in its own
+  // words. Null means no sitting has been ended on this browser yet.
+  const [filingOutcome, setFilingOutcome] = useState<{ ok: boolean; text: string } | null>(null);
+  // Attempts already on the school's records for the candidate in the selector.
+  const [filedSittings, setFiledSittings] = useState<CBTSittingRecord[] | null>(null);
 
   // Malpractice & Anti-Cheating Failsafe State
   const [strikes, setStrikes] = useState<number>(0);
@@ -177,29 +143,23 @@ export default function ProctoredCBTPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const totalMaxMarks = examQuestions.reduce((sum, q) => sum + q.marks, 0);
-  // A stored question carries its subject and class; the built-in sample ones do not,
-  // and the paper is titled from what is actually in the bank rather than from a
-  // subject written into this page's source.
-  const questionSubject = (q: CBTQuestionRecord | Question) => String((q as { subject?: string }).subject || "").trim();
-  const questionClass = (q: CBTQuestionRecord | Question) => String((q as { className?: string }).className || "").trim();
-  const subjectCount = new Set(examQuestions.map(questionSubject).filter(Boolean)).size;
-  const classCount = new Set(examQuestions.map(questionClass).filter(Boolean)).size;
-  const bankSubjects = [...new Set(examQuestions.map(questionSubject).filter(Boolean))];
+  const bankSubjects = [...new Set(examQuestions.map((q) => q.subject.trim()).filter(Boolean))];
   const bankSubjectLabel = bankSubjects.length === 0
     ? "Unlabelled question bank"
     : bankSubjects.length > 3
       ? `${bankSubjects.slice(0, 3).join(", ")} and ${bankSubjects.length - 3} more`
       : bankSubjects.join(", ");
-  const candidateName = currentStudent?.fullName ?? "No candidate on this browser's register";
-  const candidateNo = currentStudent?.admissionNo ?? "not enrolled";
-  const candidateClass = currentStudent?.className ?? "no class";
+  // A mixed paper has no one subject to be filed under, and the records say so
+  // rather than borrowing the first subject in the list.
+  const sittingSubject = bankSubjects.length === 1 ? bankSubjects[0] : "";
+  const bankClasses = [...new Set(examQuestions.map((q) => q.className.trim()).filter(Boolean))];
+  const candidateName = currentStudent?.fullName ?? "No candidate chosen";
+  const candidateNo = currentStudent?.admissionNo ?? "no admission number";
+  const candidateClass = currentStudent?.className ?? "no class on the register";
 
-  // A stored question names the field `correctOptionIndex`, the sample ones
-  // `correctAnswerIndex`; the engine reads whichever the paper happens to carry.
-  const getCorrectOptionIndex = (q: CBTQuestionRecord | Question): number => {
-    const stored = (q as Partial<CBTQuestionRecord>).correctOptionIndex;
-    if (typeof stored === "number") return stored;
-    return typeof q.correctAnswerIndex === "number" ? q.correctAnswerIndex : 0;
+  const getCorrectOptionIndex = (q: CBTQuestionRecord): number => {
+    const stored = q.correctOptionIndex ?? q.correctAnswerIndex;
+    return typeof stored === "number" ? stored : 0;
   };
 
   const calculateFinalScore = () => {
@@ -209,27 +169,75 @@ export default function ProctoredCBTPage() {
     }, 0);
   };
 
-  // End the sitting: grade it here, record the attempt here, file nothing.
-  const handleFinalSubmit = (expelled: boolean = false) => {
+  // The sitting is graded in the browser, because the browser is what holds the
+  // answers — which is why what follows is an attempt on the school's records and
+  // not a mark in the gradebook.
+  const fileSitting = async (
+    rawScore: number,
+    expelled: boolean,
+    /** The strike count and log as they stand at the moment the sitting ends. */
+    incident: { strikes: number; logs: MalpracticeEvent[] }
+  ) => {
+    if (!currentStudent) return;
+    setIsSittingBeingFiled(true);
+    const outcome = await recordCBTSittingOnServer({
+      admissionNo: currentStudent.admissionNo,
+      session: schoolSession,
+      term: schoolTerm,
+      subject: sittingSubject,
+      questionCount: examQuestions.length,
+      cbtScore: rawScore,
+      maxMarks: totalMaxMarks,
+      strikes: incident.strikes,
+      isExpelled: expelled,
+      malpracticeLogs: incident.logs.map((log) => ({
+        type: log.type,
+        severity: log.severity,
+        description: log.description,
+        at: new Date().toISOString(),
+      })),
+    });
+    setIsSittingBeingFiled(false);
+
+    setFilingOutcome(outcome.ok
+      ? {
+          ok: true,
+          text: `Filed on ${candidateName}'s record as an attempt of ${examQuestions.length} question(s), ${rawScore} of ${totalMaxMarks} in ${schoolTerm} ${schoolSession}. It is not a mark: the exam column changes when a teacher or the exam office enters it in CA Entry.`,
+        }
+      : {
+          ok: false,
+          text: `This sitting was NOT filed on the school's records: ${outcome.reason ?? "the portal server refused it"}. The ${rawScore} of ${totalMaxMarks} below is this browser's figure alone — write it down and hand it to the office.`,
+        });
+
+    if (outcome.ok) {
+      const reload = await fetchCBTSittingsOnServer(currentStudent.admissionNo, schoolSession, schoolTerm);
+      if (reload) setFiledSittings(reload);
+    }
+  };
+
+  // End the sitting: grade it here, and file the attempt on the school's records.
+  const handleFinalSubmit = async (
+    expelled: boolean = false,
+    incident: { strikes: number; logs: MalpracticeEvent[] } = { strikes, logs: malpracticeLogs }
+  ) => {
     const rawScore = expelled ? 0 : calculateFinalScore();
     setIsSubmitted(true);
     setIsExpelled(expelled);
+    setFilingOutcome(null);
 
-    // Records this attempt on this browser only. It does not touch the pupil's
-    // CA columns and it is never sent to the school's records.
-    const result = syncCBTScoreToCA(
-      candidateNo,
-      rawScore,
-      totalMaxMarks,
-      "exam",
-      `CBT sitting of ${examQuestions.length} question(s) on ${candidateClass}`,
-      expelled
-    );
+    // The figure a person would type into the gradebook's exam column, scaled
+    // from this paper's marks to that column's 60. It is shown, never filed: the
+    // attempt goes to the school's records, the mark stays a human decision.
+    const scaledScore = expelled
+      ? 0
+      : Math.min(60, Math.round((rawScore / Math.max(1, totalMaxMarks)) * 60));
 
     setSyncFeedback({
-      scaledScore: result.scaledScore,
+      scaledScore,
       target: "Exam (Max 60 marks)",
     });
+
+    await fileSitting(rawScore, expelled, incident);
 
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
@@ -256,12 +264,15 @@ export default function ProctoredCBTPage() {
     setStrikes((prevStrikes) => {
       const nextStrike = prevStrikes + 1;
       if (nextStrike >= 3) {
-        // Strike 3 = IMMEDIATE EXPULSION & 0 SCORE SYNC
+        // Strike 3 = the sitting ends and is scored 0. The third incident is
+        // passed to the filing rather than read off the state, which has not
+        // settled yet — a record that left it out would understate what the
+        // candidate was warned about.
         setActiveWarningModal(null);
-        handleFinalSubmit(true);
+        handleFinalSubmit(true, { strikes: nextStrike, logs: [event, ...malpracticeLogs] });
       } else {
         setActiveWarningModal(
-          `STRIKE ${nextStrike}/3: ${description}. Notice: Reaching 3 strikes ends this sitting here and shows it as 0 of ${totalMaxMarks} on this device. Nothing has been filed to the school: a mark is entered by a teacher or the exam office.`
+          `STRIKE ${nextStrike}/3: ${description}. Notice: Reaching 3 strikes ends this sitting here and scores it 0 of ${totalMaxMarks}. When it ends the attempt is filed on the school's records with its infractions — it is not filed as a mark, which a teacher or the exam office enters themselves.`
         );
       }
       return nextStrike;
@@ -368,9 +379,23 @@ export default function ProctoredCBTPage() {
   }, [isTestStarted, isSubmitted, isExpelled]);
 
   const handleStartExam = async () => {
-    // A sitting has to belong to somebody. With no pupil on this browser's register
+    // A sitting has to belong to somebody. With no pupil on the register
     // there is no candidate, and the launch used to invent one.
     if (!currentStudent) return;
+    // And it has to be a paper. With nothing on the bank the engine used to serve
+    // five questions written into its own source; now it says there is nothing to
+    // sit, because a sitting of an empty paper scores 0 of 0 and looks filed.
+    if (examQuestions.length === 0) {
+      setBankRefusal(
+        `There is no paper to launch. ${
+          questionsSource === "server"
+            ? "The school's exam bank is empty, so nothing has been filed by the exam office yet."
+            : "This browser is showing its own copy of the bank and that copy is empty; the school's bank could not be read."
+        }`
+      );
+      return;
+    }
+    setBankRefusal(null);
     try {
       if (document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
@@ -388,8 +413,53 @@ export default function ProctoredCBTPage() {
     setIsExpelled(false);
     setSyncFeedback(null);
     setActiveWarningModal(null);
+    setFilingOutcome(null);
     setIsTestStarted(true);
     setActiveTab("simulate");
+  };
+
+  /**
+   * The attempts already on the school's records for the candidate in the
+   * selector, in this session and term.
+   *
+   * Read rather than remembered, so an office machine can see that a sitting has
+   * been filed for a child it has never opened — and see nothing at all when the
+   * child has not sat anything.
+   */
+  useEffect(() => {
+    if (!currentStudent || !isSupabaseConfigured) return;
+    let cancelled = false;
+    fetchCBTSittingsOnServer(currentStudent.admissionNo, schoolSession, schoolTerm).then((rows) => {
+      if (!cancelled && rows) setFiledSittings(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentStudent, schoolSession, schoolTerm]);
+
+  /** Files questions on the school's bank and shows the list the server kept. */
+  const handleFileQuestions = async (
+    list: Omit<CBTQuestionInput, "id">[]
+  ): Promise<{ ok: boolean; saved: number; reason: string | null }> => {
+    const outcome = await addQuestions(list);
+    if (!outcome.ok) setBankRefusal(outcome.reason ?? "the school did not take these questions");
+    else setBankRefusal(null);
+    return outcome;
+  };
+
+  const handleRemoveQuestion = async (question: CBTQuestionRecord) => {
+    const fromSchool = /^\d+$/.test(String(question.id));
+    const where = fromSchool
+      ? "It comes off the school's exam bank, so no other machine serves it again."
+      : "It is only this browser's copy, so removing it changes nothing on the school's records.";
+    if (!confirm(`Remove this question — “${question.questionText.slice(0, 80)}”? ${where} It cannot be brought back.`)) return;
+
+    if (!fromSchool) {
+      setBankRefusal("This question is not on the school's bank, so there is no record to remove. Reload the page to read the bank again.");
+      return;
+    }
+    const outcome = await removeQuestion(String(question.id));
+    setBankRefusal(outcome.ok ? null : outcome.reason ?? "the question was not removed");
   };
 
   const handleSelectOption = (optionIndex: number) => {
@@ -420,7 +490,9 @@ export default function ProctoredCBTPage() {
             <div className="space-y-2">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 border border-amber-300 text-amber-900 text-xs font-black uppercase tracking-wider">
                 <span className="w-2 h-2 rounded-full bg-amber-500" />
-                Assessment Window Closed / Offline
+                {configSource === "server"
+                  ? "Closed by the school — every machine sees this switch"
+                  : "Closed on this browser — the school's switch could not be read"}
               </div>
               <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
                 Computer-Based Testing (CBT) Portal
@@ -438,18 +510,27 @@ export default function ProctoredCBTPage() {
               </div>
               <p className="text-slate-700 leading-relaxed font-medium">
                 {cbtConfig.offlineMessage ||
-                  "No wording has been written for this notice. The office sets it in Settings → CBT Configuration; until then this screen stays closed on this browser and no schedule is being claimed."}
+                  "The office has not written any wording for this notice. It is set in Settings → CBT Configuration; until then nothing is announced here, and the window stays shut because a module nobody has opened is shut."}
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono text-[11px] text-slate-600">
                 <div className="bg-white/80 p-2.5 rounded-xl border border-slate-200">
                   <span className="text-slate-400 block text-[10px] uppercase font-bold">Scheduled Window:</span>
-                  <strong className="text-slate-800">{cbtConfig.scheduledWindow || "Not announced on this browser"}</strong>
+                  <strong className="text-slate-800">{cbtConfig.scheduledWindow || "Not announced by the school"}</strong>
                 </div>
                 <div className="bg-white/80 p-2.5 rounded-xl border border-slate-200">
                   <span className="text-slate-400 block text-[10px] uppercase font-bold">Active Assessment Mode:</span>
-                  <strong className="text-blue-700">{cbtConfig.activeExamMode || "Not chosen on this browser"}</strong>
+                  <strong className="text-blue-700">{cbtConfig.activeExamMode || "Not chosen by the school"}</strong>
                 </div>
+                {cbtConfig.updatedBy && (
+                  <div className="bg-white/80 p-2.5 rounded-xl border border-slate-200 sm:col-span-2">
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Switch last moved by:</span>
+                    <strong className="text-slate-800">
+                      {cbtConfig.updatedBy}
+                      {cbtConfig.updatedAt ? ` · ${formatRecordedAt(cbtConfig.updatedAt)}` : ""}
+                    </strong>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -485,46 +566,64 @@ export default function ProctoredCBTPage() {
     <DashboardShell>
       <div className="space-y-6 select-none">
         
-        {/* Closed / Lockdown Alert Banner for Admins */}
+        {/* Closed / Lockdown Alert Banner for staff */}
         {!cbtConfig.isOpen && (
-          <div className="bg-gradient-to-r from-amber-50 via-rose-50 to-slate-50 border-2 border-amber-300 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-sm flex-shrink-0">
-                <Lock className="w-5 h-5" />
-              </div>
-              <div className="text-xs space-y-0.5">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-extrabold text-slate-900">
-                    CBT Module is Currently CLOSED / LOCKED DOWN to Candidates
-                  </span>
-                  <span className="text-[10px] font-bold px-2 py-0.2 rounded bg-amber-200 text-amber-950">
-                    Admin Preview Mode
-                  </span>
+          <div className="bg-gradient-to-r from-amber-50 via-rose-50 to-slate-50 border-2 border-amber-300 rounded-2xl p-4 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-sm flex-shrink-0">
+                  <Lock className="w-5 h-5" />
                 </div>
-                <p className="text-slate-600 text-[11px]">
-                  This open/closed switch is a setting on this browser — it does not change what any other machine sees.
-                  You can still configure the question bank and preview a simulation here.
-                </p>
+                <div className="text-xs space-y-0.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-extrabold text-slate-900">
+                      CBT Module is CLOSED to candidates
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.2 rounded bg-amber-200 text-amber-950">
+                      {configSource === "server" ? "The school's switch — every machine" : "This browser only — the school's switch could not be read"}
+                    </span>
+                  </div>
+                  <p className="text-slate-600 text-[11px]">
+                    {configSource === "server"
+                      ? "Candidates reaching this portal are turned away on every machine, and the notice they see is the one filed with the switch. Staff may still set the bank and preview a sitting."
+                      : "You may still set the question bank and preview a sitting here, but this state is not the school's: no other machine is being told anything until its switch can be read."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {isExamOffice ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const outcome = await toggleCBTAccess(true);
+                      setSwitchRefusal(outcome.ok ? null : outcome.reason ?? "the switch was not moved");
+                    }}
+                    className="px-3.5 py-2 bg-[#0000FF] hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Unlock className="w-3.5 h-3.5 text-cyan-300" />
+                    <span>Open for Candidates</span>
+                  </button>
+                ) : (
+                  <span className="text-[11px] text-slate-600 max-w-[16rem]">
+                    Only the exam office or the super admin moves this switch; it stays as the school left it.
+                  </span>
+                )}
+                <Link
+                  href="/settings"
+                  className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold rounded-xl transition-all flex items-center gap-1"
+                >
+                  <Settings className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Settings</span>
+                </Link>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <button
-                type="button"
-                onClick={() => toggleCBTAccess(true)}
-                className="px-3.5 py-2 bg-[#0000FF] hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
-              >
-                <Unlock className="w-3.5 h-3.5 text-cyan-300" />
-                <span>Open for Candidates</span>
-              </button>
-              <Link
-                href="/settings"
-                className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold rounded-xl transition-all flex items-center gap-1"
-              >
-                <Settings className="w-3.5 h-3.5 text-slate-500" />
-                <span>Settings</span>
-              </Link>
-            </div>
+            {switchRefusal && (
+              <p className="bg-white/80 border border-rose-300 rounded-lg px-3 py-2 text-[11px] font-semibold text-rose-900">
+                The module was not opened: {switchRefusal}
+              </p>
+            )}
           </div>
         )}
 
@@ -543,14 +642,21 @@ export default function ProctoredCBTPage() {
               <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                 Computer-Based Testing (CBT) &amp; Browser Lockdown
               </h1>
-              <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+              <span className={`border text-xs font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs ${
+                questionsSource === "server"
+                  ? "bg-emerald-100 text-emerald-900 border-emerald-300"
+                  : "bg-amber-100 text-amber-900 border-amber-300"
+              }`}>
                 <Database className="w-3.5 h-3.5 text-emerald-600" />
-                Questions and scores kept on this browser
+                {questionsSource === "server"
+                  ? "The paper comes from the school's records"
+                  : "Showing this browser's copy of the bank"}
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Automated anti-cheating lockdown inside this browser. The mark itself is filed by a
-              teacher or the exam office in CA Entry, never from here.
+              The anti-cheating lockdown runs inside this browser and so does the marking, which is why the figure below
+              is an attempt rather than a mark. The mark itself is filed by a teacher or the exam office in CA Entry,
+              never from here.
             </p>
           </div>
 
@@ -578,12 +684,23 @@ export default function ProctoredCBTPage() {
               }`}
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              {currentStudent ? "Launch Proctored Exam" : "No candidate to examine"}
+              {!currentStudent
+                ? "No candidate to examine"
+                : examQuestions.length === 0
+                  ? "No paper on the bank to sit"
+                  : "Launch Proctored Exam"}
             </button>
           </div>
         </div>
 
-        <DeviceOnlyNotice what="The CBT question bank and the exam score" />
+        {bankRefusal && (
+          <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-[11px] leading-snug text-amber-950 flex items-start gap-2 print:hidden">
+            <TriangleAlert className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
+            <p className="font-semibold">{bankRefusal}</p>
+          </div>
+        )}
+
+        <DeviceOnlyNotice what="The marking of a sitting, and the infraction log beside it" />
 
         {/* Tab 1: Manage Exams & Candidate Selection */}
         {activeTab === "manage" && (
@@ -603,7 +720,7 @@ export default function ProctoredCBTPage() {
                     className="flex-1 min-w-0 max-w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden disabled:opacity-60"
                   >
                     {students.length === 0 ? (
-                      <option value="">No pupil on this browser&apos;s register</option>
+                      <option value="">No pupil on the register</option>
                     ) : null}
                     {students.map((s) => (
                       <option key={s.id} value={s.id}>
@@ -614,9 +731,9 @@ export default function ProctoredCBTPage() {
                 </div>
                 {students.length === 0 && (
                   <p className="text-[11px] text-amber-800 font-semibold pt-1">
-                    Enroll the pupil in Operations → Students first. A sitting needs a real candidate: with no register
-                    on this machine there is nobody to examine, and starting one anyway used to print an invented name
-                    on the paper.
+                    Enroll the pupil in Operations → Students first. A sitting needs a real candidate: with nobody on
+                    the register there is nobody to examine, and starting one anyway used to print an invented name on
+                    the paper.
                   </p>
                 )}
               </div>
@@ -624,9 +741,9 @@ export default function ProctoredCBTPage() {
               <div className="text-xs text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                 <span className="font-semibold text-slate-700">Score handling: </span>
                 <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800 px-2 py-0.5 rounded border border-blue-200">
-                  This device only
+                  Marked here, filed as an attempt
                 </span>{" "}
-                <span>Scaled to <strong>Exam (60 Marks)</strong> for display — a teacher files it in the gradebook.</span>
+                <span>Scaled to <strong>Exam (60 Marks)</strong> for display — a teacher files the mark itself.</span>
               </div>
             </div>
 
@@ -637,16 +754,18 @@ export default function ProctoredCBTPage() {
                   <span className="text-[10px] uppercase font-bold tracking-wider bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded">
                     What this sitting watches
                   </span>
-                  <span className="text-xs text-slate-400">• Score kept on this device only</span>
+                  <span className="text-xs text-slate-400">• Nothing but the four events below is watched</span>
                 </div>
                 <h2 className="text-xl font-bold text-white">
                   Automated Invigilation
                 </h2>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  The score is scaled to the exam&apos;s 60-mark weight for display when the candidate finishes. It is
-                  not written into the Continuous Assessment gradebook from this browser: a mark on a child&apos;s card
-                  is filed by a teacher or the exam office from CA Entry, so that the number on paper can be traced to
-                  the person who entered it. 3 cumulative infractions end the attempt and score it 0.
+                  The score is marked in this browser — it holds the answers the paper ships with — and scaled to the
+                  exam&apos;s 60-mark weight for display when the candidate finishes. What is filed on the school&apos;s
+                  records is the attempt: that figure, the question count and the infractions. The Continuous Assessment
+                  gradebook is untouched: a mark on a child&apos;s card is entered by a teacher or the exam office from
+                  CA Entry, so that the number on paper can be traced to the person who entered it. 3 cumulative
+                  infractions end the attempt and score it 0.
                 </p>
               </div>
 
@@ -662,142 +781,241 @@ export default function ProctoredCBTPage() {
               </div>
             </div>
 
-            {/* What this browser actually holds */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* What the next sitting would be marked out of */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
-                    On this browser
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                    questionsSource === "server"
+                      ? "bg-emerald-100 text-emerald-800"
+                      : "bg-amber-100 text-amber-800"
+                  }`}>
+                    {questionsSource === "server" ? "The school\u2019s bank" : "This browser\u2019s copy"}
                   </span>
-                  <span className="text-xs text-slate-400 font-mono">{subjectCount} subject(s)</span>
+                  <span className="text-xs text-slate-400 font-mono">
+                    {bankSubjects.length} subject(s) · {bankClasses.length} arm(s)
+                  </span>
                 </div>
                 <h3 className="font-bold text-sm text-slate-900">
-                  {examQuestions.length} question{examQuestions.length === 1 ? "" : "s"} in the bank
-                  {isSampleBank && " — these are the sample questions in this page\u2019s source"}
+                  {examQuestions.length} question{examQuestions.length === 1 ? "" : "s"} would be served
                 </h3>
                 <div className="text-xs text-slate-500 space-y-1">
                   <p>Marks: <strong className="text-slate-800">{totalMaxMarks} in total</strong></p>
-                  <p>Classes covered: <strong className="text-slate-800">{classCount} listed</strong></p>
+                  <p>Paper: <strong className="text-slate-800">{bankSubjectLabel}</strong></p>
                   <p>Target: <strong className="text-emerald-700">Scaled to 60 marks for display</strong></p>
                 </div>
-                {isSampleBank && <SampleBankNotice />}
+                {examQuestions.length === 0 && <EmptyBankNotice onDevice={questionsSource === "device"} />}
                 <button
                   onClick={handleStartExam}
-                  disabled={!currentStudent}
+                  disabled={!currentStudent || examQuestions.length === 0}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Play className="w-3 h-3 fill-current" />
-                  {currentStudent ? "Launch Proctored Session" : "Enroll a pupil before launching"}
+                  {!currentStudent
+                    ? "Enroll a pupil before launching"
+                    : examQuestions.length === 0
+                      ? "Nothing to sit until a paper is filed"
+                      : "Launch Proctored Session"}
                 </button>
               </div>
 
               <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3">
-                <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 px-2 py-0.5 rounded w-fit">
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 px-2 py-0.5 rounded w-fit block">
                   What launching does
                 </span>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Runs every question this browser holds, in whichever order they were loaded — the engine has no
-                  per-subject or per-class paper, so a mixed bank prints a mixed paper.
+                  Runs every question on the bank, in the order the school&apos;s records return them — the engine has
+                  no per-subject or per-class paper, so a bank holding two subjects prints one mixed paper. File a
+                  paper per arm and run the arm&apos;s own bank if the papers are to stay separate.
                 </p>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  It shows a scaled score at the end and notes the sitting on the pupil&apos;s record here. It does not
-                  file a mark: the exam column changes only when a teacher or the exam office enters it.
+                  When it ends, the attempt — score, question count, strikes and infractions — is filed on the
+                  pupil&apos;s record for {schoolTerm} {schoolSession}. It is not filed as a mark: the exam column
+                  changes only when a teacher or the exam office enters it.
                 </p>
-              </div>
-
-              <div className="bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl p-5 flex flex-col items-center justify-center text-center space-y-2">
-                <h4 className="font-bold text-xs text-slate-800">To set a different paper</h4>
-                <p className="text-[11px] text-slate-500 max-w-[220px]">
-                  Use &apos;CSV Template&apos; below to write questions in the columns the portal reads, then load them
-                  into the bank on this machine.
-                </p>
+                {isSittingBeingFiled && (
+                  <p className="text-[11px] font-semibold text-slate-500">Filing this attempt…</p>
+                )}
               </div>
             </div>
 
-            {/* Question Bank Preview */}
-            <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
-              <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50">
-                <div>
-                  <h3 className="font-bold text-sm text-slate-800">
-                    {isSampleBank
-                      ? "Sample bank — written into this page\u2019s source"
-                      : subjectCount > 1
-                        ? `Question Bank — ${subjectCount} subjects mixed`
-                        : "Question Bank"}
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    {isSampleBank
-                      ? "Nothing has been imported on this browser, so this is not the school's bank. It lists the questions the engine will serve until a real paper is loaded."
-                      : `Everything this browser holds. The engine has no per-subject paper: it serves these ${examQuestions.length} question${examQuestions.length === 1 ? "" : "s"} in order.`}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    onClick={() => downloadSampleTemplate("cbt_questions")}
-                    className="px-2.5 py-1.5 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg flex items-center gap-1 shadow-2xs cursor-pointer"
-                  >
-                    <FileDown className="w-3.5 h-3.5 text-slate-500" />
-                    CSV Template
-                  </button>
+            <QuestionDesk
+              canWrite={isExamOffice}
+              armNames={classes.map((c) => c.name)}
+              armsSource={classesSource}
+              onFile={handleFileQuestions}
+            />
 
-                  <button
-                    onClick={() => {
-                      const headers = ["Question Text", "Option A", "Option B", "Option C", "Option D", "Correct Option (1-4)", "Marks"];
-                      const rows = examQuestions.map((q) => [
-                        q.questionText,
-                        q.options[0] || "",
-                        q.options[1] || "",
-                        q.options[2] || "",
-                        q.options[3] || "",
-                        getCorrectOptionIndex(q) + 1,
-                        q.marks,
-                      ]);
-                      exportToCSV(`${schoolShortName}_CBT_Question_Bank`, headers, rows);
-                    }}
-                    className="px-2.5 py-1.5 text-xs font-semibold bg-white border border-slate-200 text-emerald-700 hover:bg-emerald-50 rounded-lg flex items-center gap-1 shadow-2xs cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5 text-emerald-600" />
-                    Export CSV
-                  </button>
-
-                  <span className="text-xs bg-blue-50 text-blue-700 font-bold px-2.5 py-1 rounded-full border border-blue-100">
-                    {examQuestions.length} {isSampleBank ? "sample questions" : "Questions Loaded"}
-                  </span>
-                </div>
+            {/* The bank the engine will serve. A candidate is not shown it: the
+                questions arrive on this screen with their correct options marked,
+                which is the paper answered before it is sat. */}
+            {isCandidate ? (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-600 space-y-1.5">
+                <p className="font-bold text-slate-800">The bank is not listed for candidates</p>
+                <p>
+                  {examQuestions.length} question{examQuestions.length === 1 ? "" : "s"} are on the school&apos;s bank
+                  and will be served to you in a sitting. They are not shown here because the list marks which option
+                  each question counts, so a paper you could read is a paper you have already answered.
+                </p>
               </div>
+            ) : (
+              <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+                <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50">
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-800">
+                      {questionsSource === "server" ? "The school\u2019s question bank" : "This browser\u2019s copy of the bank"}
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      {questionsSource === "server"
+                        ? `Everything the exam office has filed. The engine has no per-subject paper: it serves these ${examQuestions.length} question${examQuestions.length === 1 ? "" : "s"} in order.`
+                        : `The school\u2019s bank could not be read, so this is what this machine is holding. A sitting run from it files an attempt against questions no other machine has.`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={() => downloadSampleTemplate("cbt_questions")}
+                      className="px-2.5 py-1.5 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg flex items-center gap-1 shadow-2xs cursor-pointer"
+                    >
+                      <FileDown className="w-3.5 h-3.5 text-slate-500" />
+                      CSV Template
+                    </button>
 
-              <div className="divide-y divide-slate-100">
-                {examQuestions.map((q, idx) => (
-                  <div key={q.id} className="p-4 text-xs space-y-2 hover:bg-slate-50/50">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="font-bold text-slate-900">
-                        <span className="text-blue-600 mr-1.5">Q{idx + 1}.</span>
-                        {q.questionText}
-                      </p>
-                      <span className="text-[10px] text-slate-500 font-bold">{q.marks} Marks</span>
-                    </div>
+                    {isExamOffice && (
+                      <button
+                        onClick={() => {
+                          const headers = [
+                            "Subject",
+                            "Class Arm",
+                            "Question Text",
+                            "Option A",
+                            "Option B",
+                            "Option C",
+                            "Option D",
+                            "Correct Option (1-4)",
+                            "Marks",
+                          ];
+                          const rows = examQuestions.map((q) => [
+                            q.subject,
+                            q.className,
+                            q.questionText,
+                            q.options[0] || "",
+                            q.options[1] || "",
+                            q.options[2] || "",
+                            q.options[3] || "",
+                            getCorrectOptionIndex(q) + 1,
+                            q.marks,
+                          ]);
+                          exportToCSV(`${schoolShortName}_CBT_Question_Bank`, headers, rows);
+                        }}
+                        className="px-2.5 py-1.5 text-xs font-semibold bg-white border border-slate-200 text-emerald-700 hover:bg-emerald-50 rounded-lg flex items-center gap-1 shadow-2xs cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5 text-emerald-600" />
+                        Export CSV
+                      </button>
+                    )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-4">
-                      {q.options.map((opt: string, optIdx: number) => (
-                        <div
-                          key={optIdx}
-                          className={`p-2 rounded-md border text-[11px] flex items-center gap-2 ${
-                            optIdx === getCorrectOptionIndex(q)
-                              ? "bg-emerald-50 border-emerald-300 text-emerald-900 font-semibold"
-                              : "bg-slate-50 border-slate-200 text-slate-700"
-                          }`}
-                        >
-                          <span className="font-bold">{String.fromCharCode(65 + optIdx)}.</span>
-                          <span>{opt}</span>
-                          {optIdx === getCorrectOptionIndex(q) && (
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 ml-auto" />
+                    <span className="text-xs bg-blue-50 text-blue-700 font-bold px-2.5 py-1 rounded-full border border-blue-100">
+                      {examQuestions.length} question{examQuestions.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="divide-y divide-slate-100">
+                  {examQuestions.length === 0 && (
+                    <p className="p-4 text-xs text-slate-500">
+                      Nothing on the bank. Until the exam office files a paper, there is no sitting to run.
+                    </p>
+                  )}
+                  {examQuestions.map((q, idx) => (
+                    <div key={q.id} className="p-4 text-xs space-y-2 hover:bg-slate-50/50">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="font-bold text-slate-900">
+                          <span className="text-blue-600 mr-1.5">Q{idx + 1}.</span>
+                          {q.questionText}
+                        </p>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-[10px] text-slate-500 font-bold">{q.marks} Marks</span>
+                          {isExamOffice && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveQuestion(q)}
+                              className="text-[10px] font-bold text-rose-700 hover:text-rose-900 cursor-pointer"
+                            >
+                              Remove
+                            </button>
                           )}
                         </div>
-                      ))}
+                      </div>
+                      <p className="text-[10px] text-slate-500">
+                        {q.subject || "No subject named"} · {q.className || "No class arm named"}
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-4">
+                        {q.options.map((opt: string, optIdx: number) => {
+                          const isAnswer = isExamOffice && optIdx === getCorrectOptionIndex(q);
+                          return (
+                            <div
+                              key={optIdx}
+                              className={`p-2 rounded-md border text-[11px] flex items-center gap-2 ${
+                                isAnswer
+                                  ? "bg-emerald-50 border-emerald-300 text-emerald-900 font-semibold"
+                                  : "bg-slate-50 border-slate-200 text-slate-700"
+                              }`}
+                            >
+                              <span className="font-bold">{String.fromCharCode(65 + optIdx)}.</span>
+                              <span>{opt}</span>
+                              {isAnswer && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 ml-auto" />}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
+            )}
+
+            {/* What the school already holds for the candidate in the selector */}
+            <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+              <div className="p-4 border-b border-slate-100 bg-slate-50">
+                <h3 className="font-bold text-sm text-slate-800">
+                  Attempt{filedSittings?.length === 1 ? "" : "s"} on the school&apos;s records for {candidateName}
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  {isSupabaseConfigured
+                    ? `Read from the school's records for ${schoolTerm} ${schoolSession}. These are sittings that ended and were filed, not marks: the gradebook column changes when a teacher or the office enters it.`
+                    : "This browser is not connected to the school's database, so nothing here is on the school's records. An attempt filed on this machine stays on it."}
+                </p>
+              </div>
+              {filedSittings === null || filedSittings.length === 0 ? (
+                <p className="p-4 text-xs text-slate-500">
+                  {filedSittings === null
+                    ? "Not read — the sitting list has not come back from the school yet."
+                    : `No sitting has been filed for this pupil in ${schoolTerm} ${schoolSession}.`}
+                </p>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {filedSittings.map((s) => (
+                    <div key={s.id} className="p-3 text-xs flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="font-bold text-slate-800">
+                          {s.subject || "Mixed paper"} · {s.questionCount} question(s) · {s.cbtScore} of {s.maxMarks}
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          {formatRecordedAt(s.completedAt)} · {s.strikes} strike(s)
+                          {s.isExpelled ? " · ended at the third strike, scored 0" : ""} · not filed as a mark
+                        </p>
+                      </div>
+                      <Link
+                        href="/operations/update-ca"
+                        className="text-[10px] font-bold text-blue-700 hover:text-blue-900 flex items-center gap-1"
+                      >
+                        Enter the mark <ArrowUpRight className="w-3 h-3" />
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
           </div>
@@ -857,17 +1075,25 @@ export default function ProctoredCBTPage() {
                   </h2>
                   <p className="text-xs text-red-200 max-w-lg mx-auto mt-2">
                     Disqualified from this assessment due to repeated anti-cheat violations. The attempt is scored{" "}
-                    <strong className="text-white">0 / {totalMaxMarks}</strong> on this screen. Nothing has been written
-                    to the school&apos;s records — hand this result to the teacher or the exam office, who file it from
-                    CA Entry if it is to count.
+                    <strong className="text-white">0 / {totalMaxMarks}</strong> and is filed on {candidateName}&apos;s
+                    record with its {strikes} infractions. It is not filed as a mark — the exam column stays empty until
+                    a teacher or the exam office enters what they decide in CA Entry.
                   </p>
+                  {filingOutcome && !filingOutcome.ok && (
+                    <p className="text-[11px] font-bold text-rose-300 max-w-lg mx-auto mt-2 leading-relaxed">
+                      {filingOutcome.text}
+                    </p>
+                  )}
                 </div>
 
                 {/* What the office has to do next */}
                 <div className="bg-red-900/60 border border-red-500 rounded-xl p-4 text-xs font-medium text-red-100 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Database className="w-4 h-4 text-red-400" />
-                    <span>Not in the CA gradebook: <strong className="text-white font-bold">0 / 60</strong> for {candidateName} is this device&apos;s record only</span>
+                    <span>
+                      No mark entered: <strong className="text-white font-bold">0 / {totalMaxMarks}</strong> for {candidateName} is an
+                      attempt on the school&apos;s records, and the gradebook column is a person&apos;s to fill
+                    </span>
                   </div>
                   <Link
                     href="/operations/update-ca"
@@ -880,7 +1106,9 @@ export default function ProctoredCBTPage() {
                 {/* Forensic Audit Log Preview */}
                 <div className="bg-black/50 border border-red-800 rounded-xl p-4 text-left space-y-2 text-xs font-mono max-h-40 overflow-y-auto">
                   <p className="text-red-400 font-bold border-b border-red-900 pb-1">
-                    This device&apos;s incident note — not filed to the school:
+                    {filingOutcome?.ok
+                      ? "Infractions filed with this attempt:"
+                      : "Infractions noted on this screen — filed with the attempt only if it reached the school:"}
                   </p>
                   {malpracticeLogs.map((log) => (
                     <div key={log.id} className="text-[11px] text-red-300 flex items-start gap-2">
@@ -888,6 +1116,9 @@ export default function ProctoredCBTPage() {
                       <span>{log.description}</span>
                     </div>
                   ))}
+                  {malpracticeLogs.length === 0 && (
+                    <p className="text-[11px] text-red-300">No incident was logged on this browser.</p>
+                  )}
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
@@ -916,8 +1147,18 @@ export default function ProctoredCBTPage() {
                   <CheckCircle2 className="w-8 h-8" />
                 </div>
                 <div>
-                  <span className="bg-amber-100 text-amber-900 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase">
-                    Submission recorded on this device • not yet in the CA gradebook
+                  <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
+                    filingOutcome === null
+                      ? "bg-slate-100 text-slate-700"
+                      : filingOutcome.ok
+                        ? "bg-emerald-100 text-emerald-900"
+                        : "bg-rose-100 text-rose-900"
+                  }`}>
+                    {filingOutcome === null
+                      ? "Filing this attempt\u2026"
+                      : filingOutcome.ok
+                        ? "Attempt filed on the school\u2019s records \u2022 not yet a mark"
+                        : "Attempt NOT filed \u2022 this screen only"}
                   </span>
                   <h3 className="text-2xl font-extrabold text-slate-900 mt-2">
                     This sitting is over
@@ -925,10 +1166,18 @@ export default function ProctoredCBTPage() {
                   <p className="text-xs text-slate-500 mt-1">
                     Candidate: <strong className="text-slate-800">{candidateName}</strong> ({candidateNo})
                   </p>
-                  {isSampleBank && (
-                    <p className="text-[11px] font-bold text-amber-800 mt-1">
-                      Scored out of the {DEFAULT_CBT_QUESTIONS.length} sample questions in this page&apos;s source, not
-                      out of a paper {schoolShortName} set.
+                  <p className="text-[11px] text-slate-600 mt-1 max-w-lg mx-auto leading-relaxed">
+                    {examQuestions.length} question{examQuestions.length === 1 ? "" : "s"} from{" "}
+                    {questionsSource === "server"
+                      ? `the school\u2019s bank${bankSubjects.length === 1 ? ` (${bankSubjects[0]})` : bankSubjects.length > 1 ? ` (${bankSubjects.length} subjects mixed into one paper)` : ""}`
+                      : "this browser\u2019s copy of the bank, which the school\u2019s records could not confirm"}
+                    .
+                  </p>
+                  {filingOutcome && (
+                    <p className={`text-[11px] font-semibold mt-2 max-w-lg mx-auto leading-relaxed ${
+                      filingOutcome.ok ? "text-emerald-800" : "text-rose-800"
+                    }`}>
+                      {filingOutcome.text}
                     </p>
                   )}
                 </div>
@@ -950,17 +1199,18 @@ export default function ProctoredCBTPage() {
                   </p>
                 </div>
 
-                {/* What became of this score */}
+                {/* What became of this score. The attempt is on the records; the
+                    figure below is what it scales to against the class's own exam
+                    weight, which is the number a person then enters. */}
                 {syncFeedback && (
-                  <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-xs font-semibold text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-left">
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs font-semibold text-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-left">
                     <div className="flex items-center gap-2">
-                      <Database className="w-5 h-5 text-amber-700 flex-shrink-0" />
+                      <Database className="w-5 h-5 text-slate-500 flex-shrink-0" />
                       <div>
-                        <p className="font-bold">This score is not on the school&apos;s records yet</p>
-                        <p className="text-[11px] text-amber-900">
-                          Scaled to <strong>{syncFeedback.scaledScore} / 60</strong> against the {syncFeedback.target}{" "}
-                          weight. A teacher or the exam office files it in CA Entry; reload this page and the number is
-                          gone, so write it down and hand it in.
+                        <p className="font-bold">Scaled for the gradebook as {syncFeedback.scaledScore} / 60</p>
+                        <p className="text-[11px] text-slate-600 font-normal">
+                          Against the {syncFeedback.target} weight. Nobody has entered it: the exam column on{" "}
+                          {candidateName}&apos;s card changes when a teacher or the exam office files it in CA Entry.
                         </p>
                       </div>
                     </div>
@@ -1007,9 +1257,10 @@ export default function ProctoredCBTPage() {
                         {bankSubjectLabel} ({candidateClass})
                       </h2>
                       <p className="text-xs text-slate-500">Candidate: {candidateName} ({candidateNo})</p>
-                      {isSampleBank && (
+                      {questionsSource === "device" && (
                         <p className="text-[11px] font-bold text-amber-800 mt-1">
-                          Sample questions from this page&apos;s source — not a paper {schoolShortName} set.
+                          This browser&apos;s own copy of the bank — the school&apos;s records could not be read, so the
+                          paper may not be the one {schoolShortName} set.
                         </p>
                       )}
                     </div>
@@ -1156,14 +1407,14 @@ export default function ProctoredCBTPage() {
                       </li>
                       <li className="flex items-start gap-1.5">
                         <span className="text-emerald-400 mt-0.5">•</span>
-                        Three of the above ends this sitting and scores it 0 on this device
+                        Three of the above ends this sitting and scores it 0
                       </li>
                     </ul>
                     <p className="text-[10px] text-slate-400 border-t border-slate-800 pt-2">
                       No camera, microphone, face or gaze check runs here — this portal never asks
-                      the browser for that access. The log below is this device&apos;s own note of
-                      the four events above; it is not filed to the school, so an invigilator
-                      deciding a malpractice case cannot rely on it as evidence.
+                      the browser for that access. The log below is what this browser noticed of the
+                      four events above; when the sitting ends it is filed alongside the attempt, so
+                      it records what a browser detected, not what an invigilator saw.
                     </p>
                   </div>
 
@@ -1199,7 +1450,7 @@ export default function ProctoredCBTPage() {
                     <h5 className="text-xs font-bold text-slate-800">Live Invigilation Audit Trail</h5>
                     <div className="space-y-1.5 max-h-36 overflow-y-auto text-[10px] font-mono text-slate-600 divide-y divide-slate-100">
                       <div className="text-emerald-600 pt-1">✓ Session initialized & locked</div>
-                      <div className="text-slate-500 pt-1">✓ Candidate facial baseline confirmed</div>
+                      <div className="text-slate-500 pt-1">No camera, face or gaze check — none is asked for</div>
                       {malpracticeLogs.map((log) => (
                         <div key={log.id} className="text-red-600 pt-1">
                           [{log.timestamp}] {log.description}

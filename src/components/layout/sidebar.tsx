@@ -128,7 +128,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   // The school and term shown to every member of staff, read from the
   // school's own record rather than the text compiled into the portal.
   const { config: school } = useSchoolConfig();
-  const { cbtConfig } = useRealtimeCBTConfig();
+  const { cbtConfig, configSource } = useRealtimeCBTConfig();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -141,7 +141,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   // at it. An unknown role now lists nothing; the screen beside it says why.
   const knownRole = mounted ? currentUser?.role ?? null : null;
   const currentRole = knownRole ?? "Not signed in on this browser";
-  const activeCBT = mounted ? cbtConfig : { isOpen: true };
 
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
     Setup: pathname.startsWith("/setup"),
@@ -175,9 +174,19 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         return null;
       }
       if (item.title === "CBT Portal") {
+        // "here" is the difference that matters: until the school's switch row has
+        // been read, this machine only knows what it is holding itself.
         return {
           ...item,
-          badge: activeCBT.isOpen ? "Open here" : "Closed here",
+          badge: mounted
+            ? cbtConfig.isOpen
+              ? configSource === "server"
+                ? "Open"
+                : "Open here"
+              : configSource === "server"
+                ? "Closed"
+                : "Closed here"
+            : undefined,
         };
       }
       return item;

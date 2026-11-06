@@ -42,7 +42,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const { currentUser, purgeAllSessions } = useRealtimeAuth();
   const { newsletter, updateNewsletter } = useRealtimeNewsletter();
-  const { cbtConfig, updateCBTConfig, toggleCBTAccess } = useRealtimeCBTConfig();
+  const { cbtConfig, configSource, updateCBTConfig, toggleCBTAccess } = useRealtimeCBTConfig();
 
   const [schoolName, setSchoolName] = useState<string>(SCHOOL_INFO.name);
   const [schoolAddress, setSchoolAddress] = useState<string>(SCHOOL_INFO.address);
@@ -80,6 +80,15 @@ export default function SettingsPage() {
   const [cbtExamMode, setCBTExamMode] = useState(cbtConfig.activeExamMode || "");
   const [cbtWindow, setCBTWindow] = useState(cbtConfig.scheduledWindow || "");
   const [cbtMessage, setCBTMessage] = useState(cbtConfig.offlineMessage || "");
+  // The switch row arrives a moment after the page does. Without this, the three
+  // boxes would keep showing whatever this browser had been left holding and the
+  // first Save would file that over the school's own answer.
+  useEffect(() => {
+    if (configSource !== "server") return;
+    setCBTExamMode(cbtConfig.activeExamMode || "");
+    setCBTWindow(cbtConfig.scheduledWindow || "");
+    setCBTMessage(cbtConfig.offlineMessage || "");
+  }, [configSource, cbtConfig.activeExamMode, cbtConfig.scheduledWindow, cbtConfig.offlineMessage]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,26 +132,29 @@ export default function SettingsPage() {
     setTimeout(() => setIsSaved(false), 6000);
   };
 
-  const handleSaveCBTSettings = (e: React.FormEvent) => {
+  const handleSaveCBTSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateCBTConfig({
+    const outcome = await updateCBTConfig({
       activeExamMode: cbtExamMode,
       scheduledWindow: cbtWindow,
       offlineMessage: cbtMessage,
     });
-    setIsCBTSaved(true);
-    setToastMessage("CBT settings saved on this browser only — other machines keep their own copy.");
+    setIsCBTSaved(outcome.ok);
+    setToastMessage(outcome.ok
+      ? "Filed on the school's records. Every machine now shows this purpose, these hours and this notice."
+      : `NOT filed on the school's records: ${outcome.reason ?? "the portal server refused it"}.`);
     setTimeout(() => {
       setIsCBTSaved(false);
       setToastMessage(null);
     }, 4000);
   };
 
-  const handleToggleCBTEngine = (nextState?: boolean) => {
+  const handleToggleCBTEngine = async (nextState?: boolean) => {
     const updatedState = typeof nextState === "boolean" ? nextState : !cbtConfig.isOpen;
-    toggleCBTAccess(updatedState);
-    const statusText = updatedState ? "open on this browser" : "closed on this browser";
-    setToastMessage(`CBT Examination Engine is now ${statusText}. Other machines keep their own setting — it is not stored on the school's records yet.`);
+    const outcome = await toggleCBTAccess(updatedState);
+    setToastMessage(outcome.ok
+      ? `The school's own switch now reads ${updatedState ? "OPEN to candidates" : "CLOSED to candidates"}. It is the same switch the CBT screen shows, on every machine.`
+      : `The switch stayed where the school left it: ${outcome.reason ?? "the portal server refused it"}.`);
     setTimeout(() => setToastMessage(null), 5000);
   };
 
@@ -255,8 +267,7 @@ export default function SettingsPage() {
         {isCBTSaved && (
           <div className="bg-cyan-50 border border-cyan-300 text-cyan-950 rounded-2xl p-4 text-xs font-bold flex items-center gap-2 animate-in fade-in">
             <CheckCircle2 className="w-4 h-4 text-cyan-600 flex-shrink-0" />
-            CBT parameters saved on this device. Candidates open their own copy, so set them on the machine the exam room
-            uses until the portal stores CBT settings centrally.
+            Filed on the school&apos;s records. The CBT screen, the exam room and every other machine read this same row.
           </div>
         )}
 
@@ -304,6 +315,13 @@ export default function SettingsPage() {
                     }`} />
                     {cbtConfig.isOpen ? "CBT Portal: Open" : "CBT Portal: Closed"}
                   </span>
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${
+                    configSource === "server"
+                      ? "bg-slate-100 text-slate-700 border-slate-300"
+                      : "bg-amber-100 text-amber-900 border-amber-300"
+                  }`}>
+                    {configSource === "server" ? "the school\u2019s switch" : "this browser\u2019s copy"}
+                  </span>
                 </div>
               </div>
 
@@ -329,9 +347,15 @@ export default function SettingsPage() {
                   </p>
                   <p className="text-[11px] text-slate-600 leading-relaxed">
                     {cbtConfig.isOpen
-                      ? "On this browser candidates can start timed tests. The score shows on the exam machine and a teacher files it in CA Entry — it does not enter the gradebook by itself."
-                      : "Students visiting the CBT module will see the official institutional closure notice. Admins can still preview tests."}
+                      ? "Candidates reaching the CBT module can start timed tests — this switch is the school's own, so every machine turns them away or lets them in the same way. The sitting is marked on the exam machine and filed as an attempt; a teacher enters the mark in CA Entry."
+                      : "Students visiting the CBT module see the closure notice below on every machine. Staff can still set the bank and preview a sitting."}
                   </p>
+                  {configSource === "device" && (
+                    <p className="text-[11px] font-bold text-amber-800 leading-relaxed">
+                      What is shown here is this browser&apos;s copy — the school&apos;s switch row could not be read, so
+                      no other machine is being told anything until it can be.
+                    </p>
+                  )}
                 </div>
 
                 {/* Primary Action Button */}
@@ -406,7 +430,13 @@ export default function SettingsPage() {
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs outline-none focus:border-[#0000FF] leading-relaxed resize-none"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">
-                    This message will be rendered on the dedicated candidate closed screen when students attempt to access the CBT module during off-hours or outside exam windows.
+                    Candidates see this notice whenever the switch is shut. The window above is what the school announces
+                    — nothing in the portal reads a clock against it, so leaving a paper open outside those hours is
+                    still on the switch, not on the schedule.
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Opening the module from here needs both a mode and a window: the school&apos;s records refuse an open
+                    switch that does not say what it is being used for or when it runs.
                   </p>
                 </div>
 
