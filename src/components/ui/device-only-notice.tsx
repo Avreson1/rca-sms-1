@@ -5,7 +5,8 @@ import { TriangleAlert } from "lucide-react";
 /**
  * Said out loud on every screen whose Save button only reaches this browser.
  *
- * What is left in localStorage is the inmail drafts, the marking of a CBT sitting
+ * What is left in localStorage is the memo draft pad at /inmail (a writing pad,
+ * not a mailbox), the marking of a CBT sitting
  * before it is filed as an attempt, and the copies a screen falls back to when
  * the school's records cannot be read. Each of those is described here as what it
  * is: a second machine never sees it, and clearing the browser's data loses it.

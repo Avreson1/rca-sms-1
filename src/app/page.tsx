@@ -352,8 +352,8 @@ export default function DashboardHome() {
                         <Mail className="w-5 h-5" />
                       </div>
                       <div>
-                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-purple-600">Inmail Messages</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Send messages to school management and teachers</p>
+                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-purple-600">Memo Drafts</h4>
+                        <p className="text-[11px] text-slate-500 mt-0.5">Write a memo on this machine — nothing is sent</p>
                       </div>
                     </Link>
                   </>
@@ -361,21 +361,24 @@ export default function DashboardHome() {
               </div>
             </div>
 
-            {/* Inmail & Quick Communication Link */}
+            {/* Memo draft pad — deliberately not a mailbox */}
             <div className="bg-gradient-to-r from-blue-900 to-indigo-950 text-white p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
               <div className="space-y-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-300 bg-cyan-400/20 px-2.5 py-0.5 rounded-full border border-cyan-400/30">
-                  Institutional Inmail Desk
+                  Memo draft pad
                 </span>
-                <h4 className="text-base font-bold">Secure Internal Communications</h4>
-                <p className="text-xs text-blue-200/80">Connect directly with teachers, coordinators, and school administrators.</p>
+                <h4 className="text-base font-bold">Write it here, send it yourself</h4>
+                <p className="text-xs text-blue-200/80">
+                  Drafts stay on the machine that wrote them. The portal sends no messages: copy the memo into the
+                  school&apos;s email, print it, or make the call.
+                </p>
               </div>
               <Link
                 href="/inmail"
                 className="px-4 py-2.5 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5"
               >
                 <Mail className="w-4 h-4" />
-                <span>Open Desk</span>
+                <span>Open the pad</span>
               </Link>
             </div>
 

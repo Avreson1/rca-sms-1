@@ -95,7 +95,7 @@ const navItems: NavItem[] = [
     ],
   },
   {
-    title: "Inmail Desk",
+    title: "Memo Drafts",
     href: "/inmail",
     icon: Mail,
   },

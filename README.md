@@ -98,7 +98,8 @@ depends on `supabase/operations_state.sql`, `supabase/traits_assessments.sql`,
 `supabase/ca_structure_and_bulletin.sql` having been run — the last of those is what each tier's
 assessment is stated to be made of, the colour scheme the cards are printed in, and the circular
 that prints behind the marks, one per session and term.
-Still browser-local: Inmail, and the marking of an exam sitting before it is filed as an attempt —
+Deliberately browser-local: the memo draft pad at `/inmail` (it is a writing pad, not a mailbox —
+nothing is delivered), and the marking of an exam sitting before it is filed as an attempt —
 each of those screens carries a *Kept on this browser* notice so nobody mistakes it for a record
 (the timetable screen keeps one, because the teacher names it groups by are still only on this
 device; the calendar and report-template screens show one only while their lists cannot be read from
@@ -516,9 +517,13 @@ cannot break the build. Nothing in `rca-sms/` reaches production.
 
 Be aware of what this system does **not** do today:
 
-- **One screen still keeps its work in the browser.** Inmail says so on screen with a
-  *Kept on this browser* notice: nothing behind it has a route, so a second machine cannot see the
-  typing and it is lost if the device is cleared. (*Academics* keeps a notice of its own: the
+- **The memo draft pad keeps its work in the browser, on purpose.** `/inmail` is a writing pad: it
+  saves a memo on the machine that typed it, signs it with the login on that machine, and says
+  *Not a mailbox* on its face. There is no route behind it and no delivery — a second machine cannot
+  see the typing and it is lost if the device is cleared. *Copy memo text* is how a draft leaves the
+  pad. The `inmail_messages` table in `supabase/schema.sql` is not read or written by any route; a
+  real shared mailbox would need routes, a migration and a decision about who may read whose mail.
+  (*Academics* keeps a notice of its own: the
   lessons are on the school's records and so are the arms they are grouped by, but the teacher names
   the grid reads come from this device's staff list. *Setup → Calendar* and
   *Setup → Report Templates* show theirs only while the lists cannot be read from

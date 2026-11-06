@@ -112,7 +112,7 @@ const SOP_MANUAL_DATA: SOPItem[] = [
     procedureSteps: [
       "Navigate to Settings (/settings).",
       "Find the 'Live Data Store & Zero-Start Baseline Controls' panel.",
-      "Read the prompt on 'Purge All Demo Data (Start 100% Clean)' before answering. It clears the demo copies held on this browser — pupils, staff, scores, invoices, this browser's copy of the calendar, the activity blueprints, the timetable, the question bank, the CA structures, the card theme and the circulars, and inmail — and nothing else. What the school's records hold, including the milestones the office filed and the questions the exam office filed, is untouched: reopen the screen and they come back.",
+      "Read the prompt on 'Purge All Demo Data (Start 100% Clean)' before answering. It clears the demo copies held on this browser — pupils, staff, scores, invoices, this browser's copy of the calendar, the activity blueprints, the timetable, the question bank, the CA structures, the card theme and the circulars, and the memo drafts — and nothing else. What the school's records hold, including the milestones the office filed and the questions the exam office filed, is untouched: reopen the screen and they come back.",
       "Understand why the circulars are on that list: a cached circular carries the school's bank details, so clearing it on a shared machine is the point, not a side effect.",
       "Confirm only when you accept that this browser's lists cannot be brought back.",
       "Check the roster and the staff list on this machine now read zero (or only your own account for staff).",
@@ -547,12 +547,12 @@ const SOP_MANUAL_DATA: SOPItem[] = [
   {
     id: "sop-6-3",
     code: "SOP-PAR-003",
-    title: "Checking Termly Fee Invoices, Bank Payment Details & Inmail Desks",
+    title: "Checking Termly Fee Invoices, Bank Payment Details & the Memo Draft Pad",
     role: "Parent / Guardian",
     category: "Parent / Student",
     badgeColor: "bg-sky-100 text-sky-800 border-sky-200",
     minRoleTier: "STUDENT_PARENT",
-    summary: "How a guardian reads their own child's fees and receipts, and what Inmail is really worth as a channel of communication.",
+    summary: "How a guardian reads their own child's fees and receipts, and what the memo draft pad is really worth as a channel of communication — it is a writing pad, not a mailbox.",
     prerequisites: [
       "Authorized Parent Portal account linked to your ward on the school's guardian-to-pupil table",
     ],
@@ -562,15 +562,16 @@ const SOP_MANUAL_DATA: SOPItem[] = [
       "There are no payment buttons on your copy of this screen. It says 'Reading only. Take your payment evidence to the Bursary' — recording a payment is the bursary's job because only their login is allowed to file one.",
       "Press a row's 'Receipts' to reprint what the school actually issued for that child, newest first. A receipt that is not in that list was never filed.",
       "Payment channels named on a receipt are one of: 'Bank Direct Deposit / Teller', 'Electronic Bank Transfer', 'School Bursary POS', 'Cash Receipt'. Where the teller number was left out the slip reads 'Not noted'.",
-      "To write to the school, open Inmail Desk (/inmail) → 'Compose Inmail' → pick the recipient, add subject and body → 'Send Inmail'.",
-      "Inmail is not email: the toast after sending reads 'Message saved on this browser only — no one else has received it, and other machines will not see it.' Use it to draft; send the school a real message by phone or letter.",
+      "To draft a note to the school, open Memo Drafts (/inmail) → 'Write a memo' → choose who it is addressed to, add a subject and body → 'Save draft'. The draft is signed with the login on that machine.",
+      "The pad is not a mailbox. The notice after saving reads 'Draft saved on this machine only. Nobody has received it and no other machine will see it.' Press 'Copy memo text' and send it by the school's email, a letter or a phone call — that is the only way it reaches anybody.",
+      "'Delete this draft' removes it from that machine for good. Nothing was ever sent, so there is no copy anywhere else to recover.",
     ],
     safetyRules: [
       "Always verify school bank details against the official circular before executing wire transfers. The portal never displays account numbers it has not been given.",
-      "Do not treat a browser-held Inmail as delivered evidence of an enquiry, and do not treat a CBT screen you cannot open as proof nothing was recorded.",
+      "Do not treat a saved draft as delivered evidence of an enquiry, and do not treat a CBT screen you cannot open as proof nothing was recorded.",
       "If your invoice and the bursary's copy disagree, ask for the receipt number and have it looked up on the school's records rather than argued from a screenshot.",
     ],
-    expectedOutput: "Your own children's invoices, balances and filed receipts read straight from the school's records — plus the plain knowledge that Inmail has not left your machine.",
+    expectedOutput: "Your own children's invoices, balances and filed receipts read straight from the school's records — plus the plain knowledge that a memo drafted in the portal has not left your machine.",
   },
 ];
 

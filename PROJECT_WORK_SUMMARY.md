@@ -45,7 +45,7 @@ A 4-step (5-role) institutional governance hierarchy has been implemented with d
 | **Tier 2** | `EXAM_OFFICER` | Academic Directorate & Dean of Studies | Curriculum subject packages, tier grading scales, Continuous Assessment structure weighting, CBT exam banks, proctoring audits, academic timetable, and broadsheet publication. |
 | **Tier 3** | `TEACHER` | Form Master & Subject Teacher | Continuous Assessment mark entry (filtered to assigned subject/class), affective & psychomotor trait matrix scoring, attendance tracking, and classroom invigilation. |
 | **Tier 4** | `ACCOUNTANT` | Bursar & Accounts Officer | Fee line-item configurations, student tuition invoicing, payment recording, debt reconciliation, and official receipt generation. |
-| **Tier 5** | `STUDENT_PARENT` | Student & Parent Guardian Portal | View published terminal scorecards (restricted strictly to their ward), take CBT examinations, inspect fee invoices and payment clearance status, internal inmail messaging. |
+| **Tier 5** | `STUDENT_PARENT` | Student & Parent Guardian Portal | View published terminal scorecards (restricted strictly to their ward), take CBT examinations, inspect fee invoices and payment clearance status, and draft memos on their own machine (the pad delivers nothing). |
 
 ### Implemented Security Features:
 - **Route Guard Engine (`isRouteAllowed`)**: Enforces allowed prefixes and denied paths per role.
@@ -229,7 +229,7 @@ sitting and the switch.
 
 ## 📬 9. Communication & Manuals
 
-- **Internal Inmail Desk (`/inmail`)**: Inter-departmental messaging system between administration, teachers, accountants, and parents.
+- **Memo Draft Pad (`/inmail`)**: A writing pad for inter-departmental memos, kept on the machine that typed them. It signs each draft with the signed-in login, addresses it to an office or to a member of staff on the school's list, and delivers nothing — *Copy memo text* is how a draft leaves the pad. There is no route behind it and the `inmail_messages` table in `schema.sql` is unused.
 - **Standard Operating Procedures (SOP) Manual (`/video-guides`)**: Role-based operational manual with step-by-step procedures, safety guidelines, and prerequisites for Super Admins, Exam Officers, Teachers, and Bursars.
 - **System Settings (`/settings`)**: School profile editor, term resumption dates, CBT engine lock toggle, demo data purge, and seed data restore.
 
@@ -249,7 +249,10 @@ The database architecture is designed with **Supabase PostgreSQL**, utilizing Ro
 7. `public.invoices`: Student fee invoices, amounts billed, amounts paid, and payment statuses.
 8. `public.transactions`: Payment transactions, reference numbers, payment channels, and timestamps.
 9. `public.audit_logs`: Administrative change history and system audit trail.
-10. `public.inmail_messages`: Internal messaging mailbox, sender, recipient, subject, body, read status.
+10. `public.inmail_messages`: a mailbox shape — sender, recipient, subject, body, read status — created
+    by `schema.sql` and **used by nothing**. No route reads or writes it; `/inmail` is a draft pad on
+    the machine that typed the memo. A shared mailbox would need routes and a decision about who may
+    read whose mail before this table earns its place.
 11. `public.cbt_settings`: the switch that opens or shuts the exam portal, the purpose it is open for,
     the hours it runs in, the notice a locked screen prints, and who moved it last — created by
     `supabase/cbt.sql` rather than `schema.sql`, which also adds the sitting columns the older file

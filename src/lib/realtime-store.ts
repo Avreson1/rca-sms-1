@@ -451,6 +451,12 @@ export interface AuthUserSession {
   loginTime: string;
 }
 
+/**
+ * A memo somebody wrote on this machine. Nothing here is a message: there is no
+ * mailbox, no delivery and no recipient who can read it. `recipient` is the
+ * address the writer intends to send it to by another means, and `date` is when
+ * the draft was saved, not when anything was sent.
+ */
 export interface InmailMessage {
   id: string;
   sender: string;
@@ -460,8 +466,6 @@ export interface InmailMessage {
   snippet: string;
   body: string;
   date: string;
-  unread: boolean;
-  starred: boolean;
 }
 
 export interface CBTConfigRecord {
@@ -2159,8 +2163,29 @@ export function useRealtimeInvoices() {
 }
 
 // -------------------------------------------------------------
-// Hook: Real-Time Inmail Store
+// Hook: this machine's memo draft pad (no mailbox, no delivery)
 // -------------------------------------------------------------
+// Drafts saved by the older screen carried a sender the portal invented and a
+// date that read "Just now" for ever. Neither is shown as a fact any more.
+const LEGACY_DRAFT_SENDER = "Dominic (Admin)";
+
+function normalizeDrafts(value: unknown): InmailMessage[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(
+      (item): item is InmailMessage =>
+        !!item &&
+        typeof item === "object" &&
+        typeof (item as InmailMessage).subject === "string" &&
+        typeof (item as InmailMessage).body === "string"
+    )
+    .map((item) => ({
+      ...item,
+      sender: item.sender === LEGACY_DRAFT_SENDER ? "" : item.sender ?? "",
+      senderRole: item.sender === LEGACY_DRAFT_SENDER ? "" : item.senderRole ?? "",
+    }));
+}
+
 export function useRealtimeInmail() {
   const [messages, setMessages] = useState<InmailMessage[]>(INITIAL_INMAIL);
 
@@ -2169,7 +2194,7 @@ export function useRealtimeInmail() {
       const stored = localStorage.getItem(STORAGE_KEYS.INMAIL);
       if (stored) {
         try {
-          setMessages(JSON.parse(stored));
+          setMessages(normalizeDrafts(JSON.parse(stored)));
         } catch {}
       } else {
         localStorage.setItem(STORAGE_KEYS.INMAIL, JSON.stringify(INITIAL_INMAIL));
@@ -2182,7 +2207,11 @@ export function useRealtimeInmail() {
       channel.onmessage = (event) => {
         if (event.data?.type === "INMAIL_UPDATED") {
           const stored = localStorage.getItem(STORAGE_KEYS.INMAIL);
-          if (stored) setMessages(JSON.parse(stored));
+          if (stored) {
+            try {
+              setMessages(normalizeDrafts(JSON.parse(stored)));
+            } catch {}
+          }
         }
       };
     }
@@ -2191,25 +2220,34 @@ export function useRealtimeInmail() {
     };
   }, []);
 
-  const sendMessage = (newMsg: {
+  const saveDraft = (draft: {
     recipient: string;
     subject: string;
     body: string;
-    sender?: string;
-    senderRole?: string;
-    snippet?: string;
-  }) => {
+    sender: string;
+    senderRole: string;
+  }): { ok: boolean; reason: string | null } => {
+    if (!draft.subject.trim()) {
+      return { ok: false, reason: "give the memo a subject before saving it" };
+    }
+    if (!draft.body.trim()) {
+      return { ok: false, reason: "there is no memo to save: the body is empty" };
+    }
+    if (!draft.sender.trim()) {
+      return {
+        ok: false,
+        reason: "this browser has not read who is signed in, so the draft would carry no author",
+      };
+    }
     const msg: InmailMessage = {
-      id: `msg-${Date.now()}`,
-      sender: newMsg.sender || "Dominic (Admin)",
-      senderRole: newMsg.senderRole || "Administration",
-      recipient: newMsg.recipient,
-      subject: newMsg.subject,
-      snippet: newMsg.snippet || (newMsg.body.length > 80 ? newMsg.body.substring(0, 80) + "..." : newMsg.body),
-      body: newMsg.body,
-      date: "Just now",
-      unread: false,
-      starred: false,
+      id: `draft-${Date.now()}`,
+      sender: draft.sender.trim(),
+      senderRole: draft.senderRole,
+      recipient: draft.recipient,
+      subject: draft.subject.trim(),
+      snippet: draft.body.length > 80 ? draft.body.substring(0, 80) + "..." : draft.body,
+      body: draft.body,
+      date: new Date().toISOString(),
     };
     const updated = [msg, ...messages];
     setMessages(updated);
@@ -2217,9 +2255,19 @@ export function useRealtimeInmail() {
       localStorage.setItem(STORAGE_KEYS.INMAIL, JSON.stringify(updated));
       broadcast("INMAIL_UPDATED");
     }
+    return { ok: true, reason: null };
   };
 
-  return { messages, sendMessage };
+  const deleteDraft = (draftId: string) => {
+    const updated = messages.filter((msg) => msg.id !== draftId);
+    setMessages(updated);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(STORAGE_KEYS.INMAIL, JSON.stringify(updated));
+      broadcast("INMAIL_UPDATED");
+    }
+  };
+
+  return { messages, saveDraft, deleteDraft };
 }
 
 // -------------------------------------------------------------
