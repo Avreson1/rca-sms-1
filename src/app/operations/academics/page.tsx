@@ -113,7 +113,7 @@ function blankPlanRow(className: string): PlanRow {
 
 export default function OperationsAcademicsPage() {
   const { staff } = useRealtimeStaff();
-  const { classes } = useRealtimeClasses();
+  const { classes, classesSource } = useRealtimeClasses();
   const { subjects } = useRealtimeSubjects();
   const { currentUser } = useRealtimeAuth();
   const { config, usingDefaults } = useSchoolConfig();
@@ -835,9 +835,14 @@ export default function OperationsAcademicsPage() {
             </div>
           )}
 
-          {/* The arms themselves are still typed into this browser, so the grid can
-              only be grouped by names the school has not filed. */}
-          <DeviceOnlyNotice what="The class-arm list" />
+          {/* The lessons and the arms they are grouped by are the school's records;
+              the teacher names in the slots are not, so a workload count is only as
+              good as this machine's staff list. */}
+          <DeviceOnlyNotice what="The staff list these lessons are grouped by" />
+
+          {classesSource === "device" && (
+            <DeviceOnlyNotice what="The class arms this grid offers — no arm is on the school's records yet, or they could not be read" />
+          )}
 
           {clashes.length > 0 && (
             <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 text-[11px] leading-snug text-rose-950 space-y-1 print:hidden">
@@ -1150,8 +1155,9 @@ export default function OperationsAcademicsPage() {
                     {lessons !== null && classes.length === 0 && (
                       <tr>
                         <td colSpan={5} className="px-4 py-8 text-center text-xs text-slate-500">
-                          This browser holds no class-arm list, so there is nothing to line the filed lessons up against.
-                          Whatever is on the school&apos;s timetable still saves — it just cannot be grouped here.
+                          {classesSource === "server"
+                            ? "No class arm is filed on the school's records, so there is nothing to line the lessons up against. File an arm in Setup → Classes and the grid groups by it."
+                            : "This browser holds no class-arm list, so there is nothing to line the filed lessons up against. Whatever is on the school's timetable still saves — it just cannot be grouped here."}
                         </td>
                       </tr>
                     )}

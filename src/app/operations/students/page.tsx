@@ -4,7 +4,7 @@ import React, { useState, useRef } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { useRealtimeStudents, useRealtimeClasses, StudentRecord } from "@/lib/realtime-store";
-import { ALL_CLASSES } from "@/lib/constants";
+import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import { exportToCSV, parseCSV, downloadSampleTemplate } from "@/lib/csv-utils";
 import {
   Users,
@@ -32,13 +32,16 @@ type CsvStudentRow = {
 
 export default function StudentsPage() {
   const { students, addStudent, bulkAddStudents, deleteStudent } = useRealtimeStudents();
-  const { classes } = useRealtimeClasses();
+  const { classes, classesSource } = useRealtimeClasses();
   const [search, setSearch] = useState("");
   const [classFilter, setClassFilter] = useState("all");
   const [feeFilter, setFeeFilter] = useState("all");
   
-  // Available classes dynamically
-  const availableClasses = classes.length > 0 ? classes.map((c) => c.name) : ALL_CLASSES;
+  // The arms a pupil can be enrolled into are the school's own list. Nothing is
+  // offered when it is empty: a child put into an arm the school does not run
+  // cannot be found by the timetable, the fee schedule or the promotion screen,
+  // because all three look for the arm by the name filed on the school's records.
+  const availableClasses = classes.map((c) => c.name);
 
   // Single Admission Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -322,6 +325,10 @@ export default function StudentsPage() {
             </button>
           </div>
         </div>
+
+        {classesSource === "device" && (
+          <DeviceOnlyNotice what="The class arms this register offers" className="mt-0" />
+        )}
 
         {csvNotice && (
           <div
@@ -626,7 +633,7 @@ export default function StudentsPage() {
                       <option value="" disabled>
                         {availableClasses.length > 0
                           ? "Choose the class arm"
-                          : "No class arm exists yet — create one in Setup"}
+                          : "No class arm is on the school's list — file one in Setup → Classes first"}
                       </option>
                       {availableClasses.map((cls) => (
                         <option key={cls} value={cls}>

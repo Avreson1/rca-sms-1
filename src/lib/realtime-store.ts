@@ -30,6 +30,18 @@ import {
   saveAssessmentOnServer,
   fetchTraitsConfigFromSupabase,
   saveTraitsConfigOnServer,
+  fetchClassArmsFromSupabase,
+  saveClassArmOnServer,
+  removeClassArmOnServer,
+  type ClassArmInput,
+  fetchSubjectsFromSupabase,
+  saveSubjectsOnServer,
+  removeSubjectsOnServer,
+  type SubjectInput,
+  fetchSubjectTemplatesFromSupabase,
+  saveSubjectTemplatesOnServer,
+  removeSubjectTemplatesOnServer,
+  type SubjectTemplateInput,
 } from "./supabase/db";
 
 // Channel for instant multi-tab & multi-window event synchronization
@@ -254,7 +266,6 @@ export interface SubjectTemplateRecord {
   department: "Early Years" | "Nursery" | "Primary" | "Science" | "Arts" | "Commercial" | "General";
   targetClass: string;
   subjects: string[];
-  enrolledStudentsCount: number;
 }
 
 export interface CBTQuestionRecord {
@@ -1637,8 +1648,13 @@ export function useRealtimeTraits() {
 // -------------------------------------------------------------
 // Hook: Real-Time Class Arms Store
 // -------------------------------------------------------------
+// The arm list decides which year a fee is priced for, which classes appear in
+// the CA grid, and who is moved at promotion, so twelve screens group by it. It
+// used to be whatever this browser cached, which meant the office's machine was
+// the only one holding the school's real list.
 export function useRealtimeClasses() {
   const [classes, setClasses] = useState<ClassArmRecord[]>(DEFAULT_CLASSES);
+  const [classesSource, setClassesSource] = useState<"server" | "device">("device");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1650,6 +1666,17 @@ export function useRealtimeClasses() {
       } else {
         localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(DEFAULT_CLASSES));
       }
+    }
+
+    if (isSupabaseConfigured) {
+      fetchClassArmsFromSupabase().then((serverArms) => {
+        // null means the list was not read, so the device copy stays on screen
+        // rather than an empty year-group list that every filter would obey.
+        if (serverArms === null) return;
+        setClasses(serverArms);
+        setClassesSource("server");
+        localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(serverArms));
+      });
     }
 
     let channel: BroadcastChannel | null = null;
@@ -1667,38 +1694,47 @@ export function useRealtimeClasses() {
     };
   }, []);
 
-  const addClass = (newClass: Omit<ClassArmRecord, "id">) => {
-    const entry: ClassArmRecord = {
-      ...newClass,
-      id: `c-${Date.now()}`,
-    };
-    const updated = [entry, ...classes];
-    setClasses(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(updated));
+  /** Puts the school's own list on screen, and says whether it was read. */
+  const showServerArms = (): Promise<boolean> => {
+    if (!isSupabaseConfigured) return Promise.resolve(false);
+    return fetchClassArmsFromSupabase().then((serverArms) => {
+      if (serverArms === null) return false;
+      setClasses(serverArms);
+      setClassesSource("server");
+      localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(serverArms));
       broadcast("CLASSES_UPDATED");
-    }
+      return true;
+    });
   };
 
-  const deleteClass = (id: string) => {
-    const updated = classes.filter((c) => c.id !== id);
-    setClasses(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(updated));
-      broadcast("CLASSES_UPDATED");
+  /**
+   * Files an arm on the school's list, then shows the list back as the server
+   * stored it. Nothing appears before the server has taken it, so an arm the
+   * office was refused cannot be picked by the fee or CA screens afterwards.
+   */
+  const addClass = async (
+    arm: Omit<ClassArmInput, "id">
+  ): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database, so no arm was filed" };
     }
+
+    const outcome = await saveClassArmOnServer(arm);
+    if (outcome.ok) await showServerArms();
+    return outcome;
   };
 
-  const updateClass = (id: string, updates: Partial<ClassArmRecord>) => {
-    const updated = classes.map((c) => (c.id === id ? { ...c, ...updates } : c));
-    setClasses(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(updated));
-      broadcast("CLASSES_UPDATED");
+  const deleteClass = async (id: string): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database" };
     }
+
+    const outcome = await removeClassArmOnServer(id);
+    if (outcome.ok) await showServerArms();
+    return outcome;
   };
 
-  return { classes, addClass, deleteClass, updateClass };
+  return { classes, classesSource, addClass, deleteClass, reloadClasses: showServerArms };
 }
 
 // -------------------------------------------------------------
@@ -2157,14 +2193,13 @@ export interface SubjectRecord {
   category?: string;
   applicableClasses: string[];
   isCompulsory?: boolean;
-  assignedTeachersCount?: number;
-  createdAt?: string;
 }
 
 export const INITIAL_SUBJECTS: SubjectRecord[] = [];
 
 export function useRealtimeSubjects() {
   const [subjects, setSubjects] = useState<SubjectRecord[]>(INITIAL_SUBJECTS);
+  const [subjectsSource, setSubjectsSource] = useState<"server" | "device">("device");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -2176,6 +2211,15 @@ export function useRealtimeSubjects() {
       } else {
         localStorage.setItem(STORAGE_KEYS.SUBJECTS, JSON.stringify(INITIAL_SUBJECTS));
       }
+    }
+
+    if (isSupabaseConfigured) {
+      fetchSubjectsFromSupabase().then((serverSubjects) => {
+        if (serverSubjects === null) return;
+        setSubjects(serverSubjects);
+        setSubjectsSource("server");
+        localStorage.setItem(STORAGE_KEYS.SUBJECTS, JSON.stringify(serverSubjects));
+      });
     }
 
     const handleBroadcast = (event: MessageEvent) => {
@@ -2200,75 +2244,81 @@ export function useRealtimeSubjects() {
     };
   }, []);
 
-  const addSubject = (newSubject: Omit<SubjectRecord, "id">) => {
-    const sub: SubjectRecord = {
-      ...newSubject,
-      id: `sub-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      code: newSubject.code?.trim() || undefined,
-      isCompulsory: newSubject.isCompulsory ?? true,
-      assignedTeachersCount: newSubject.assignedTeachersCount || 0,
-      createdAt: new Date().toISOString(),
-    };
-    const updated = [sub, ...subjects];
-    setSubjects(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.SUBJECTS, JSON.stringify(updated));
+  const showServerSubjects = (): Promise<boolean> => {
+    if (!isSupabaseConfigured) return Promise.resolve(false);
+    return fetchSubjectsFromSupabase().then((serverSubjects) => {
+      if (serverSubjects === null) return false;
+      setSubjects(serverSubjects);
+      setSubjectsSource("server");
+      localStorage.setItem(STORAGE_KEYS.SUBJECTS, JSON.stringify(serverSubjects));
       broadcast("SUBJECTS_UPDATED");
-    }
-    return sub;
+      return true;
+    });
   };
 
-  const bulkAddSubjects = (newSubjectsList: Omit<SubjectRecord, "id">[]) => {
-    const created: SubjectRecord[] = newSubjectsList.map((s, idx) => ({
-      ...s,
-      id: `sub-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
-      code: s.code?.trim() || undefined,
-      isCompulsory: s.isCompulsory ?? true,
-      assignedTeachersCount: s.assignedTeachersCount || 0,
-      createdAt: new Date().toISOString(),
-    }));
-    const updated = [...created, ...subjects];
-    setSubjects(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.SUBJECTS, JSON.stringify(updated));
-      broadcast("SUBJECTS_UPDATED");
+  /**
+   * Files subjects on the school's list and reloads it from the server.
+   *
+   * The same name in the same band is one row, so re-sending a corrected paper
+   * updates it instead of adding a second line the CA grid would have to choose
+   * between.
+   */
+  const addSubjects = async (
+    list: Omit<SubjectInput, "id">[]
+  ): Promise<{ ok: boolean; saved: number; reason: string | null }> => {
+    if (list.length === 0) return { ok: false, saved: 0, reason: "No subject was sent." };
+
+    if (!isSupabaseConfigured) {
+      return {
+        ok: false,
+        saved: 0,
+        reason: "this device is not connected to the school database, so no subject was filed",
+      };
     }
+
+    const outcome = await saveSubjectsOnServer(list);
+    if (outcome.reason) return { ok: false, saved: 0, reason: outcome.reason };
+
+    await showServerSubjects();
+    return { ok: true, saved: list.length, reason: null };
   };
 
-  const deleteSubject = (id: string) => {
-    const updated = subjects.filter((s) => s.id !== id);
-    setSubjects(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.SUBJECTS, JSON.stringify(updated));
-      broadcast("SUBJECTS_UPDATED");
+  const deleteSubject = async (id: string): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database" };
     }
+
+    const outcome = await removeSubjectsOnServer([id]);
+    if (outcome.ok) await showServerSubjects();
+    return { ok: outcome.ok, reason: outcome.reason };
   };
 
-  const updateSubject = (id: string, updates: Partial<SubjectRecord>) => {
-    const updated = subjects.map((s) => (s.id === id ? { ...s, ...updates } : s));
-    setSubjects(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.SUBJECTS, JSON.stringify(updated));
-      broadcast("SUBJECTS_UPDATED");
+  /**
+   * Removes every subject the school holds.
+   *
+   * This is the one action on this screen that takes something away from every
+   * other machine, so the caller asks for it by name and the server answers with
+   * the subjects that still have marks filed behind them.
+   */
+  const clearAllSubjects = async (): Promise<{ ok: boolean; reason: string | null; stillFiled: string[] }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database", stillFiled: [] };
     }
-  };
 
-  const clearAllSubjects = () => {
-    setSubjects([]);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.SUBJECTS, JSON.stringify([]));
-      broadcast("SUBJECTS_UPDATED");
-    }
+    // The server decides which of these are rows at all — a browser-invented id
+    // is not one, and it says so rather than quietly removing nothing.
+    const outcome = await removeSubjectsOnServer(subjects.map((s) => s.id));
+    if (outcome.ok) await showServerSubjects();
+    return { ok: outcome.ok, reason: outcome.reason, stillFiled: outcome.stillFiled };
   };
 
   return {
     subjects,
-    setSubjects,
-    addSubject,
-    bulkAddSubjects,
+    subjectsSource,
+    addSubjects,
     deleteSubject,
-    updateSubject,
     clearAllSubjects,
+    reloadSubjects: showServerSubjects,
   };
 }
 
@@ -2477,6 +2527,7 @@ export function useRealtimeFees() {
 // -------------------------------------------------------------
 export function useRealtimeSubjectTemplates() {
   const [templates, setTemplates] = useState<SubjectTemplateRecord[]>(INITIAL_SUBJECT_TEMPLATES);
+  const [templatesSource, setTemplatesSource] = useState<"server" | "device">("device");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -2488,6 +2539,15 @@ export function useRealtimeSubjectTemplates() {
       } else {
         localStorage.setItem(STORAGE_KEYS.SUBJECT_TEMPLATES, JSON.stringify(INITIAL_SUBJECT_TEMPLATES));
       }
+    }
+
+    if (isSupabaseConfigured) {
+      fetchSubjectTemplatesFromSupabase().then((serverTemplates) => {
+        if (serverTemplates === null) return;
+        setTemplates(serverTemplates);
+        setTemplatesSource("server");
+        localStorage.setItem(STORAGE_KEYS.SUBJECT_TEMPLATES, JSON.stringify(serverTemplates));
+      });
     }
 
     let channel: BroadcastChannel | null = null;
@@ -2505,52 +2565,60 @@ export function useRealtimeSubjectTemplates() {
     };
   }, []);
 
-  const addTemplate = (newTpl: Omit<SubjectTemplateRecord, "id">) => {
-    const tpl: SubjectTemplateRecord = {
-      ...newTpl,
-      id: `tpl-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-    };
-    const updated = [tpl, ...templates];
-    setTemplates(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.SUBJECT_TEMPLATES, JSON.stringify(updated));
+  const showServerTemplates = (): Promise<boolean> => {
+    if (!isSupabaseConfigured) return Promise.resolve(false);
+    return fetchSubjectTemplatesFromSupabase().then((serverTemplates) => {
+      if (serverTemplates === null) return false;
+      setTemplates(serverTemplates);
+      setTemplatesSource("server");
+      localStorage.setItem(STORAGE_KEYS.SUBJECT_TEMPLATES, JSON.stringify(serverTemplates));
       broadcast("SUBJECT_TEMPLATES_UPDATED");
-    }
-    return tpl;
+      return true;
+    });
   };
 
-  const deleteTemplate = (id: string) => {
-    const updated = templates.filter((t) => t.id !== id);
-    setTemplates(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.SUBJECT_TEMPLATES, JSON.stringify(updated));
-      broadcast("SUBJECT_TEMPLATES_UPDATED");
+  /**
+   * Files the packages on the school's records, then reloads them.
+   *
+   * The CA grid offers these packages as a shortcut to every teacher, so a
+   * package that was never filed must not sit on screen and get used from.
+   */
+  const addTemplates = async (
+    list: Omit<SubjectTemplateInput, "id">[]
+  ): Promise<{ ok: boolean; saved: number; reason: string | null }> => {
+    if (list.length === 0) return { ok: false, saved: 0, reason: "No subject package was sent." };
+
+    if (!isSupabaseConfigured) {
+      return {
+        ok: false,
+        saved: 0,
+        reason: "this device is not connected to the school database, so no package was filed",
+      };
     }
+
+    const outcome = await saveSubjectTemplatesOnServer(list);
+    if (outcome.reason) return { ok: false, saved: 0, reason: outcome.reason };
+
+    await showServerTemplates();
+    return { ok: true, saved: list.length, reason: null };
   };
 
-  const updateTemplate = (id: string, updates: Partial<SubjectTemplateRecord>) => {
-    const updated = templates.map((t) => (t.id === id ? { ...t, ...updates } : t));
-    setTemplates(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.SUBJECT_TEMPLATES, JSON.stringify(updated));
-      broadcast("SUBJECT_TEMPLATES_UPDATED");
+  const deleteTemplate = async (id: string): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database" };
     }
-  };
 
-  const clearAllTemplates = () => {
-    setTemplates([]);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.SUBJECT_TEMPLATES, JSON.stringify([]));
-      broadcast("SUBJECT_TEMPLATES_UPDATED");
-    }
+    const outcome = await removeSubjectTemplatesOnServer([id]);
+    if (outcome.ok) await showServerTemplates();
+    return { ok: outcome.ok, reason: outcome.reason };
   };
 
   return {
     templates,
-    addTemplate,
+    templatesSource,
+    addTemplates,
     deleteTemplate,
-    updateTemplate,
-    clearAllTemplates,
+    reloadTemplates: showServerTemplates,
   };
 }
 

@@ -50,7 +50,7 @@ const PRINCIPAL_REMARKS_PRESETS = [
 
 export default function TraitsAssessmentsPage() {
   const { students } = useRealtimeStudents();
-  const { classes } = useRealtimeClasses();
+  const { classes, classesSource } = useRealtimeClasses();
   const { traits } = useRealtimeTraits();
   const { currentUser } = useRealtimeAuth();
   const { config: school } = useSchoolConfig();
@@ -104,6 +104,19 @@ export default function TraitsAssessmentsPage() {
   const [selectedClass, setSelectedClass] = useState<string>(
     isTeacher && currentUser?.assignedClass ? currentUser.assignedClass : classes[0]?.name || "Primary 1"
   );
+
+  // The class arms come from the school's records and land after this page has
+  // already chosen the arm to rate. A rating typed into an arm the school does
+  // not run files against a name nobody recognises, so once the school's list is
+  // on screen the choice is replaced by an arm that is on it — except for a form
+  // teacher, whose own class is the school's fact about them.
+  useEffect(() => {
+    if (isTeacher && currentUser?.assignedClass) return;
+    if (classesSource !== "server") return;
+    const names = classes.map((c) => c.name);
+    if (names.length === 0) return;
+    setSelectedClass((current) => (names.includes(current) ? current : names[0]));
+  }, [classes, classesSource, isTeacher, currentUser]);
   // The ratings on this screen come from the school's own rows for the arm and
   // term chosen above, so a form teacher opening the portal on another machine
   // sees — and continues — the work their colleagues filed, not an empty grid.

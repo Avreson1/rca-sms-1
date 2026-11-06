@@ -190,7 +190,7 @@ const SOP_MANUAL_DATA: SOPItem[] = [
     prerequisites: [
       "A SUPER_ADMIN or EXAM_OFFICER login to file anything — a teacher or QA login can read the grid and ask for a draft, but the Schedule / Assign / Clear controls are not shown, the draft tab says your role can plan a week but not file one, and the server refuses the write",
       "supabase/timetable.sql run on this project. Until it is, the screen prints 'The timetable could not be read' and names that file, and refuses to show an empty week in its place — and 'Draft the week' has no school day to place lessons into, so it answers the same 503 and files nothing",
-      "The class arms and staff list on this machine — both are still browser-held, and the screen says so above the grid",
+      "The class arms on the school's records (Setup → Classes) and the staff list on this machine — the arms are read from the database and the staff list is still browser-held",
     ],
     procedureSteps: [
       "Navigate to Operations → Academics (/operations/academics). The header reads 'Academic Operations & Master Timetable' and names the session and term the grid is being read for.",
@@ -213,7 +213,7 @@ const SOP_MANUAL_DATA: SOPItem[] = [
       "A slot holding two lessons is stopped by the database, not by this screen's good behaviour: one lesson per class, day and period is a rule in supabase/timetable.sql.",
       "If the panel says 'n teacher(s) are in two classes at the same time on this timetable', fix it before the schedule is printed. Those lessons came in through an older browser copy or a name that does not match the staff file.",
       "Do not file a timetable into a term the school is not in. The term selector and the header are the only date on the grid — a schedule printed under the wrong term is worse than no schedule.",
-      "The class arms and staff names you are grouping by are still this browser's lists. If another machine's arm is missing from the dropdown, the lessons filed for it are still on the school's records; only the grouping is incomplete here.",
+      "The class arms you group by are read from the school's records, so every machine groups the same way; the teacher names are still this browser's staff list. A lesson filed for an arm nobody has on file stays on the school's records — it simply does not appear under an arm name until that arm is filed.",
       "A draft is not a timetable. Until 'File these n lesson(s)' is pressed nothing is on the school's records, and a draft left open on screen schedules nobody. Switching the session or the term discards it, because what is on screen is then a plan for a different week.",
       "The portal places times only from the plan it was handed. It never chooses a subject for a class or a teacher for a lesson — the school's records do not say who teaches what well enough to stake a printed schedule on it — and an arm the plan does not mention is left untouched.",
       "A draft places lessons, not rooms: every line it files comes in with no room, which the grid prints as the class's own room. Set a room by hand where a lesson genuinely moves out of it.",

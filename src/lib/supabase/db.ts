@@ -7,6 +7,9 @@ import {
   TierGradingConfig,
   PsychomotorRecord,
   TraitConfigItem,
+  ClassArmRecord,
+  SubjectRecord,
+  SubjectTemplateRecord,
 } from "../realtime-store";
 import { DEFAULT_TIMETABLE_DAYS, DEFAULT_TIMETABLE_PERIODS, type TimetablePeriod } from "../timetable/day-shape";
 
@@ -1858,5 +1861,261 @@ export async function removeDutyOnServer(
   } catch (error) {
     console.warn("API /api/staff-duty delete failed", error);
     return { ok: false, reason: "the portal server did not answer", duty: null };
+  }
+}
+
+// ============================================================================
+// 14. THE CLASS LIST, THE SUBJECT LIST AND THE SUBJECT PACKAGES
+// ============================================================================
+// Three-quarters of the portal filters, groups or prices by one of these three
+// lists, and until now each of them was whatever the office's own browser had
+// cached. A teacher opening the CA grid on another machine was offered a
+// different set of arms and papers than the ones the fees were billed against.
+// Nothing here is optimistic: the list on screen is re-read from the server
+// after a write, so an arm the school refused to file never appears on it.
+
+interface ClassArmRow {
+  id: string;
+  name: string;
+  section: string;
+  form_teacher: string;
+  form_teacher_id: string;
+  capacity: number | string | null;
+  students_count?: number | string | null;
+}
+
+function toClassArmRecord(row: ClassArmRow): ClassArmRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    section: row.section as ClassArmRecord["section"],
+    formTeacher: row.form_teacher ?? "",
+    formTeacherId: row.form_teacher_id ?? "",
+    // Counted from the roll by the route, not read back off the arm row.
+    studentsCount: Number(row.students_count) || 0,
+    capacity: Number(row.capacity) || 0,
+  };
+}
+
+export async function fetchClassArmsFromSupabase(): Promise<ClassArmRecord[] | null> {
+  const rows = await requestJson<ClassArmRow[]>("/api/classes", "The class list");
+  if (!rows) return null;
+  return rows.map(toClassArmRecord);
+}
+
+/** The arm as the Classes screen knows it, minus the figures the server counts. */
+export interface ClassArmInput {
+  id?: string;
+  name: string;
+  section: ClassArmRecord["section"];
+  formTeacher: string;
+  formTeacherId: string;
+  capacity: number;
+}
+
+export async function saveClassArmOnServer(arm: ClassArmInput): Promise<{ ok: boolean; reason: string | null }> {
+  const reason = await postQuiet("/api/classes", {
+    id: arm.id,
+    name: arm.name,
+    section: arm.section,
+    form_teacher: arm.formTeacher,
+    form_teacher_id: arm.formTeacherId,
+    capacity: arm.capacity,
+  });
+  if (reason) reportSyncFailure(`The class arm was NOT filed on the school's list: ${reason}.`);
+  else reportSyncSaved(`“${arm.name}” filed on the school's class list.`);
+  return { ok: !reason, reason };
+}
+
+export async function removeClassArmOnServer(id: string): Promise<{ ok: boolean; reason: string | null }> {
+  try {
+    const response = await fetch("/api/classes", {
+      method: "DELETE",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [id] }),
+    });
+    if (!response.ok) {
+      const reason = await serverReason(response);
+      reportSyncFailure(`The class arm was NOT removed from the school's list: ${reason}.`);
+      return { ok: false, reason };
+    }
+    reportSyncSaved("Class arm removed from the school's list.");
+    return { ok: true, reason: null };
+  } catch (error) {
+    console.warn("API /api/classes delete failed", error);
+    const reason = "the portal server did not answer";
+    reportSyncFailure(`The class arm was NOT removed from the school's list: ${reason}.`);
+    return { ok: false, reason };
+  }
+}
+
+interface SubjectRow {
+  id: string;
+  name: string;
+  code: string | null;
+  category: string | null;
+  applicable_classes: string[] | null;
+  is_compulsory: boolean | null;
+}
+
+function toSubjectRecord(row: SubjectRow): SubjectRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    code: row.code || undefined,
+    category: row.category || undefined,
+    applicableClasses: Array.isArray(row.applicable_classes) ? row.applicable_classes : [],
+    isCompulsory: row.is_compulsory !== false,
+    // Deliberately absent: which teacher sits a paper is on the timetable, and
+    // a number here would be whatever this device last typed.
+  };
+}
+
+export async function fetchSubjectsFromSupabase(): Promise<SubjectRecord[] | null> {
+  const rows = await requestJson<SubjectRow[]>("/api/subjects", "The subject list");
+  if (!rows) return null;
+  return rows.map(toSubjectRecord);
+}
+
+export interface SubjectInput {
+  id?: string;
+  name: string;
+  code?: string;
+  category?: string;
+  applicableClasses: string[];
+  isCompulsory?: boolean;
+}
+
+/** Files one subject or the whole batch the screen has typed. */
+export async function saveSubjectsOnServer(list: SubjectInput[]): Promise<{ ok: boolean; reason: string | null }> {
+  const reason = await postQuiet(
+    "/api/subjects",
+    list.map((subject) => ({
+      id: subject.id,
+      name: subject.name,
+      code: subject.code ?? "",
+      category: subject.category ?? "",
+      applicable_classes: subject.applicableClasses,
+      is_compulsory: subject.isCompulsory !== false,
+    }))
+  );
+  if (reason) reportSyncFailure(`The subject list was NOT filed on the school's records: ${reason}.`);
+  else reportSyncSaved(`${list.length} subject${list.length === 1 ? "" : "s"} filed on the school's subject list.`);
+  return { ok: !reason, reason };
+}
+
+/**
+ * Removes subjects and reports back what the server said was still behind them.
+ *
+ * The screen needs the server's own list of subjects that still have marks
+ * filed, because it is the only one that can say whether a mark anybody entered
+ * is about to lose the line it belongs to.
+ */
+export async function removeSubjectsOnServer(
+  ids: string[]
+): Promise<{ ok: boolean; reason: string | null; stillFiled: string[] }> {
+  try {
+    const response = await fetch("/api/subjects", {
+      method: "DELETE",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    if (!response.ok) {
+      const reason = await serverReason(response);
+      reportSyncFailure(`The subject was NOT removed from the school's list: ${reason}.`);
+      return { ok: false, reason, stillFiled: [] };
+    }
+
+    const payload = (await response.json().catch(() => null)) as {
+      data?: { still_filed?: string[] };
+    } | null;
+    const stillFiled = Array.isArray(payload?.data?.still_filed) ? payload.data.still_filed : [];
+    reportSyncSaved(
+      stillFiled.length > 0
+        ? `Subject removed. Marks already filed under ${stillFiled.join(", ")} are still on the record — putting the name back brings them onto the grid again.`
+        : "Subject removed from the school's list."
+    );
+    return { ok: true, reason: null, stillFiled };
+  } catch (error) {
+    console.warn("API /api/subjects delete failed", error);
+    const reason = "the portal server did not answer";
+    reportSyncFailure(`The subject was NOT removed from the school's list: ${reason}.`);
+    return { ok: false, reason, stillFiled: [] };
+  }
+}
+
+interface SubjectTemplateRow {
+  id: string;
+  name: string;
+  department: string;
+  target_class: string;
+  subjects: string[] | null;
+}
+
+function toSubjectTemplateRecord(row: SubjectTemplateRow): SubjectTemplateRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    department: row.department as SubjectTemplateRecord["department"],
+    targetClass: row.target_class ?? "",
+    subjects: Array.isArray(row.subjects) ? row.subjects : [],
+  };
+}
+
+export async function fetchSubjectTemplatesFromSupabase(): Promise<SubjectTemplateRecord[] | null> {
+  const rows = await requestJson<SubjectTemplateRow[]>("/api/subject-templates", "The subject packages");
+  if (!rows) return null;
+  return rows.map(toSubjectTemplateRecord);
+}
+
+export interface SubjectTemplateInput {
+  id?: string;
+  name: string;
+  department: SubjectTemplateRecord["department"];
+  targetClass: string;
+  subjects: string[];
+}
+
+/** Files one package or the standard set the screen offers to populate. */
+export async function saveSubjectTemplatesOnServer(
+  list: SubjectTemplateInput[]
+): Promise<{ ok: boolean; reason: string | null }> {
+  const reason = await postQuiet(
+    "/api/subject-templates",
+    list.map((template) => ({
+      id: template.id,
+      name: template.name,
+      department: template.department,
+      target_class: template.targetClass,
+      subjects: template.subjects,
+    }))
+  );
+  if (reason) reportSyncFailure(`The subject packages were NOT filed on the school's records: ${reason}.`);
+  else reportSyncSaved(`${list.length} subject package${list.length === 1 ? "" : "s"} filed on the school's records.`);
+  return { ok: !reason, reason };
+}
+
+export async function removeSubjectTemplatesOnServer(ids: string[]): Promise<{ ok: boolean; reason: string | null }> {
+  try {
+    const response = await fetch("/api/subject-templates", {
+      method: "DELETE",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    if (!response.ok) {
+      const reason = await serverReason(response);
+      reportSyncFailure(`The subject package was NOT removed from the school's list: ${reason}.`);
+      return { ok: false, reason };
+    }
+    reportSyncSaved("Subject package removed from the school's list.");
+    return { ok: true, reason: null };
+  } catch (error) {
+    console.warn("API /api/subject-templates delete failed", error);
+    const reason = "the portal server did not answer";
+    reportSyncFailure(`The subject package was NOT removed from the school's list: ${reason}.`);
+    return { ok: false, reason };
   }
 }

@@ -6,7 +6,6 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
 import {
   useRealtimeClasses,
-  useRealtimeStudents,
   useRealtimeStaff,
   ClassArmRecord,
 } from "@/lib/realtime-store";
@@ -17,11 +16,11 @@ import {
   ArrowLeft,
   Search,
   Trash2,
+  TriangleAlert,
 } from "lucide-react";
 
 export default function SetupClassesPage() {
-  const { classes, addClass, deleteClass } = useRealtimeClasses();
-  const { students } = useRealtimeStudents();
+  const { classes, classesSource, addClass, deleteClass } = useRealtimeClasses();
   const { staff } = useRealtimeStaff();
 
   const [sectionFilter, setSectionFilter] = useState("all");
@@ -31,24 +30,55 @@ export default function SetupClassesPage() {
   const [newClassSection, setNewClassSection] = useState<ClassArmRecord["section"]>("Basic Primary");
   const [newClassTeacher, setNewClassTeacher] = useState("");
   const [newClassCapacity, setNewClassCapacity] = useState<number>(0);
+  const [isSaving, setIsSaving] = useState(false);
+  const [refusal, setRefusal] = useState<string | null>(null);
 
-  const handleAddClass = (e: React.FormEvent) => {
+  const handleAddClass = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClassName.trim()) return;
 
-    addClass({
+    // The register number of whoever is picked, or nothing at all when the arm
+    // is left unassigned — an arm cannot be filed against a person who does not
+    // exist on the staff register.
+    const chosenTeacher = staff.find((st) => st.fullName === newClassTeacher.trim());
+
+    setIsSaving(true);
+    const outcome = await addClass({
       name: newClassName.trim(),
       section: newClassSection,
-      formTeacher: newClassTeacher.trim() || "Unassigned",
-      formTeacherId: "RCA/PERS/NEW",
-      studentsCount: 0,
+      formTeacher: chosenTeacher?.fullName ?? "Unassigned",
+      formTeacherId: chosenTeacher?.staffId ?? "",
       capacity: newClassCapacity >= 0 ? newClassCapacity : 0,
     });
+    setIsSaving(false);
 
+    if (!outcome.ok) {
+      setRefusal(outcome.reason ?? "the class arm was not filed");
+      return;
+    }
+
+    setRefusal(null);
     setIsModalOpen(false);
     setNewClassName("");
     setNewClassTeacher("");
     setNewClassCapacity(0);
+  };
+
+  const handleDeleteClass = async (arm: ClassArmRecord) => {
+    if (
+      !confirm(
+        `Remove ${arm.name} from the school's class list? Every machine loses it, and it cannot be brought back.` +
+          (arm.studentsCount > 0
+            ? ` ${arm.name} still has ${arm.studentsCount} pupil${arm.studentsCount === 1 ? "" : "s"} filed in it, so the school will refuse until they are moved.`
+            : "")
+      )
+    ) {
+      return;
+    }
+
+    const outcome = await deleteClass(arm.id);
+    if (!outcome.ok) setRefusal(outcome.reason ?? "the class arm was not removed");
+    else setRefusal(null);
   };
 
   const filtered = classes.filter((c) => {
@@ -79,12 +109,16 @@ export default function SetupClassesPage() {
               Class Arms &amp; Form Master Roster
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Configured with single stream secondary tiers (JSS 1-3, SS 1-3), primary (1-5), nursery (1-2), and pre-play for {SCHOOL_INFO.name}.
+              The arms {SCHOOL_INFO.name} runs. Every other screen that groups, prices or promotes by class reads this
+              list, so an arm filed here appears on every machine and one that was refused appears on none.
             </p>
           </div>
 
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              setRefusal(null);
+              setIsModalOpen(true);
+            }}
             className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 self-start md:self-auto cursor-pointer"
           >
             <Plus className="w-4 h-4" />
@@ -92,7 +126,16 @@ export default function SetupClassesPage() {
           </button>
         </div>
 
-        <DeviceOnlyNotice what="The class list" />
+        {classesSource === "device" && <DeviceOnlyNotice what="The class list" />}
+
+        {refusal && (
+          <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 text-[11px] leading-snug text-rose-950 flex items-start gap-2 print:hidden">
+            <TriangleAlert className="w-4 h-4 text-rose-700 flex-shrink-0 mt-0.5" />
+            <p>
+              <strong>The arm was not filed on the school&apos;s class list.</strong> {refusal}
+            </p>
+          </div>
+        )}
 
         {/* Section Tabs */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -148,69 +191,67 @@ export default function SetupClassesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.map((c) => {
-                  const enrolledCount = students.filter((s) => s.className === c.name).length;
-                  return (
-                    <tr key={c.id} className="hover:bg-blue-50/20 transition-colors">
-                      <td className="py-3 px-4 font-extrabold text-blue-900 text-sm">{c.name}</td>
-                      <td className="py-3 px-4">
-                        <span
-                          className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded ${
-                            c.section === "Creche & Playgroup"
-                              ? "bg-purple-100 text-purple-800"
-                              : c.section === "Nursery School"
-                              ? "bg-pink-100 text-pink-800"
-                              : c.section === "Basic Primary"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : c.section === "Junior Secondary"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-indigo-100 text-indigo-800"
-                          }`}
-                        >
-                          {c.section}
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-8 px-4 text-center text-xs text-slate-500">
+                      {classes.length === 0
+                        ? "No class arm is filed on the school's records yet. Add one above and every machine sees it."
+                        : "No arm matches this section or search."}
+                    </td>
+                  </tr>
+                )}
+                {filtered.map((c) => (
+                  <tr key={c.id} className="hover:bg-blue-50/20 transition-colors">
+                    <td className="py-3 px-4 font-extrabold text-blue-900 text-sm">{c.name}</td>
+                    <td className="py-3 px-4">
+                      <span
+                        className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded ${
+                          c.section === "Creche & Playgroup"
+                            ? "bg-purple-100 text-purple-800"
+                            : c.section === "Nursery School"
+                            ? "bg-pink-100 text-pink-800"
+                            : c.section === "Basic Primary"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : c.section === "Junior Secondary"
+                            ? "bg-blue-100 text-blue-800"
+                            : "bg-indigo-100 text-indigo-800"
+                        }`}
+                      >
+                        {c.section}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 font-semibold text-slate-800">{c.formTeacher}</td>
+                    <td className="py-3 px-3 text-center font-bold text-slate-900">
+                      <span className="bg-blue-50 text-blue-800 border border-blue-100 px-2 py-0.5 rounded font-mono font-bold">
+                        {c.studentsCount}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-center text-slate-600 font-mono">
+                      {c.capacity === 0 ? (
+                        <span className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded font-semibold">
+                          No cap set
                         </span>
-                      </td>
-                      <td className="py-3 px-4 font-semibold text-slate-800">{c.formTeacher}</td>
-                      <td className="py-3 px-3 text-center font-bold text-slate-900">
-                        <span className="bg-blue-50 text-blue-800 border border-blue-100 px-2 py-0.5 rounded font-mono font-bold">
-                          {enrolledCount}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-center text-slate-600 font-mono">
-                        {c.capacity === 0 ? (
-                          <span className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded font-semibold">
-                            Dynamic ({enrolledCount})
-                          </span>
-                        ) : (
-                          <span>{c.capacity}</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-right flex items-center justify-end gap-2">
-                        <Link
-                          href="/operations/score-card"
-                          className="px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-[11px]"
-                        >
-                          Score Cards
-                        </Link>
-                        <button
-                          onClick={() => {
-                            if (
-                              confirm(
-                                `Delete class arm ${c.name}? This removes it from the class list held on this browser only, and it cannot be brought back. Other machines keep their own list.`
-                              )
-                            ) {
-                              deleteClass(c.id);
-                            }
-                          }}
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors cursor-pointer"
-                          title="Delete class arm"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                      ) : (
+                        <span>{c.capacity}</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-right flex items-center justify-end gap-2">
+                      <Link
+                        href="/operations/score-card"
+                        className="px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-[11px]"
+                      >
+                        Score Cards
+                      </Link>
+                      <button
+                        onClick={() => void handleDeleteClass(c)}
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors cursor-pointer"
+                        title="Delete class arm"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -230,7 +271,7 @@ export default function SetupClassesPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleAddClass} className="space-y-3 text-xs">
+              <form onSubmit={(e) => void handleAddClass(e)} className="space-y-3 text-xs">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Class Name</label>
                   <input
@@ -241,6 +282,9 @@ export default function SetupClassesPage() {
                     onChange={(e) => setNewClassName(e.target.value)}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                   />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    A name already on the school&apos;s list is corrected in place rather than filed twice.
+                  </p>
                 </div>
 
                 <div>
@@ -294,16 +338,20 @@ export default function SetupClassesPage() {
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                   <button
                     type="button"
-                    onClick={() => setIsModalOpen(false)}
+                    onClick={() => {
+                      setRefusal(null);
+                      setIsModalOpen(false);
+                    }}
                     className="px-3.5 py-2 rounded-lg bg-slate-100 text-slate-700 font-semibold cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer"
+                    disabled={isSaving}
+                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-wait"
                   >
-                    Save Class
+                    {isSaving ? "Filing…" : "File on the school's class list"}
                   </button>
                 </div>
               </form>

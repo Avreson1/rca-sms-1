@@ -104,24 +104,6 @@ export const ALL_SCHOOL_SECTIONS = [
   },
 ] as const;
 
-export const ALL_CLASSES = [
-  "Pre-Play Class",
-  "Play Class",
-  "Nursery 1",
-  "Nursery 2",
-  "Primary 1",
-  "Primary 2",
-  "Primary 3",
-  "Primary 4",
-  "Primary 5",
-  "JSS 1",
-  "JSS 2",
-  "JSS 3",
-  "SS 1",
-  "SS 2",
-  "SS 3",
-];
-
 export const COLOR_THEMES = {
   SCHEME_1: {
     name: "Scheme 1 (Vibrant Royal & Academic Contrast)",

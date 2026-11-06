@@ -168,7 +168,7 @@ const THEME_STYLES = {
 
 export default function ScoreCardPage() {
   const { students } = useRealtimeStudents();
-  const { classes } = useRealtimeClasses();
+  const { classes, classesSource } = useRealtimeClasses();
   const { gradingTiers } = useRealtimeGradingScales();
   const { newsletter } = useRealtimeNewsletter();
   const { currentUser } = useRealtimeAuth();
@@ -227,6 +227,20 @@ export default function ScoreCardPage() {
   const [selectedStudentId, setSelectedStudentId] = useState<string>(
     isParentOrStudent && parentWard ? parentWard.id : ""
   );
+
+  // The class list is read from the school's records and arrives after the page
+  // has picked its default, so a card can open naming an arm the school does not
+  // run. Once the school's list is on screen that selection is replaced by an arm
+  // that is on it. A parent's ward and a teacher's assigned class are the school's
+  // facts about that person, so those two are never overwritten.
+  useEffect(() => {
+    if (isParentOrStudent && parentWard) return;
+    if (isTeacher && currentUser?.assignedClass) return;
+    if (classesSource !== "server") return;
+    const names = classes.map((c) => c.name);
+    if (names.length === 0) return;
+    setSelectedClass((current) => (names.includes(current) ? current : names[0]));
+  }, [classes, classesSource, isParentOrStudent, isTeacher, parentWard, currentUser]);
 
   // The card opens on the term the school's own record says it is in. It used to
   // open on "First Term" whatever term the office was actually working in,

@@ -3,8 +3,7 @@
 import React, { useState, useRef } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { ALL_CLASSES } from "@/lib/constants";
-import { useRealtimeSubjects, SubjectRecord } from "@/lib/realtime-store";
+import { useRealtimeClasses, useRealtimeSubjects, SubjectRecord } from "@/lib/realtime-store";
 import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
   BookOpen,
@@ -19,6 +18,7 @@ import {
   Download,
   CheckSquare,
   Square,
+  TriangleAlert,
 } from "lucide-react";
 
 const CATEGORIES = [
@@ -37,14 +37,17 @@ const CATEGORIES = [
 ];
 
 export default function SetupSubjectsPage() {
-  const { subjects, addSubject, bulkAddSubjects, deleteSubject, clearAllSubjects } = useRealtimeSubjects();
+  const { subjects, subjectsSource, addSubjects, deleteSubject, clearAllSubjects } = useRealtimeSubjects();
+  const { classes } = useRealtimeClasses();
 
   const [search, setSearch] = useState("");
   const [classFilter, setClassFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBatchMode, setIsBatchMode] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
 
   // Form State for Single / Batch Add
   const [subjectName, setSubjectName] = useState("");
@@ -52,7 +55,15 @@ export default function SetupSubjectsPage() {
   const [subjectCode, setSubjectCode] = useState(""); // Optional!
   const [category, setCategory] = useState("General / Core");
   const [isCompulsory, setIsCompulsory] = useState(true);
-  const [selectedClasses, setSelectedClasses] = useState<string[]>([...ALL_CLASSES]); // Default: All classes!
+  // Empty means every arm the school runs, which is also what the school's
+  // records store for a paper taught across the whole curriculum.
+  const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
+
+  // The arms come from the school's class list, not a list compiled into the
+  // portal: a subject filed against an arm nobody runs is a paper no grid shows.
+  const armNames = classes.map((c) => c.name);
+  const armsInSection = (section: string) =>
+    classes.filter((c) => c.section === section).map((c) => c.name);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,22 +82,32 @@ export default function SetupSubjectsPage() {
   };
 
   // Preset Selectors
-  const selectAllClasses = () => setSelectedClasses([...ALL_CLASSES]);
-  const clearAllClassSelections = () => setSelectedClasses([]);
-  const selectEarlyYears = () => setSelectedClasses(["Pre-Play Class", "Play Class"]);
-  const selectNursery = () => setSelectedClasses(["Nursery 1", "Nursery 2"]);
-  const selectPrimary = () => setSelectedClasses(["Primary 1", "Primary 2", "Primary 3", "Primary 4", "Primary 5"]);
-  const selectJSS = () => setSelectedClasses(["JSS 1", "JSS 2", "JSS 3"]);
-  const selectSSS = () => setSelectedClasses(["SS 1", "SS 2", "SS 3"]);
+  const selectEveryArm = () => setSelectedClasses([]);
+  const selectEarlyYears = () => setSelectedClasses(armsInSection("Creche & Playgroup"));
+  const selectNursery = () => setSelectedClasses(armsInSection("Nursery School"));
+  const selectPrimary = () => setSelectedClasses(armsInSection("Basic Primary"));
+  const selectJSS = () => setSelectedClasses(armsInSection("Junior Secondary"));
+  const selectSSS = () => setSelectedClasses(armsInSection("Senior Secondary"));
+
+  /** Posts the batch and only then shows the list the school holds. */
+  const fileSubjects = async (list: Omit<SubjectRecord, "id">[]) => {
+    setIsSaving(true);
+    const outcome = await addSubjects(list);
+    setIsSaving(false);
+
+    if (!outcome.ok) {
+      setRefusal(outcome.reason ?? "the subject list was not filed");
+      return false;
+    }
+
+    setRefusal(null);
+    showToast(`${outcome.saved} subject${outcome.saved === 1 ? "" : "s"} filed on the school's subject list.`);
+    return true;
+  };
 
   // Submit Handler
-  const handleSaveSubject = (e: React.FormEvent) => {
+  const handleSaveSubject = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (selectedClasses.length === 0) {
-      alert("Please select at least one class for this subject.");
-      return;
-    }
 
     if (isBatchMode) {
       const names = batchNamesText
@@ -99,51 +120,47 @@ export default function SetupSubjectsPage() {
         return;
       }
 
-      const newBatch = names.map((name) => ({
+      if (await fileSubjects(names.map((name) => ({
         name,
         code: undefined, // Code is optional in batch mode
         category,
         applicableClasses: selectedClasses,
         isCompulsory,
-        assignedTeachersCount: 0,
-      }));
-
-      bulkAddSubjects(newBatch);
-      showToast(`Added ${names.length} subject${names.length === 1 ? "" : "s"} to ${selectedClasses.length} classes on this browser.`);
-    } else {
-      if (!subjectName.trim()) {
-        alert("Please enter the subject title.");
-        return;
+      })))) {
+        setIsModalOpen(false);
+        setBatchNamesText("");
       }
-
-      addSubject({
-        name: subjectName.trim(),
-        code: subjectCode.trim() || undefined,
-        category,
-        applicableClasses: selectedClasses,
-        isCompulsory,
-        assignedTeachersCount: 0,
-      });
-
-      showToast(`Subject "${subjectName.trim()}" added to ${selectedClasses.length} classes on this browser.`);
+      return;
     }
 
-    // Reset Form
-    setIsModalOpen(false);
-    setSubjectName("");
-    setSubjectCode("");
-    setBatchNamesText("");
+    if (!subjectName.trim()) {
+      alert("Please enter the subject title.");
+      return;
+    }
+
+    if (await fileSubjects([{
+      name: subjectName.trim(),
+      code: subjectCode.trim() || undefined,
+      category,
+      applicableClasses: selectedClasses,
+      isCompulsory,
+    }])) {
+      setIsModalOpen(false);
+      setSubjectName("");
+      setSubjectCode("");
+    }
   };
 
   // CSV Template Download
   const handleDownloadTemplate = () => {
-    const headers = ["Subject Title", "Subject Code (Optional)", "Category", "Compulsory (YES/NO)", "Classes (Comma-Separated)"];
+    const headers = ["Subject Title", "Subject Code (Optional)", "Category", "Compulsory (YES/NO)", "Classes (Semicolon-Separated)"];
     const sampleRow = [
       "Mathematics",
       "MTH 101",
       "Mathematical Sciences",
       "YES",
-      `"${ALL_CLASSES.join(";")}"`,
+      // A blank classes column means every arm the school runs.
+      armNames.length > 0 ? `"${armNames.slice(0, 3).join(";")}"` : `""`,
     ];
     const csvContent = "\uFEFF" + [headers.join(","), sampleRow.join(",")].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -154,7 +171,7 @@ export default function SetupSubjectsPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast("Subject CSV template downloaded.");
+    showToast("Subject CSV template downloaded. Leave the classes column empty to file a paper for every arm.");
   };
 
   // CSV Import
@@ -173,6 +190,7 @@ export default function SetupSubjectsPage() {
         }
 
         const imported: Omit<SubjectRecord, "id">[] = [];
+        let skipped = 0;
 
         // Parse from line 1
         for (let i = 1; i < lines.length; i++) {
@@ -184,22 +202,42 @@ export default function SetupSubjectsPage() {
           const cat = row[2]?.replace(/^"|"$/g, "").trim() || "General / Core";
           const comp = row[3]?.replace(/^"|"$/g, "").trim().toUpperCase() !== "NO";
           const classesStr = row[4]?.replace(/^"|"$/g, "").trim();
-          const parsedClasses = classesStr ? classesStr.split(";").map((c) => c.trim()).filter(Boolean) : [...ALL_CLASSES];
+          const parsedClasses = classesStr ? classesStr.split(";").map((c) => c.trim()).filter(Boolean) : [];
+
+          // Only arms the school actually runs. A file that names a class nobody
+          // operates would otherwise put a paper on the grid under a year group
+          // no child is in.
+          const knownClasses = parsedClasses.filter((cls) => armNames.includes(cls));
+          if (parsedClasses.length > 0 && knownClasses.length === 0) {
+            skipped++;
+            continue;
+          }
 
           imported.push({
             name,
             code,
             category: cat,
             isCompulsory: comp,
-            applicableClasses: parsedClasses.length > 0 ? parsedClasses : [...ALL_CLASSES],
-            assignedTeachersCount: 0,
+            applicableClasses: knownClasses,
           });
         }
 
-        if (imported.length > 0) {
-          bulkAddSubjects(imported);
-          showToast(`Read ${imported.length} subjects from the CSV into this browser — not onto the school's records.`);
+        if (imported.length === 0) {
+          setRefusal(
+            skipped > 0
+              ? `None of the ${skipped} row${skipped === 1 ? "" : "s"} in the file names an arm on the school's class list, so nothing was filed.`
+              : "The file held no subject to file."
+          );
+          return;
         }
+
+        void fileSubjects(imported).then((filed) => {
+          if (filed && skipped > 0) {
+            setRefusal(
+              `${skipped} row${skipped === 1 ? "" : "s"} named no arm on the school's class list and were not filed.`
+            );
+          }
+        });
       } catch (err) {
         console.error(err);
         alert("Failed to parse CSV file.");
@@ -219,9 +257,7 @@ export default function SetupSubjectsPage() {
     const matchesCategory = categoryFilter === "all" || s.category === categoryFilter;
 
     const matchesClass =
-      classFilter === "all" ||
-      s.applicableClasses.includes(classFilter) ||
-      s.applicableClasses.length === ALL_CLASSES.length;
+      classFilter === "all" || s.applicableClasses.length === 0 || s.applicableClasses.includes(classFilter);
 
     return matchesSearch && matchesCategory && matchesClass;
   });
@@ -247,13 +283,13 @@ export default function SetupSubjectsPage() {
               <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                 Curriculum Subjects Setup
               </h1>
-              <span className="bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                Pre-Play to Primary 5 &amp; Secondary
+              <span className="bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap shrink-0">
+                {armNames.length} arms on file
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Register subjects and assign them to one, several or all classes. Subject codes are optional. The score
-              card and report card builders read this list.
+              Register subjects and assign them to one arm, several, or every arm the school runs. Subject codes are
+              optional. The score card and report card builders read this list.
             </p>
           </div>
 
@@ -285,7 +321,8 @@ export default function SetupSubjectsPage() {
             <button
               onClick={() => {
                 setIsBatchMode(false);
-                setSelectedClasses([...ALL_CLASSES]);
+                setSelectedClasses([]);
+                setRefusal(null);
                 setIsModalOpen(true);
               }}
               className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
@@ -296,8 +333,16 @@ export default function SetupSubjectsPage() {
           </div>
         </div>
 
-        {/* This list does not reach the school's records */}
-        <DeviceOnlyNotice what="The subject list" className="mt-1" />
+        {subjectsSource === "device" && <DeviceOnlyNotice what="The subject list" className="mt-1" />}
+
+        {refusal && (
+          <div className="p-3 bg-rose-50 border border-rose-200 text-rose-900 text-xs font-bold rounded-xl flex items-start gap-2 animate-in fade-in">
+            <TriangleAlert className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+            <span>
+              <strong>Nothing was filed on the school&apos;s subject list.</strong> {refusal}
+            </span>
+          </div>
+        )}
 
         {/* Toast Alert */}
         {toastMessage && (
@@ -329,8 +374,8 @@ export default function SetupSubjectsPage() {
                 onChange={(e) => setClassFilter(e.target.value)}
                 className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
               >
-                <option value="all">🎓 All School Classes ({ALL_CLASSES.length} Classes)</option>
-                {ALL_CLASSES.map((cls) => (
+                <option value="all">🎓 Any class ({armNames.length} arms on the school&apos;s list)</option>
+                {armNames.map((cls) => (
                   <option key={cls} value={cls}>
                     {cls}
                   </option>
@@ -364,22 +409,35 @@ export default function SetupSubjectsPage() {
               <h3 className="font-bold text-sm text-slate-800">Curriculum Subjects Catalogue</h3>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-xs bg-slate-200 text-slate-700 font-bold px-2.5 py-0.5 rounded-full">
-                {filtered.length} Subjects On This Device
+              <span className="text-xs bg-slate-200 text-slate-700 font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap">
+                {filtered.length} subject{filtered.length === 1 ? "" : "s"}{" "}
+                {subjectsSource === "server" ? "on the school's list" : "on this device"}
               </span>
-              {subjects.length > 0 && (
+              {subjects.length > 0 && subjectsSource === "server" && (
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (
-                      confirm(
-                        "This clears the subject list stored on THIS browser only. Other machines keep theirs, and the list cannot be brought back. Continue?"
+                      !confirm(
+                        `This removes all ${subjects.length} subjects from the school's list, on every machine, and they cannot be brought back. Marks already filed keep their subject names, but the CA grid will offer nothing until the list is rebuilt. Continue?`
                       )
                     ) {
-                      clearAllSubjects();
-                      showToast("Subject list cleared on this browser. Other devices still hold theirs.");
+                      return;
                     }
+
+                    const outcome = await clearAllSubjects();
+                    if (!outcome.ok) {
+                      setRefusal(outcome.reason ?? "the subject list was not cleared");
+                      return;
+                    }
+
+                    setRefusal(null);
+                    showToast(
+                      outcome.stillFiled.length > 0
+                        ? `Subject list cleared. Marks still filed under ${outcome.stillFiled.join(", ")} keep those names — adding them back brings them onto the grid.`
+                        : "Subject list cleared on the school's records."
+                    );
                   }}
-                  className="text-xs text-rose-600 hover:text-rose-700 font-semibold cursor-pointer"
+                  className="text-xs text-rose-600 hover:text-rose-700 font-semibold cursor-pointer whitespace-nowrap shrink-0"
                 >
                   Clear All
                 </button>
@@ -403,7 +461,7 @@ export default function SetupSubjectsPage() {
                 <button
                   onClick={() => {
                     setIsBatchMode(false);
-                    setSelectedClasses([...ALL_CLASSES]);
+                    setSelectedClasses([]);
                     setIsModalOpen(true);
                   }}
                   className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
@@ -414,7 +472,7 @@ export default function SetupSubjectsPage() {
                 <button
                   onClick={() => {
                     setIsBatchMode(true);
-                    setSelectedClasses([...ALL_CLASSES]);
+                    setSelectedClasses([]);
                     setIsModalOpen(true);
                   }}
                   className="px-4 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
@@ -438,9 +496,7 @@ export default function SetupSubjectsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filtered.map((s) => {
-                    const isAllClasses = s.applicableClasses.length === ALL_CLASSES.length;
-                    return (
+                  {filtered.map((s) => (
                       <tr key={s.id} className="hover:bg-blue-50/20 transition-colors">
                         <td className="py-3 px-4">
                           <p className="font-bold text-slate-900">{s.name}</p>
@@ -458,10 +514,10 @@ export default function SetupSubjectsPage() {
                           <span className="text-slate-700 font-semibold">{s.category || "General / Core"}</span>
                         </td>
                         <td className="py-3 px-3">
-                          {isAllClasses ? (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1">
+                          {s.applicableClasses.length === 0 ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1 whitespace-nowrap">
                               <Sparkles className="w-2.5 h-2.5 text-emerald-600" />
-                              All Classes (Pre-Play – SS3)
+                              Every arm, present and future
                             </span>
                           ) : (
                             <div className="flex flex-wrap gap-1 max-w-xs">
@@ -494,11 +550,18 @@ export default function SetupSubjectsPage() {
                         </td>
                         <td className="py-3 px-4 text-right">
                           <button
-                            onClick={() => {
-                              if (confirm(`Delete subject "${s.name}"?`)) {
-                                deleteSubject(s.id);
-                                showToast(`Subject "${s.name}" deleted.`);
+                            onClick={async () => {
+                              if (
+                                !confirm(
+                                  `Remove ${s.name} from the school's subject list? Every machine loses it from the CA grid, and marks already entered under it keep their name but lose their line until it is added back.`
+                                )
+                              ) {
+                                return;
                               }
+
+                              const outcome = await deleteSubject(s.id);
+                              if (outcome.ok) showToast(`Subject "${s.name}" removed from the school's list.`);
+                              else setRefusal(outcome.reason ?? "the subject was not removed");
                             }}
                             className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
                             title="Delete Subject"
@@ -507,8 +570,7 @@ export default function SetupSubjectsPage() {
                           </button>
                         </td>
                       </tr>
-                    );
-                  })}
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -557,7 +619,7 @@ export default function SetupSubjectsPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleSaveSubject} className="space-y-4 text-xs">
+              <form onSubmit={(e) => void handleSaveSubject(e)} className="space-y-4 text-xs">
                 {/* Single Subject Inputs */}
                 {!isBatchMode ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -642,29 +704,31 @@ export default function SetupSubjectsPage() {
 
                 {/* Seamless Class Assignment Section */}
                 <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
                       <p className="font-bold text-slate-900 text-xs">Assign to Classes</p>
                       <p className="text-[10px] text-slate-500">
-                        {selectedClasses.length} of {ALL_CLASSES.length} classes selected
+                        {selectedClasses.length === 0
+                          ? `Every arm the school runs (${armNames.length} on file)`
+                          : `${selectedClasses.length} of ${armNames.length} arms selected`}
                       </p>
                     </div>
 
                     {/* Quick Presets */}
-                    <div className="flex items-center gap-1 flex-wrap">
+                    <div className="flex items-center gap-1 flex-wrap justify-end">
                       <button
                         type="button"
-                        onClick={selectAllClasses}
+                        onClick={selectEveryArm}
                         className="px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-800 hover:bg-blue-200 rounded cursor-pointer"
                       >
-                        All Classes
+                        Every arm
                       </button>
                       <button
                         type="button"
                         onClick={selectEarlyYears}
                         className="px-2 py-0.5 text-[10px] font-bold bg-rose-100 text-rose-800 hover:bg-rose-200 rounded cursor-pointer"
                       >
-                        Early Years
+                        Creche
                       </button>
                       <button
                         type="button"
@@ -678,7 +742,7 @@ export default function SetupSubjectsPage() {
                         onClick={selectPrimary}
                         className="px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 rounded cursor-pointer"
                       >
-                        Primary 1–5
+                        Primary
                       </button>
                       <button
                         type="button"
@@ -694,19 +758,19 @@ export default function SetupSubjectsPage() {
                       >
                         SSS
                       </button>
-                      <button
-                        type="button"
-                        onClick={clearAllClassSelections}
-                        className="px-2 py-0.5 text-[10px] font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
-                      >
-                        Clear
-                      </button>
                     </div>
                   </div>
 
+                  {armNames.length === 0 && (
+                    <p className="text-[10px] text-slate-500 bg-white border border-slate-200 rounded-lg p-2">
+                      No class arm is filed on the school&apos;s class list, so this subject can only be saved for
+                      every arm. Add the arms in Setup &rarr; Classes first.
+                    </p>
+                  )}
+
                   {/* Interactive Checkbox Grid */}
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-1 max-h-40 overflow-y-auto">
-                    {ALL_CLASSES.map((cls) => {
+                    {armNames.map((cls) => {
                       const isSelected = selectedClasses.includes(cls);
                       return (
                         <button
@@ -745,6 +809,12 @@ export default function SetupSubjectsPage() {
                   </label>
                 </div>
 
+                {refusal && (
+                  <p className="text-[11px] font-semibold text-rose-900 bg-rose-50 border border-rose-200 rounded-lg p-2.5">
+                    {refusal}
+                  </p>
+                )}
+
                 {/* Modal Footer */}
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                   <button
@@ -756,9 +826,10 @@ export default function SetupSubjectsPage() {
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer"
+                    disabled={isSaving}
+                    className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-wait"
                   >
-                    {isBatchMode ? "Save All Subjects" : "Save Subject"}
+                    {isSaving ? "Filing…" : isBatchMode ? "File all subjects on the school's list" : "File on the school's list"}
                   </button>
                 </div>
               </form>

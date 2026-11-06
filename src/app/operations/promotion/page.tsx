@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SCHOOL_INFO } from "@/lib/constants";
@@ -27,7 +27,7 @@ const PASS_MARK = 50;
 
 export default function StudentPromotionPage() {
   const { students, moveStudentsToClass } = useRealtimeStudents();
-  const { classes } = useRealtimeClasses();
+  const { classes, classesSource } = useRealtimeClasses();
   const { currentUser } = useRealtimeAuth();
 
   const [sourceClass, setSourceClass] = useState<string>(classes[0]?.name || "Primary 1");
@@ -35,6 +35,18 @@ export default function StudentPromotionPage() {
   const [promotedIds, setPromotedIds] = useState<string[]>([]);
   const [resultNote, setResultNote] = useState<{ kind: "ok" | "bad"; text: string } | null>(null);
   const [isWorking, setIsWorking] = useState(false);
+
+  // The class arms are the school's records now, and they arrive after the page
+  // has already painted its first guess. An arm the school does not run cannot
+  // be promoted out of or into, so once the school's list is on screen any
+  // selection naming an arm that is not on it is replaced by one that is.
+  useEffect(() => {
+    if (classesSource !== "server") return;
+    const names = classes.map((c) => c.name);
+    if (names.length === 0) return;
+    setSourceClass((current) => (names.includes(current) ? current : names[0]));
+    setTargetClass((current) => (names.includes(current) ? current : names[1] ?? names[0]));
+  }, [classes, classesSource]);
 
   // Moving a pupil up a class rewrites the roll, which is an admissions action.
   const canPromote = currentUser?.role === "SUPER_ADMIN" || currentUser?.role === "EXAM_OFFICER";

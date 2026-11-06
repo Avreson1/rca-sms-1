@@ -78,9 +78,10 @@ protection rule*: branch name pattern `main`, then tick **Require a pull request
 and **Require status checks to pass** → choose `CI / build`. Until that is set, a broken build can
 be live without anyone deciding it should be.
 
-### 4. The portal is multi-machine for the money, the marks and the card, not yet for the setup
+### 4. The portal is multi-machine for the records, the money and the card — and for the class and subject lists; the calendar and the exam bank are not
 
-A clerk's entry now reaches every other machine for: pupils, staff and logins, invoices, the fee
+A clerk's entry now reaches every other machine for: pupils, staff and logins, the class arms the
+school runs, the subject list and the subject packages, invoices, the fee
 schedule, payments and receipts, CA and exam marks, the grading scales, the school's own name /
 session / term, published results, closed terms, the list of rated traits, what the school owns and
 every unit of stock that moved in or out of its stores, the timetable with the number of periods and
@@ -89,11 +90,12 @@ once the form teacher presses *File
 this class into the school's records* on *Traits & Psychomotor* — the character, psychomotor and
 attendance ratings that fill the other half of a child's card. That was the `P0`–`P2` work and it
 depends on `supabase/operations_state.sql`, `supabase/traits_assessments.sql`,
-`supabase/inventory.sql`, `supabase/timetable.sql` and `supabase/staff_duties.sql` having been run. Still browser-local: the
-class list, subject list and packages, the calendar, the CA component structure, the report theme
-and newsletter, CBT questions and scores, and Inmail — each of those ten screens carries a
-*Kept on this browser* notice so nobody mistakes it for a record (the timetable screen keeps one,
-because it groups the filed lessons by the class arms that are still only on this device). See
+`supabase/inventory.sql`, `supabase/timetable.sql`, `supabase/staff_duties.sql` and
+`supabase/classes_and_subjects.sql` having been run. Still browser-local: the
+calendar, the CA component structure, the report theme and newsletter, CBT questions and scores, and
+Inmail — each of those screens carries a *Kept on this browser* notice so nobody mistakes it for a
+record (the timetable screen keeps one, because the teacher names it groups by are still only on this
+device). See
 *Current limitations* and the `P0`–`P4` order in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ### Cloning this repository for the live school
@@ -288,10 +290,24 @@ Run these in the Supabase SQL editor, in order:
     roster could not be read, `/api/staff-duty` answers the `503` that names this file, and
     registering a staff member **with** a designation refuses to save with the same sentence (a
     member registered without one still saves, so the portal stays usable before the paste).
+11. [`supabase/classes_and_subjects.sql`](supabase/classes_and_subjects.sql) — which arms the school
+    runs, what it teaches, and the packages the CA grid offers as a shortcut. It creates `class_arms`
+    (one row per arm name; a pupil count is **never** stored on it, it is counted from `students`
+    when a screen asks, so no arm can print a number nobody entered), `subjects` (unique per name
+    *and* band, because Mathematics in Nursery and Mathematics in SSS 3 are two lines on two
+    different grids), and `subject_templates` (a plan, not a register — it holds no pupil figure
+    either). Nothing joins a subject to a class or a package's subjects to the subject list, on
+    purpose: an arm is retired every year and a report card printed this year has to read the way it
+    read on the day it was written, so rows that describe the past quote names while only rows that
+    describe the present point at records. Until you run it, *Setup → Classes*, *Setup → Subjects* and
+    *Setup → Subject Packages* keep working from the list held on that browser and say so on screen —
+    and every screen that groups by arm (CA grid, timetable, fee schedule, promotion, report card)
+    is grouping by one machine's cache.
 
-`app_accounts`, `guardian_students`, both inventory tables, both timetable tables and `staff_duties`
-deliberately have RLS enabled with **no** policies, so only the server (holding the service-role key)
-can read them. The browser's anon key sees nothing, including the hashes.
+`app_accounts`, `guardian_students`, both inventory tables, both timetable tables, `staff_duties`,
+`class_arms`, `subjects` and `subject_templates` deliberately have RLS enabled with **no** policies,
+so only the server (holding the service-role key) can read them. The browser's anon key sees nothing,
+including the hashes.
 
 ## Public and protected routes
 
@@ -323,6 +339,9 @@ Inside that, each data route also checks the role:
 | `/api/timetable/periods` | super admin, exam officer, teacher, QA tester | super admin, exam officer (a day shape that would strand lessons already filed is refused) |
 | `/api/timetable/generate` | super admin, exam officer, teacher, QA tester | nobody — it reads the day and the filed lessons and hands back a proposal; filing it is a separate `PUT /api/timetable`, which only the office can make |
 | `/api/staff-duty` | super admin, exam officer, QA tester see the whole school's roster; teacher and bursar see **only the rows filed against their own staff record** | super admin, exam officer (one duty filed against a real, non-suspended staff record, for one date and one part of that day; `DELETE` removes one row by its own id) |
+| `/api/classes` | every signed-in role | super admin, exam officer (an arm is filed by its written name; `DELETE` refuses with `409` while pupils are still enrolled in it, naming the arms that hold children) |
+| `/api/subjects` | every signed-in role | super admin, exam officer (one row per name *and* band; `DELETE` refuses to remove a subject whose CA marks are still filed and names it) |
+| `/api/subject-templates` | every signed-in role | super admin, exam officer (a package with no subjects in it is refused; the pupil count is never stored — it is counted when asked for) |
 
 `/api/payments` POST is the money path. The receipt is filed first and the invoice balance moved
 second; if the balance cannot be moved, the receipt that was just written is withdrawn and the
@@ -437,18 +456,17 @@ cannot break the build. Nothing in `rca-sms/` reaches production.
 
 Be aware of what this system does **not** do today:
 
-- **Nine screens still keep their work in the browser.** Each one now says so on screen, with a
+- **Six screens still keep their work in the browser.** Each one now says so on screen, with a
   *Kept on this browser* notice: CBT (question bank and score), Inmail, the CBT lockdown switch in
   Settings, the CA component structure, the school
-  calendar and activity templates, the class list, the report-card theme and terminal newsletter,
-  the subject packages and the subject list. None of them has a route behind it, so a second
+  calendar and activity templates, and the report-card theme with the terminal newsletter. None of them has a route behind it, so a second
   machine cannot see the typing and the data is lost if the device is cleared. (*Academics* keeps a
-  tenth notice: the lessons are on the school's records, but the grid groups them by the class list
-  that is still only on this device.) What *is*
+  notice of its own: the lessons are on the school's records and so are the arms they are grouped
+  by, but the teacher names the grid reads come from this device's staff list.) What *is*
   multi-machine: pupils, staff, logins, invoices, fee payments and receipts, CA/exam marks and
   grades, the grading scales, the fee schedule, the school's own name / session / term, published
   results, closed terms, the trait rubric, the stores register and its movement log, the timetable
-  and its day shape, and the
+  and its day shape, the class arms, the subject list and the subject packages, and the
   character assessments once they are filed. The
   CBT-to-CA path (`syncCBTScoreToCA`) writes this device's copy, so a CBT mark only reaches the
   database when *Update CA* files it.

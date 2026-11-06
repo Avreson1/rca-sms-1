@@ -14,7 +14,7 @@ import {
   calculateGradeForClass,
   StudentRecord,
 } from "@/lib/realtime-store";
-import { ALL_CLASSES } from "@/lib/constants";
+import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import { useSchoolConfig, effectiveScope } from "@/lib/school-config";
 import { exportToCSV, parseCSV, downloadSampleTemplate } from "@/lib/csv-utils";
 import {
@@ -32,7 +32,7 @@ import {
 
 export default function UpdateCAPage() {
   const { students, updateStudentScore, bulkUpdateScores, saveCaScores, overlayFiledScores } = useRealtimeStudents();
-  const { classes } = useRealtimeClasses();
+  const { classes, classesSource } = useRealtimeClasses();
   const { templates } = useRealtimeSubjectTemplates();
   const { gradingTiers } = useRealtimeGradingScales();
   const { currentUser } = useRealtimeAuth();
@@ -53,7 +53,7 @@ export default function UpdateCAPage() {
   const currentRole = currentUser?.role ?? null;
   const isTeacher = currentRole === "TEACHER";
 
-  const allClassesList = classes.length > 0 ? classes.map((c) => c.name) : ALL_CLASSES;
+  const allClassesList = classes.map((c) => c.name);
   const availableClasses = useMemo(() => {
     // A teacher marks the arm they are assigned to. "Primary 1" used to be
     // added to every teacher's list here, so a teacher assigned to SS 2 could
@@ -85,6 +85,21 @@ export default function UpdateCAPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSaved, setIsSaved] = useState(false);
   const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  // The gradebook is filed against one arm named from the school's class list,
+  // and that list arrives after the page has chosen. Marks typed into an arm the
+  // school does not run are filed under a name nothing else recognises, so the
+  // choice is corrected once the school's list is on screen — except for a form
+  // teacher, whose own class is the school's fact about them.
+  useEffect(() => {
+    if (isTeacher && currentUser?.assignedClass) return;
+    if (classesSource !== "server") return;
+    const names = classes.map((c) => c.name);
+    if (names.length === 0) return;
+    setSelectedClass((current) =>
+      current === "all" || names.includes(current) ? current : names[0]
+    );
+  }, [classes, classesSource, isTeacher, currentUser]);
 
   // The grid shows one subject's marks at a time, so it is filled from the
   // marks filed for this class, session and term. Until that read lands the
@@ -387,6 +402,10 @@ export default function UpdateCAPage() {
             </p>
           )}
         </div>
+
+        {classesSource === "device" && (
+          <DeviceOnlyNotice what="The class arms this gradebook offers" />
+        )}
 
         {/* Filter & Selection Bar */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">

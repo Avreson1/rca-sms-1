@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { SCHOOL_INFO, ALL_CLASSES } from "@/lib/constants";
+import { SCHOOL_INFO } from "@/lib/constants";
 import { useRealtimeFees, FeeComponentRecord, useRealtimeClasses } from "@/lib/realtime-store";
 import { effectiveScope, useSchoolConfig } from "@/lib/school-config";
 import { billForClass } from "@/lib/fee-billing";
@@ -257,18 +257,11 @@ export default function SetupFeesPage() {
                 className="mt-1 w-full sm:w-44 bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white font-semibold"
               >
                 <option value="All Classes">All Classes (whole list)</option>
-                {ALL_CLASSES.map((cls) => (
-                  <option key={cls} value={cls}>
-                    {cls}
+                {classes.map((c) => (
+                  <option key={c.id} value={c.name}>
+                    {c.name}
                   </option>
                 ))}
-                {classes
-                  .filter((c) => !ALL_CLASSES.includes(c.name))
-                  .map((c) => (
-                    <option key={c.id} value={c.name}>
-                      {c.name}
-                    </option>
-                  ))}
               </select>
             </label>
             <p className="text-slate-400">

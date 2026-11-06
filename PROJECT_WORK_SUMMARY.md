@@ -192,9 +192,9 @@ A full Computer-Based Testing application with real-time proctoring safeguards h
 ### Setup & Configuration Suite (`/setup/*`)
 1. **Academic Calendar (`/setup/calendar`)**: 12-week term schedule, holiday markers, exam windows, and activity template library.
 2. **Sections (`/setup/sections`)**: Creche, Nursery, Primary, JSS, and SSS section configuration.
-3. **Classes (`/setup/classes`)**: Class arm setup and classroom capacity management.
-4. **Subjects (`/setup/subjects`)**: Master directory of subjects grouped by academic department.
-5. **Subject Templates (`/setup/subject-templates`)**: Standard curriculum packages assigned to each education tier.
+3. **Classes (`/setup/classes`)**: The arms the school actually runs, filed on its own records. An arm is named, placed in a section, given a form master from the staff register and a capacity; the number printed against it is the children counted from `students`, never a figure typed into this screen. An arm that still holds pupils is refused on deletion with the arms named. `supabase/classes_and_subjects.sql` has to be run for any of it to hold data; until then the screen works from this browser's list and says so.
+4. **Subjects (`/setup/subjects`)**: Master directory of subjects, filed per name and band on the school's records, with the arms each is taught to held as names (single add, bulk add, CSV import, CSV export). A subject whose CA marks are still filed is refused on deletion and named, because removing the line would orphan the marks.
+5. **Subject Templates (`/setup/subject-templates`)**: Standard curriculum packages assigned to each education tier, filed on the school's records so the CA grid offers the same shortcut on every machine. A package is a plan, not a register: it holds no pupil count.
 6. **Fees Configuration (`/setup/fees`)**: Line-item breakdown of tuition, ICT levy, examination fees, and development levies.
 7. **CA Structure (`/setup/ca-structure`)**: Component weighting manager (Tests, Projects, Mid-Term, Terminal Exam) per education tier.
 8. **Grading Scales (`/setup/grading`)**: Multi-tier bracket editor for marks, GPA points, remarks, and badge colors.

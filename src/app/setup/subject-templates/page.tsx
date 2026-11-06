@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { SCHOOL_INFO } from "@/lib/constants";
 import {
   useRealtimeSubjectTemplates,
   SubjectTemplateRecord,
@@ -16,14 +15,17 @@ import {
   ArrowLeft,
   Sparkles,
   Trash2,
+  TriangleAlert,
 } from "lucide-react";
 
 export default function SubjectTemplatesPage() {
-  const { templates, addTemplate, deleteTemplate } = useRealtimeSubjectTemplates();
+  const { templates, templatesSource, addTemplates, deleteTemplate } = useRealtimeSubjectTemplates();
 
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [refusal, setRefusal] = useState<string | null>(null);
 
   // Form State
   const [name, setName] = useState("");
@@ -32,7 +34,7 @@ export default function SubjectTemplatesPage() {
   const [targetClass, setTargetClass] = useState("Primary 1 - Primary 5");
   const [subjectListText, setSubjectListText] = useState("");
 
-  const handleCreateTemplate = (e: React.FormEvent) => {
+  const handleCreateTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !subjectListText.trim()) return;
 
@@ -41,20 +43,24 @@ export default function SubjectTemplatesPage() {
       .map((s) => s.trim())
       .filter(Boolean);
 
-    addTemplate({
-      name: name.trim(),
-      department,
-      targetClass,
-      subjects: parsedSubjects,
-      enrolledStudentsCount: 0,
-    });
+    setIsSaving(true);
+    const outcome = await addTemplates([
+      { name: name.trim(), department, targetClass, subjects: parsedSubjects },
+    ]);
+    setIsSaving(false);
 
+    if (!outcome.ok) {
+      setRefusal(outcome.reason ?? "the package was not filed");
+      return;
+    }
+
+    setRefusal(null);
     setIsModalOpen(false);
     setName("");
     setSubjectListText("");
   };
 
-  const handleSeedStandardCurricula = () => {
+  const handleSeedStandardPackages = async () => {
     const defaultPackages: Omit<SubjectTemplateRecord, "id">[] = [
       {
         name: "Creche & Playgroup Early Development Package",
@@ -66,7 +72,6 @@ export default function SubjectTemplatesPage() {
           "Social Interaction & Gross Motor Play",
           "Early Oral Expression & Storytime",
         ],
-        enrolledStudentsCount: 0,
       },
       {
         name: "Nursery 1 & 2 Foundational Phonics Package",
@@ -80,7 +85,6 @@ export default function SubjectTemplatesPage() {
           "Creative Arts & Colouring",
           "Moral Habits & Rhymes",
         ],
-        enrolledStudentsCount: 0,
       },
       {
         name: "Primary 1 - 5 Universal Basic Education Package",
@@ -98,7 +102,6 @@ export default function SubjectTemplatesPage() {
           "Christian Religious Studies",
           "Creative & Cultural Arts",
         ],
-        enrolledStudentsCount: 0,
       },
       {
         name: "Junior Secondary Universal Curriculum (BECE Standard)",
@@ -115,7 +118,6 @@ export default function SubjectTemplatesPage() {
           "Agricultural Science",
           "Christian Religious Studies",
         ],
-        enrolledStudentsCount: 0,
       },
       {
         name: "Senior Science Standard Package (WAEC/NECO)",
@@ -132,7 +134,6 @@ export default function SubjectTemplatesPage() {
           "Data Processing",
           "Economics",
         ],
-        enrolledStudentsCount: 0,
       },
       {
         name: "Senior Arts & Humanities Package (WAEC/NECO)",
@@ -148,7 +149,6 @@ export default function SubjectTemplatesPage() {
           "Biology",
           "Information & Communication Technology",
         ],
-        enrolledStudentsCount: 0,
       },
       {
         name: "Senior Commercial & Business Package (WAEC/NECO)",
@@ -164,11 +164,34 @@ export default function SubjectTemplatesPage() {
           "Information & Communication Technology",
           "Data Processing",
         ],
-        enrolledStudentsCount: 0,
       },
     ];
 
-    defaultPackages.forEach((pkg) => addTemplate(pkg));
+    setIsSaving(true);
+    const outcome = await addTemplates(defaultPackages);
+    setIsSaving(false);
+
+    if (!outcome.ok) {
+      setRefusal(outcome.reason ?? "the standard packages were not filed");
+      return;
+    }
+
+    setRefusal(null);
+  };
+
+  const handleDeleteTemplate = async (tpl: SubjectTemplateRecord) => {
+    const where =
+      templatesSource === "server"
+        ? "It comes off the school's package list, so the CA grid stops offering it on every machine."
+        : "This device is not reading the school's package list, so the package cannot be taken off it.";
+
+    if (!confirm(`Delete "${tpl.name}"? ${where} It cannot be brought back.`)) return;
+
+    setIsSaving(true);
+    const outcome = await deleteTemplate(tpl.id);
+    setIsSaving(false);
+
+    setRefusal(outcome.ok ? null : outcome.reason ?? "the package was not removed");
   };
 
   const filtered = templates.filter((t) => {
@@ -200,28 +223,34 @@ export default function SubjectTemplatesPage() {
               <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                 Curriculum &amp; Subject Packages
               </h1>
-              <span className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                Pre-Play to SS 3 Single Stream
+              <span className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap shrink-0">
+                {templates.length} package{templates.length === 1 ? "" : "s"}
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Build dynamic curriculum packages for <strong>Pre-Play, Play, Nursery 1-2, Primary 1-5, JSS, and SSS</strong> for {SCHOOL_INFO.name}.
+              A package is the set of subjects one year group sits, saved once so the office does not retype it for
+              every new arm. The CA grid offers it as a shortcut to whoever opens it, on any machine.
             </p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {templates.length === 0 && (
+            {templatesSource === "server" && (
               <button
-                onClick={handleSeedStandardCurricula}
-                className="px-3.5 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer"
+                onClick={() => void handleSeedStandardPackages()}
+                disabled={isSaving}
+                className="px-3.5 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-wait whitespace-nowrap shrink-0"
+                title="Files the seven standard packages on the school's records. A package already filed under the same name is left as it stands."
               >
                 <Sparkles className="w-3.5 h-3.5 text-blue-600" />
                 Populate Nigerian Standard Packages
               </button>
             )}
             <button
-              onClick={() => setIsModalOpen(true)}
-              className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 self-start md:self-auto cursor-pointer"
+              onClick={() => {
+                setRefusal(null);
+                setIsModalOpen(true);
+              }}
+              className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 self-start md:self-auto whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               Create Custom Package
@@ -229,7 +258,16 @@ export default function SubjectTemplatesPage() {
           </div>
         </div>
 
-        <DeviceOnlyNotice what="The subject packages" />
+        {templatesSource === "device" && <DeviceOnlyNotice what="The subject packages" />}
+
+        {refusal && (
+          <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 text-[11px] leading-snug text-rose-950 flex items-start gap-2 print:hidden">
+            <TriangleAlert className="w-4 h-4 text-rose-700 flex-shrink-0 mt-0.5" />
+            <p>
+              <strong>The package was not filed on the school&apos;s records.</strong> {refusal}
+            </p>
+          </div>
+        )}
 
         {/* Filter Controls */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -274,9 +312,15 @@ export default function SubjectTemplatesPage() {
         {filtered.length === 0 ? (
           <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400 space-y-3">
             <Layers className="w-10 h-10 mx-auto text-slate-300 stroke-1" />
-            <div className="text-sm font-semibold text-slate-600">No Subject Packages Found</div>
+            <div className="text-sm font-semibold text-slate-600">
+              {templates.length === 0 ? "No Subject Package on File" : "No Subject Packages Match"}
+            </div>
             <p className="text-xs text-slate-400 max-w-sm mx-auto">
-              No packages match your search or filter. Create a custom package or click &apos;Populate Nigerian Standard Packages&apos;.
+              {templates.length === 0
+                ? templatesSource === "server"
+                  ? "No package is filed on the school's records yet, so the CA grid has no shortcut to offer. Create one, or populate the standard Nigerian packages."
+                  : "The school's package list could not be read, so this screen is showing the packages held on this device, and they are empty. Create a package to file one on the school's records."
+                : "No package matches your search or filter. Widen the tier or clear the search."}
             </p>
           </div>
         ) : (
@@ -329,15 +373,7 @@ export default function SubjectTemplatesPage() {
                 <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
                   <span className="text-[11px] text-slate-400 font-medium">Ready for Class Assignment</span>
                   <button
-                    onClick={() => {
-                      if (
-                        confirm(
-                          `Delete ${tpl.name}? This clears it from the package list held on this browser only, and it cannot be brought back.`
-                        )
-                      ) {
-                        deleteTemplate(tpl.id);
-                      }
-                    }}
+                    onClick={() => void handleDeleteTemplate(tpl)}
                     className="text-slate-400 hover:text-red-600 p-1 cursor-pointer"
                     title="Delete package"
                   >
@@ -363,7 +399,7 @@ export default function SubjectTemplatesPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleCreateTemplate} className="space-y-3 text-xs">
+              <form onSubmit={(e) => void handleCreateTemplate(e)} className="space-y-3 text-xs">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Package Name</label>
                   <input
@@ -432,6 +468,12 @@ export default function SubjectTemplatesPage() {
                   <p className="text-[10px] text-slate-400 mt-1">Enter each subject on a separate line.</p>
                 </div>
 
+                {refusal && (
+                  <p className="text-[11px] font-semibold text-rose-900 bg-rose-50 border border-rose-200 rounded-lg p-2.5">
+                    {refusal}
+                  </p>
+                )}
+
                 <div className="flex justify-end gap-2 pt-3">
                   <button
                     type="button"
@@ -442,9 +484,10 @@ export default function SubjectTemplatesPage() {
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer"
+                    disabled={isSaving}
+                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-wait"
                   >
-                    Save Package
+                    {isSaving ? "Filing…" : "File on the school's package list"}
                   </button>
                 </div>
               </form>
