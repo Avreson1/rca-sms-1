@@ -196,65 +196,86 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-[#0a1128] text-slate-100 select-none shadow-2xl transition-transform duration-300 ease-out",
-        "border-r border-blue-950/80 lg:visible lg:translate-x-0",
+        "fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-brand-950 text-white select-none shadow-2xl transition-transform duration-300 ease-out",
+        "border-r border-white/10 lg:visible lg:translate-x-0",
         open ? "visible translate-x-0" : "invisible -translate-x-full"
       )}
     >
-      {/* Brand Header - Royal Blue with Cyan accent */}
-      <div className="p-4 border-b border-blue-900/40 flex items-center gap-3 bg-gradient-to-r from-[#0000FF]/25 via-[#000080]/30 to-[#0a1128]">
-        <div className="bg-[#0000FF] p-2.5 rounded-xl text-white shadow-lg shadow-blue-700/40 ring-1 ring-cyan-400/40 flex-shrink-0">
-          <School className="w-5 h-5 text-cyan-200" />
+      <div
+        aria-hidden="true"
+        className="texture-grid-light pointer-events-none absolute inset-0 opacity-60"
+      />
+
+      {/* Brand */}
+      <div className="relative flex items-center gap-3 border-b border-white/10 bg-gradient-to-br from-brand-800 to-brand-950 px-4 py-4">
+        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-white/10 ring-1 ring-inset ring-white/20">
+          <School className="h-5 w-5 text-white" strokeWidth={1.75} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <h1 className="font-extrabold text-sm leading-tight text-white tracking-wider drop-shadow-sm">{school?.short_name || SCHOOL_INFO.shortName}</h1>
-            <span className="text-[10px] bg-cyan-500/20 text-cyan-300 font-bold px-1.5 py-0.5 rounded border border-cyan-400/40 uppercase tracking-wider">SMS</span>
+          <div className="flex items-center gap-2">
+            <h1 className="font-display text-sm font-extrabold uppercase tracking-[0.14em] text-white">
+              {school?.short_name || SCHOOL_INFO.shortName}
+            </h1>
+            <span className="rounded-md bg-accent-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-white">
+              SMS
+            </span>
           </div>
-          <p className="text-[11px] text-blue-200/80 truncate mt-0.5 font-medium">{school?.school_name || SCHOOL_INFO.name}</p>
+          <p className="mt-1 truncate text-[11px] font-medium text-white/60">
+            {school?.school_name || SCHOOL_INFO.name}
+          </p>
         </div>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close navigation"
-          className="flex-shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-blue-950/70 transition-colors cursor-pointer lg:hidden"
+          className="-mr-1 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-white/60 transition-colors duration-150 hover:bg-white/10 hover:text-white lg:hidden"
         >
-          <X className="w-4 h-4" />
+          <X className="h-4 w-4" strokeWidth={2} />
         </button>
       </div>
 
-      {/* Navigation Links */}
-      <nav className="flex-1 min-h-0 overflow-y-auto p-3 space-y-1 text-sm scrollbar-thin scrollbar-thumb-blue-900">
+      {/* Navigation */}
+      <nav className="scrollbar-dark relative flex-1 min-h-0 space-y-1 overflow-y-auto p-3">
         {visibleNavItems.map((item) => {
           const Icon = item.icon;
           const hasChildren = item.children && item.children.length > 0;
           const isExpanded = openMenus[item.title];
           const isActive = item.href ? pathname === item.href : false;
+          const badgeIsOpen = item.badge?.startsWith("Open") ?? false;
 
           if (hasChildren) {
             const isChildActive = item.children?.some((c) => pathname.startsWith(c.href));
             return (
-              <div key={item.title} className="space-y-0.5">
+              <div key={item.title} className="space-y-1">
                 <button
                   onClick={() => toggleMenu(item.title)}
                   type="button"
+                  aria-expanded={isExpanded}
                   className={cn(
-                    "w-full flex items-center justify-between px-3 py-2 rounded-xl font-medium transition-all text-slate-300 hover:bg-blue-950/70 hover:text-cyan-300 cursor-pointer",
-                    isChildActive && "text-cyan-300 bg-blue-900/40 font-semibold border border-blue-800/50"
+                    "flex min-h-11 w-full items-center justify-between gap-2 rounded-xl px-3 text-left transition-colors duration-150 lg:min-h-9",
+                    isChildActive
+                      ? "bg-white/10 text-white ring-1 ring-inset ring-white/15"
+                      : "text-white/70 hover:bg-white/6 hover:text-white"
                   )}
                 >
-                  <div className="flex items-center gap-3">
-                    <Icon className={cn("w-4 h-4", isChildActive ? "text-cyan-400" : "text-slate-400")} />
-                    <span className="text-xs font-semibold tracking-wide">{item.title}</span>
-                  </div>
+                  <span className="flex min-w-0 items-center gap-3">
+                    <Icon
+                      className={cn("h-4 w-4 flex-shrink-0", isChildActive ? "text-accent-300" : "text-white/45")}
+                      strokeWidth={1.75}
+                    />
+                    <span className="truncate font-display text-[13px] font-bold tracking-tight">
+                      {item.title}
+                    </span>
+                  </span>
                   {isExpanded ? (
-                    <ChevronDown className="w-4 h-4 text-cyan-400" />
+                    <ChevronDown className="h-4 w-4 flex-shrink-0 text-white/50" strokeWidth={2} />
                   ) : (
-                    <ChevronRight className="w-4 h-4 text-slate-500" />
+                    <ChevronRight className="h-4 w-4 flex-shrink-0 text-white/35" strokeWidth={2} />
                   )}
                 </button>
+
                 {isExpanded && (
-                  <div className="pl-6 pr-1 py-1 space-y-0.5 border-l-2 border-cyan-500/30 ml-4">
+                  <div className="ml-[26px] space-y-0.5 border-l border-white/12 pl-3">
                     {item.children?.map((child) => {
                       const isCurrentChild = pathname === child.href;
                       return (
@@ -262,14 +283,21 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                           key={child.href}
                           href={child.href}
                           onClick={onClose}
+                          aria-current={isCurrentChild ? "page" : undefined}
                           className={cn(
-                            "block px-2.5 py-1.5 rounded-lg text-xs transition-all tracking-wide",
+                            "relative flex min-h-10 items-center rounded-lg px-2.5 text-[13px] transition-colors duration-150 lg:min-h-8",
                             isCurrentChild
-                              ? "text-white bg-[#0000FF] font-bold shadow-md shadow-blue-900/50 border border-cyan-400/40 text-cyan-50"
-                              : "text-slate-400 hover:text-cyan-200 hover:bg-blue-950/50"
+                              ? "bg-white/12 font-semibold text-white"
+                              : "font-medium text-white/58 hover:bg-white/6 hover:text-white"
                           )}
                         >
-                          {child.title}
+                          {isCurrentChild && (
+                            <span
+                              aria-hidden="true"
+                              className="absolute -left-[13px] top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-accent-500"
+                            />
+                          )}
+                          <span className="truncate">{child.title}</span>
                         </Link>
                       );
                     })}
@@ -284,30 +312,42 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               key={item.title}
               href={item.href || "#"}
               onClick={onClose}
+              aria-current={isActive ? "page" : undefined}
               className={cn(
-                "flex items-center justify-between px-3 py-2 rounded-xl font-medium transition-all text-xs tracking-wide",
+                "relative flex min-h-11 items-center justify-between gap-2 rounded-xl px-3 transition-colors duration-150 lg:min-h-9",
                 isActive
-                  ? "bg-[#0000FF] text-white font-bold shadow-md shadow-blue-900/50 border border-cyan-400/40"
-                  : "text-slate-300 hover:bg-blue-950/70 hover:text-cyan-300"
+                  ? "bg-white/12 text-white ring-1 ring-inset ring-white/18"
+                  : "text-white/70 hover:bg-white/6 hover:text-white"
               )}
             >
-              <div className="flex items-center gap-3">
-                <Icon className={cn("w-4 h-4", isActive ? "text-cyan-200" : "text-slate-400")} />
-                <span>{item.title}</span>
-              </div>
+              {isActive && (
+                <span
+                  aria-hidden="true"
+                  className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-accent-500"
+                />
+              )}
+              <span className="flex min-w-0 items-center gap-3">
+                <Icon
+                  className={cn("h-4 w-4 flex-shrink-0", isActive ? "text-accent-300" : "text-white/45")}
+                  strokeWidth={1.75}
+                />
+                <span className="truncate font-display text-[13px] font-bold tracking-tight">
+                  {item.title}
+                </span>
+              </span>
               {item.badge && (
                 <span
                   className={cn(
-                    "font-black text-[10px] px-1.5 py-0.2 rounded-md flex items-center gap-0.5 shadow-sm uppercase tracking-wider",
-                    item.badge === "Open here"
-                      ? "bg-cyan-400 text-[#0a1128]"
-                      : "bg-amber-400 text-amber-950 font-bold"
+                    "flex flex-shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] ring-1 ring-inset",
+                    badgeIsOpen
+                      ? "bg-emerald-400/15 text-emerald-200 ring-emerald-300/25"
+                      : "bg-white/8 text-white/60 ring-white/15"
                   )}
                 >
-                  {item.badge === "Open here" ? (
-                    <Sparkles className="w-2.5 h-2.5 text-[#0000FF]" />
+                  {badgeIsOpen ? (
+                    <Sparkles className="h-2.5 w-2.5" strokeWidth={2} />
                   ) : (
-                    <Lock className="w-2.5 h-2.5 text-amber-900" />
+                    <Lock className="h-2.5 w-2.5" strokeWidth={2} />
                   )}
                   {item.badge}
                 </span>
@@ -316,43 +356,50 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           );
         })}
 
-        {/* Active Session Info Card */}
-        <div className="pt-2">
-          <div className="p-2.5 rounded-xl bg-gradient-to-br from-blue-950/70 to-slate-950/90 border border-cyan-500/20 text-xs space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1">
-                <UserCheck className="w-3 h-3" />
-                Active Session
-              </span>
-              <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-mono font-bold">
-                {currentRole}
+        {/* Active session */}
+        <div className="pt-3">
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-white/50">
+                <UserCheck className="h-3 w-3" strokeWidth={2} />
+                Active session
               </span>
             </div>
-            <p className="text-white font-bold truncate text-[11px]">{currentUser?.fullName || "Staff Member"}</p>
-            <p className="text-slate-400 font-mono text-[10px] truncate">{currentUser?.staffId || "RCA/PERS/001"}</p>
+            <p className="mt-2 truncate font-display text-[13px] font-bold tracking-tight text-white">
+              {currentUser?.fullName || "Staff Member"}
+            </p>
+            <p className="mt-0.5 truncate font-mono text-[10px] tabular-nums text-white/45">
+              {currentUser?.staffId || "RCA/PERS/001"}
+            </p>
+            <p className="mt-2 border-t border-white/10 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-accent-300">
+              {currentRole}
+            </p>
           </div>
         </div>
 
-        {/* Sign Out / Log Out Button - Scheme 1 Vivid Red Accent */}
         <button
           type="button"
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-3 py-2 mt-2 rounded-xl font-bold text-rose-300 hover:bg-[#FF0000]/15 hover:text-white transition-all text-xs cursor-pointer border border-[#FF0000]/30 shadow-sm"
+          className="mt-2 flex min-h-11 w-full items-center gap-3 rounded-xl border border-white/10 px-3 font-display text-[13px] font-bold tracking-tight text-accent-300 transition-colors duration-150 hover:border-accent-500/40 hover:bg-accent-600 hover:text-white lg:min-h-9"
         >
-          <LogOut className="w-4 h-4 text-[#FF0000]" />
-          <span>Sign Out / Log Out</span>
+          <LogOut className="h-4 w-4" strokeWidth={1.75} />
+          <span>Sign out</span>
         </button>
       </nav>
 
-      {/* Footer Info */}
-      <div className="p-3 border-t border-blue-900/40 text-[11px] text-slate-400 bg-slate-950/60 flex-shrink-0">
-        <div className="flex justify-between items-center">
-          <span className="text-slate-400">Academic Session:</span>
-          <span className="text-cyan-300 font-bold">{school?.current_session || SCHOOL_INFO.currentSession}</span>
+      {/* Term footer */}
+      <div className="relative flex-shrink-0 space-y-1.5 border-t border-white/10 bg-brand-950/80 px-4 py-3 text-[11px]">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-medium text-white/45">Academic session</span>
+          <span className="font-mono font-semibold tabular-nums text-white">
+            {school?.current_session || SCHOOL_INFO.currentSession}
+          </span>
         </div>
-        <div className="flex justify-between items-center mt-1">
-          <span className="text-slate-400">Current Term:</span>
-          <span className="text-cyan-300 font-bold">{school?.current_term || SCHOOL_INFO.currentTerm}</span>
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-medium text-white/45">Current term</span>
+          <span className="font-semibold text-white">
+            {school?.current_term || SCHOOL_INFO.currentTerm}
+          </span>
         </div>
       </div>
     </aside>

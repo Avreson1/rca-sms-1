@@ -33,38 +33,34 @@ import {
 export const COLOR_SCHEMES = [
   {
     id: "royal" as const,
-    name: "Scheme 1: Vibrant Royal & Academic Contrast",
-    badgeClass: "bg-[#0000FF] text-white border border-cyan-400/40",
-    borderClass: "border-[#0000FF]",
-    previewBg: "from-[#0000FF] via-blue-800 to-[#0a1128]",
-    accent: "text-cyan-400",
-    desc: "Primary flagship theme: Royal Blue (#0000FF 60%), Cyan (#00FFFF 25%), Vivid Red (#FF0000 10%), White (#FFFFFF 5%).",
+    name: "Egyptian Blue & Scarlet",
+    badgeClass: "bg-brand-600 text-white",
+    borderClass: "border-brand-600",
+    previewBg: "from-brand-600 via-brand-700 to-accent-600",
+    desc: "The school's flagship: Egyptian Blue #1034A6 carries the headers and rules, Scarlet #FF2400 marks the session and the totals, white holds the paper.",
   },
   {
     id: "scheme2" as const,
-    name: "Scheme 2: Deep Navy & Bright Magenta",
-    badgeClass: "bg-[#0B2F9E] text-white border border-pink-400/40",
-    borderClass: "border-[#0B2F9E]",
-    previewBg: "from-[#0B2F9E] via-purple-900 to-[#0d1838]",
-    accent: "text-pink-400",
-    desc: "Alternate academic contrast: Deep Navy (#0B2F9E), Bright Magenta (#FF00FF), Crimson Red (#D90429), Off-White (#F8F9FA).",
+    name: "Deep Navy & Scarlet",
+    badgeClass: "bg-brand-800 text-white",
+    borderClass: "border-brand-800",
+    previewBg: "from-brand-800 via-brand-900 to-night-900",
+    desc: "The same palette one shade deeper, for a heavier print tone. Navy headers, scarlet session line, white paper.",
   },
   {
     id: "emerald" as const,
     name: "Emerald Green & Slate",
     badgeClass: "bg-emerald-800 text-white",
     borderClass: "border-emerald-800",
-    previewBg: "from-emerald-800 to-teal-950",
-    accent: "text-emerald-800",
-    desc: "Academic distinction emerald with forest slate borders. Clean & prestigious.",
+    previewBg: "from-emerald-800 to-emerald-950",
+    desc: "Academic distinction emerald with forest slate borders. Clean and prestigious.",
   },
   {
     id: "burgundy" as const,
     name: "Burgundy Wine & Gold",
     badgeClass: "bg-rose-950 text-white",
     borderClass: "border-rose-950",
-    previewBg: "from-rose-950 to-pink-950",
-    accent: "text-rose-950",
+    previewBg: "from-rose-950 to-accent-900",
     desc: "Traditional collegiate burgundy wine. Elegant and formal executive tone.",
   },
   {
@@ -72,8 +68,7 @@ export const COLOR_SCHEMES = [
     name: "Classic Gold & Royal Navy",
     badgeClass: "bg-amber-900 text-white",
     borderClass: "border-amber-900",
-    previewBg: "from-amber-900 to-yellow-950",
-    accent: "text-amber-800",
+    previewBg: "from-amber-900 to-amber-950",
     desc: "Classic academic prestige gold with rich navy contrast.",
   },
   {
@@ -81,8 +76,7 @@ export const COLOR_SCHEMES = [
     name: "Executive Slate & Charcoal",
     badgeClass: "bg-slate-900 text-white",
     borderClass: "border-slate-900",
-    previewBg: "from-slate-900 to-gray-950",
-    accent: "text-slate-900",
+    previewBg: "from-slate-900 to-slate-950",
     desc: "Modern minimalist charcoal and titanium slate. Clean corporate clarity.",
   },
 ];
@@ -218,9 +212,9 @@ export default function SetupReportTemplatesPage() {
     <DashboardShell>
       <div className="space-y-6">
         {toastMessage && (
-          <div className="fixed top-20 right-6 bg-[#0a1128] text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 z-50 animate-in slide-in-from-top-3 border border-cyan-400">
-            <CheckCircle2 className="w-4 h-4 text-cyan-400" />
-            <span className="text-xs font-bold">{toastMessage}</span>
+          <div role="status" className="fixed top-20 right-4 sm:right-6 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-2.5 rounded-xl border border-hairline bg-surface px-4 py-3 text-ink shadow-lg animate-in slide-in-from-top-3">
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-600" />
+            <span className="text-xs font-semibold">{toastMessage}</span>
           </div>
         )}
 
@@ -228,7 +222,7 @@ export default function SetupReportTemplatesPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <Link href="/" className="hover:text-blue-600 flex items-center gap-1">
+              <Link href="/" className="flex min-h-6 items-center gap-1 hover:text-blue-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -359,7 +353,7 @@ export default function SetupReportTemplatesPage() {
                 <button
                   onClick={() => void handleFileTheme()}
                   disabled={isFiling || !isThemeDraft}
-                  className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   <Save className="w-4 h-4" />
                   {isFiling && isThemeDraft ? "Filing…" : "File theme on the school's records"}
@@ -391,7 +385,7 @@ export default function SetupReportTemplatesPage() {
               <button
                 type="submit"
                 disabled={isFiling}
-                className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Save className="w-4 h-4" />
                 {isFiling ? "Filing on the school's records…" : "File on the school's records"}
@@ -596,7 +590,7 @@ export default function SetupReportTemplatesPage() {
                 <button
                   type="submit"
                   disabled={isFiling}
-                  className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-xs shadow-xs cursor-pointer flex items-center gap-1.5"
+                  className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 text-white font-bold text-xs shadow-xs cursor-pointer flex items-center gap-1.5"
                 >
                   <Save className="w-4 h-4" />
                   {isFiling ? "Filing on the school's records…" : "File this term's circular"}

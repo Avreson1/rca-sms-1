@@ -108,7 +108,7 @@ export default function SetupGradingPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <Link href="/" className="hover:text-[#0000FF] flex items-center gap-1 font-semibold">
+              <Link href="/" className="flex min-h-6 items-center gap-1 font-semibold hover:text-brand-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -121,7 +121,7 @@ export default function SetupGradingPage() {
               <h1 className="text-2xl font-black text-slate-900 tracking-tight">
                 Approved Universal Grading Criteria
               </h1>
-              <span className="bg-blue-100 text-[#0000FF] border border-blue-300 text-xs font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+              <span className="bg-blue-100 text-brand-600 border border-blue-300 text-xs font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                 Universal Standards
               </span>
             </div>
@@ -143,7 +143,7 @@ export default function SetupGradingPage() {
             <button
               onClick={handleSavePolicy}
               disabled={busy}
-              className="px-4 py-2 text-xs font-black bg-[#0000FF] hover:bg-blue-700 text-white rounded-xl transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 text-xs font-black bg-brand-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               <Save className="w-4 h-4 text-cyan-300" />
               {busy ? "Filing…" : "File Scale On The School's Records"}
@@ -171,27 +171,27 @@ export default function SetupGradingPage() {
         )}
 
         {/* Universal Standard Info Banner */}
-        <div className="p-5 rounded-3xl bg-gradient-to-r from-blue-950 via-[#0a1128] to-blue-950 text-white border border-cyan-400/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-wider text-cyan-300 bg-cyan-500/20 px-2.5 py-0.5 rounded-full border border-cyan-400/40">
+        <div className="texture-grid-light relative flex flex-col items-start justify-between gap-4 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-brand-800 via-brand-950 to-night-900 p-5 text-white shadow-lg md:flex-row md:items-center">
+          <div className="min-w-0 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-brand-200">
                 The Scale The Portal Starts From
               </span>
-              <span className="text-xs text-blue-200 font-bold">One band per school section, edited below</span>
+              <span className="text-xs font-bold text-white/70">One band per school section, edited below</span>
             </div>
-            <h2 className="text-lg font-black text-white">
+            <h2 className="font-display text-lg font-extrabold tracking-tight text-white tabular-nums">
               A (70-100) • B (60-69) • C (50-59) • D (45-49 Pass Mark) • F (0-44 Fail)
             </h2>
-            <p className="text-xs text-blue-200/80 leading-relaxed max-w-2xl">
+            <p className="max-w-2xl text-xs leading-relaxed text-white/70">
               The usual West African banding, offered as the starting point for Creche through SS 3. What the school
               actually grades with is the scale filed on its records, shown in the tabs below — if they differ, the
               filed scale is the one on the score cards.
             </p>
           </div>
 
-          <div className="bg-blue-900/60 border border-cyan-400/30 p-3.5 rounded-2xl text-center min-w-[150px]">
-            <span className="text-[10px] text-cyan-300 uppercase font-bold block">Usual Pass Mark</span>
-            <strong className="text-2xl font-black text-white">45% (D)</strong>
+          <div className="min-w-[150px] flex-shrink-0 rounded-xl border border-accent-400/25 bg-accent-500/12 p-3.5 text-center">
+            <span className="block text-[10px] font-bold uppercase tracking-wider text-accent-300">Usual Pass Mark</span>
+            <strong className="font-display text-2xl font-extrabold tabular-nums text-white">45% (D)</strong>
           </div>
         </div>
 
@@ -209,7 +209,7 @@ export default function SetupGradingPage() {
               onClick={() => handleTabChange(tab.key)}
               className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all whitespace-nowrap cursor-pointer ${
                 activeTierKey === tab.key
-                  ? "bg-[#0000FF] text-white shadow-md shadow-blue-900/30 border border-cyan-400/40"
+                  ? "bg-brand-600 text-white shadow-sm border border-brand-700"
                   : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
               }`}
             >
@@ -229,7 +229,7 @@ export default function SetupGradingPage() {
             </div>
             <button
               onClick={handleAddBracket}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-[#0000FF] font-bold text-xs rounded-xl transition-all flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-brand-600 font-bold text-xs rounded-xl transition-all flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add Grade Bracket</span>
@@ -258,7 +258,7 @@ export default function SetupGradingPage() {
                         type="text"
                         value={b.grade}
                         onChange={(e) => handleBracketChange(idx, "grade", e.target.value)}
-                        className="w-16 text-center font-black text-sm py-1.5 px-2 rounded-xl bg-slate-50 border border-slate-300 text-[#0000FF] focus:border-[#0000FF] focus:ring-1 focus:ring-[#0000FF]"
+                        className="w-16 text-center font-black text-sm py-1.5 px-2 rounded-xl bg-slate-50 border border-slate-300 text-brand-600 focus:border-brand-600 focus:ring-1 focus:ring-brand-600"
                       />
                     </td>
 
@@ -327,7 +327,7 @@ export default function SetupGradingPage() {
                     <td className="py-3 px-3 text-center">
                       <button
                         onClick={() => handleDeleteBracket(idx)}
-                        className="p-1.5 text-slate-400 hover:text-[#FF0000] transition-colors rounded-lg hover:bg-rose-50 cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-accent-600 transition-colors rounded-lg hover:bg-rose-50 cursor-pointer"
                         title="Delete Level"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -346,7 +346,7 @@ export default function SetupGradingPage() {
             </span>
             <button
               onClick={handleSavePolicy}
-              className="font-black text-[#0000FF] hover:text-blue-800 cursor-pointer"
+              className="inline-flex min-h-6 items-center font-black text-brand-600 hover:text-blue-800 cursor-pointer"
             >
               Save &amp; Apply Universal Grading →
             </button>

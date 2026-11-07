@@ -387,7 +387,7 @@ export default function UpdateCAPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <Link href="/" className="hover:text-blue-600 flex items-center gap-1">
+              <Link href="/" className="flex min-h-6 items-center gap-1 hover:text-blue-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -710,7 +710,7 @@ export default function UpdateCAPage() {
             <span>Live grades dynamically adjust based on student&apos;s enrolled tier (Montessori, Primary, BECE, WAEC).</span>
             <button
               onClick={handleSave}
-              className="font-bold text-blue-600 hover:text-blue-700 cursor-pointer"
+              className="inline-flex min-h-6 items-center font-bold text-blue-600 hover:text-blue-700 cursor-pointer"
             >
               Publish Realtime Records to Dean of Studies →
             </button>

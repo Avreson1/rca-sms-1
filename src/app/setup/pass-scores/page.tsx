@@ -25,7 +25,7 @@ export default function SetupPassScoresPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <Link href="/" className="hover:text-[#0000FF] flex items-center gap-1 font-semibold">
+              <Link href="/" className="flex min-h-6 items-center gap-1 font-semibold hover:text-brand-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -64,23 +64,23 @@ export default function SetupPassScoresPage() {
         </div>
 
         {/* Universal Pass Policy Banner */}
-        <div className="p-5 rounded-3xl bg-gradient-to-r from-blue-950 via-[#0a1128] to-blue-950 text-white border border-cyan-400/30 flex items-center justify-between shadow-xl">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] bg-cyan-500/20 text-cyan-300 font-bold px-2 py-0.5 rounded border border-cyan-400/40 uppercase tracking-wider">
+        <div className="texture-grid-light relative flex flex-col items-start justify-between gap-4 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-brand-800 via-brand-950 to-night-900 p-5 text-white shadow-lg sm:flex-row sm:items-center">
+          <div className="min-w-0 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded border border-accent-400/30 bg-accent-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent-300">
                 Not an approved universal score
               </span>
-              <span className="text-xs text-blue-200 font-semibold">Per-tier configuration</span>
+              <span className="text-xs font-semibold text-brand-200">Per-tier configuration</span>
             </div>
-            <h2 className="text-xl font-black text-white">Pass marks are set per tier, not on this page</h2>
-            <p className="text-xs text-blue-200/80 max-w-xl">
+            <h2 className="font-display text-xl font-extrabold tracking-tight text-white">Pass marks are set per tier, not on this page</h2>
+            <p className="max-w-xl text-xs leading-relaxed text-white/70">
               The tier scales in Setup &rarr; Grading Scales decide where a pass begins for each class band. The
               numbers below are this browser&apos;s draft values only and are not used to grade any pupil.
             </p>
           </div>
-          <div className="bg-blue-900/80 border border-cyan-400/40 px-5 py-3 rounded-2xl text-center hidden sm:block">
-            <span className="text-[10px] font-bold text-cyan-300 uppercase block">Where it is set</span>
-            <span className="text-sm font-black text-white leading-snug">Setup<br />Grading Scales</span>
+          <div className="hidden flex-shrink-0 rounded-xl border border-white/12 bg-white/6 px-5 py-3 text-center sm:block">
+            <span className="block text-[10px] font-bold uppercase tracking-wider text-white/55">Where it is set</span>
+            <span className="font-display text-sm font-extrabold leading-snug text-white">Setup<br />Grading Scales</span>
           </div>
         </div>
 
@@ -97,7 +97,7 @@ export default function SetupPassScoresPage() {
                   type="number"
                   value={passScores.universalPassMark}
                   onChange={(e) => setPassScores({ ...passScores, universalPassMark: parseInt(e.target.value, 10) || 45 })}
-                  className="w-16 text-center font-black text-sm bg-white border border-blue-400 focus:ring-1 focus:ring-[#0000FF] rounded-xl p-2 text-[#0000FF]"
+                  className="w-16 text-center font-black text-sm bg-white border border-blue-400 focus:ring-1 focus:ring-brand-600 rounded-xl p-2 text-brand-600"
                 />
                 <span className="font-bold text-slate-600">%</span>
               </div>
@@ -157,7 +157,7 @@ export default function SetupPassScoresPage() {
                 type="checkbox"
                 checked={passScores.mathEnglishRequired}
                 onChange={(e) => setPassScores({ ...passScores, mathEnglishRequired: e.target.checked })}
-                className="w-5 h-5 text-[#0000FF] rounded accent-[#0000FF] cursor-pointer"
+                className="w-5 h-5 text-brand-600 rounded accent-brand-600 cursor-pointer"
               />
             </div>
           </div>

@@ -20,6 +20,7 @@ import {
   Settings2,
   Award,
   Layers,
+  ArrowUpRight,
 } from "lucide-react";
 
 export default function DashboardHome() {
@@ -55,15 +56,17 @@ export default function DashboardHome() {
   const getRoleBadge = (role?: string) => {
     switch (role) {
       case "SUPER_ADMIN":
-        return { label: "Tier 1: Super Administrator", bg: "bg-purple-100 text-purple-800 border-purple-200" };
+        return { label: "Tier 1: Super Administrator", bg: "bg-brand-50 text-brand-700 border-brand-200" };
       case "EXAM_OFFICER":
-        return { label: "Tier 2: Exam Officer & Dean", bg: "bg-blue-100 text-blue-800 border-blue-200" };
+        return { label: "Tier 2: Exam Officer & Dean", bg: "bg-azure-50 text-azure-700 border-azure-200" };
       case "TEACHER":
-        return { label: "Tier 3: Form / Subject Teacher", bg: "bg-emerald-100 text-emerald-800 border-emerald-200" };
+        return { label: "Tier 3: Form / Subject Teacher", bg: "bg-emerald-50 text-emerald-700 border-emerald-200" };
       case "ACCOUNTANT":
-        return { label: "Tier 4: Bursar & Accounts Officer", bg: "bg-amber-100 text-amber-800 border-amber-200" };
+        return { label: "Tier 4: Bursar & Accounts Officer", bg: "bg-amber-50 text-amber-800 border-amber-200" };
       case "STUDENT_PARENT":
-        return { label: "Tier 5: Student & Parent Guardian", bg: "bg-sky-100 text-sky-800 border-sky-200" };
+        return { label: "Tier 5: Student & Parent Guardian", bg: "bg-slate-100 text-slate-600 border-slate-200" };
+      case "TESTERS":
+        return { label: "Tester Access", bg: "bg-accent-50 text-accent-700 border-accent-200" };
       default:
         return { label: "Authorized Staff Member", bg: "bg-slate-100 text-slate-800 border-slate-200" };
     }
@@ -75,114 +78,145 @@ export default function DashboardHome() {
     <DashboardShell>
       <div className="space-y-6">
         {/* Welcome & Live User Header */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              {userRole && (
-                <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${roleBadge.bg}`}>
-                  {roleBadge.label}
+        <div className="relative overflow-hidden rounded-2xl border border-hairline bg-surface p-6 shadow-2xs">
+          <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1 bg-accent-600" />
+          <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center">
+            <div className="space-y-2 pl-2">
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
+                {userRole && (
+                  <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] ${roleBadge.bg}`}>
+                    {roleBadge.label}
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-canvas px-2.5 py-1 font-mono text-[10px] font-medium tabular-nums text-slate-500">
+                  <Calendar className="h-3 w-3 text-brand-600" strokeWidth={2} />
+                  {SCHOOL_INFO.currentSession} · {SCHOOL_INFO.currentTerm}
                 </span>
-              )}
-              <span className="text-xs text-slate-400">•</span>
-              <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
-                <Calendar className="w-3 h-3 text-slate-400" />
-                {SCHOOL_INFO.currentSession} - {SCHOOL_INFO.currentTerm}
+              </div>
+
+              <h2 className="font-display text-2xl font-extrabold tracking-tight text-ink md:text-3xl">
+                {userFullName ? `Welcome back, ${userFullName}` : "Signing in…"}
+              </h2>
+
+              <p className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px] text-muted">
+                <span>
+                  Staff ID / Ref:{" "}
+                  <strong className="font-mono font-semibold tabular-nums text-slate-700">{userStaffId || "—"}</strong>
+                </span>
+                <span aria-hidden="true" className="text-slate-300">•</span>
+                <span>
+                  Institution: <strong className="font-semibold text-slate-700">{SCHOOL_INFO.name}</strong>
+                </span>
+              </p>
+            </div>
+
+            <div className="flex flex-shrink-0 items-center gap-3 self-start rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 md:self-auto">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white">
+                <CheckCircle2 className="h-4.5 w-4.5" strokeWidth={2} />
               </span>
-            </div>
-
-            <h2 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">
-              {userFullName ? `Welcome back, ${userFullName}` : "Signing in…"}
-            </h2>
-
-            <p className="text-xs md:text-sm text-slate-500 flex flex-wrap items-center gap-2">
-              <span>Staff ID / Ref: <strong className="font-mono text-slate-800 font-semibold">{userStaffId || "—"}</strong></span>
-              <span>•</span>
-              <span>Institution: <strong className="text-slate-800 font-semibold">{SCHOOL_INFO.name}</strong></span>
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 bg-slate-50 border border-slate-200/80 p-3.5 rounded-xl self-start md:self-auto">
-            <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-800">Signed In</p>
-              <p className="text-[11px] text-slate-500">On this browser, for this session</p>
+              <div>
+                <p className="font-display text-[13px] font-bold tracking-tight text-emerald-900">Signed in</p>
+                <p className="text-[11px] text-emerald-800">On this browser, for this session</p>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Core Dashboard Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* Left 2 Columns: Role-Specific Overview & Quick Actions */}
-          <div className="lg:col-span-2 space-y-6">
-            
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+
+          {/* Left 8 Columns: Role-Specific Overview & Quick Actions */}
+          <div className="space-y-6 lg:col-span-8">
+
             {/* Subjects / Class Allocation Widget (for Teachers & Academic Staff) */}
             {userRole !== "STUDENT_PARENT" && userRole !== "ACCOUNTANT" && (
               <SubjectsCard subjects={assignedSubjects} />
             )}
 
             {/* Quick Actions Matrix Customized by Role */}
-            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
-              <h3 className="font-bold text-sm text-slate-800 mb-3 flex items-center justify-between">
-                <span>Authorized Workspace Actions</span>
-                <span className="text-[10px] text-slate-400 font-normal">Filtered by Role Tier</span>
-              </h3>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <section className="rounded-2xl border border-hairline bg-surface p-5 shadow-2xs sm:p-6">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="font-display text-base font-extrabold tracking-tight text-ink">
+                  Authorized workspace actions
+                </h3>
+                <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                  Filtered by role tier
+                </span>
+              </div>
+
+              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {/* Actions for SUPER_ADMIN & EXAM_OFFICER */}
                 {(userRole === "SUPER_ADMIN" || userRole === "EXAM_OFFICER") && (
                   <>
                     <Link
                       href="/operations/update-ca"
-                      className="p-4 bg-slate-50 hover:bg-blue-50/50 border border-slate-200 rounded-xl transition-all group flex items-start gap-3.5"
+                      className="group flex items-start gap-3.5 rounded-xl border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-brand-200 hover:bg-brand-50/60"
                     >
-                      <div className="p-2.5 rounded-lg bg-blue-100 text-blue-700 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                        <FileText className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-blue-600">Update Continuous Assessment</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Input test scores, assignments, and practical marks</p>
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 ring-1 ring-inset ring-brand-100 transition-colors duration-150 group-hover:bg-brand-600 group-hover:text-white group-hover:ring-brand-600">
+                        <FileText className="h-4.5 w-4.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-display text-[13px] font-bold leading-snug tracking-tight text-ink transition-colors duration-150 group-hover:text-brand-700">
+                            Update Continuous Assessment
+                          </h4>
+                          <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-colors duration-150 group-hover:text-brand-600" strokeWidth={2} />
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-muted">Input test scores, assignments, and practical marks</p>
                       </div>
                     </Link>
 
                     <Link
                       href="/setup/ca-structure"
-                      className="p-4 bg-slate-50 hover:bg-purple-50/50 border border-slate-200 rounded-xl transition-all group flex items-start gap-3.5"
+                      className="group flex items-start gap-3.5 rounded-xl border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-azure-200 hover:bg-azure-50/60"
                     >
-                      <div className="p-2.5 rounded-lg bg-purple-100 text-purple-700 group-hover:bg-purple-600 group-hover:text-white transition-colors">
-                        <Layers className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-purple-600">CA Tier Structures</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Assign max marks for Play, Nursery, Primary & Secondary</p>
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-azure-50 text-azure-600 ring-1 ring-inset ring-azure-100 transition-colors duration-150 group-hover:bg-azure-600 group-hover:text-white group-hover:ring-azure-600">
+                        <Layers className="h-4.5 w-4.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-display text-[13px] font-bold leading-snug tracking-tight text-ink transition-colors duration-150 group-hover:text-azure-700">
+                            CA Tier Structures
+                          </h4>
+                          <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-colors duration-150 group-hover:text-azure-600" strokeWidth={2} />
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-muted">Assign max marks for Play, Nursery, Primary &amp; Secondary</p>
                       </div>
                     </Link>
 
                     <Link
                       href="/operations/score-card"
-                      className="p-4 bg-slate-50 hover:bg-indigo-50/50 border border-slate-200 rounded-xl transition-all group flex items-start gap-3.5"
+                      className="group flex items-start gap-3.5 rounded-xl border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-accent-200 hover:bg-accent-50/60"
                     >
-                      <div className="p-2.5 rounded-lg bg-indigo-100 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                        <GraduationCap className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-indigo-600">Generate Score Cards</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Compile term grades, position sheets & newsletters</p>
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-accent-50 text-accent-600 ring-1 ring-inset ring-accent-100 transition-colors duration-150 group-hover:bg-accent-600 group-hover:text-white group-hover:ring-accent-600">
+                        <GraduationCap className="h-4.5 w-4.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-display text-[13px] font-bold leading-snug tracking-tight text-ink transition-colors duration-150 group-hover:text-accent-700">
+                            Generate Score Cards
+                          </h4>
+                          <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-colors duration-150 group-hover:text-accent-600" strokeWidth={2} />
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-muted">Compile term grades, position sheets &amp; newsletters</p>
                       </div>
                     </Link>
 
                     <Link
                       href="/cbt"
-                      className="p-4 bg-slate-50 hover:bg-amber-50/50 border border-slate-200 rounded-xl transition-all group flex items-start gap-3.5"
+                      className="group flex items-start gap-3.5 rounded-xl border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-amber-200 hover:bg-amber-50/60"
                     >
-                      <div className="p-2.5 rounded-lg bg-amber-100 text-amber-800 group-hover:bg-amber-500 group-hover:text-slate-950 transition-colors">
-                        <Laptop className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-amber-800">CBT Examination Engine</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Manage online questions, tests & invigilation</p>
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-100 transition-colors duration-150 group-hover:bg-amber-600 group-hover:text-white group-hover:ring-amber-600">
+                        <Laptop className="h-4.5 w-4.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-display text-[13px] font-bold leading-snug tracking-tight text-ink transition-colors duration-150 group-hover:text-amber-800">
+                            CBT Examination Engine
+                          </h4>
+                          <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-colors duration-150 group-hover:text-amber-700" strokeWidth={2} />
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-muted">Manage online questions, tests &amp; invigilation</p>
                       </div>
                     </Link>
                   </>
@@ -193,53 +227,73 @@ export default function DashboardHome() {
                   <>
                     <Link
                       href="/operations/update-ca"
-                      className="p-4 bg-slate-50 hover:bg-blue-50/50 border border-slate-200 rounded-xl transition-all group flex items-start gap-3.5"
+                      className="group flex items-start gap-3.5 rounded-xl border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-brand-200 hover:bg-brand-50/60"
                     >
-                      <div className="p-2.5 rounded-lg bg-blue-100 text-blue-700 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                        <FileText className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-blue-600">Enter Class CA Scores</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Record continuous assessment marks for assigned students</p>
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 ring-1 ring-inset ring-brand-100 transition-colors duration-150 group-hover:bg-brand-600 group-hover:text-white group-hover:ring-brand-600">
+                        <FileText className="h-4.5 w-4.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-display text-[13px] font-bold leading-snug tracking-tight text-ink transition-colors duration-150 group-hover:text-brand-700">
+                            Enter Class CA Scores
+                          </h4>
+                          <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-colors duration-150 group-hover:text-brand-600" strokeWidth={2} />
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-muted">Record continuous assessment marks for assigned students</p>
                       </div>
                     </Link>
 
                     <Link
                       href="/operations/traits-assessments"
-                      className="p-4 bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 rounded-xl transition-all group flex items-start gap-3.5"
+                      className="group flex items-start gap-3.5 rounded-xl border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-emerald-200 hover:bg-emerald-50/60"
                     >
-                      <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-700 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-                        <Award className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-emerald-600">Traits & Psychomotor Rubric</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Rate affective behaviors and practical skills</p>
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-100 transition-colors duration-150 group-hover:bg-emerald-600 group-hover:text-white group-hover:ring-emerald-600">
+                        <Award className="h-4.5 w-4.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-display text-[13px] font-bold leading-snug tracking-tight text-ink transition-colors duration-150 group-hover:text-emerald-700">
+                            Traits &amp; Psychomotor Rubric
+                          </h4>
+                          <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-colors duration-150 group-hover:text-emerald-600" strokeWidth={2} />
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-muted">Rate affective behaviors and practical skills</p>
                       </div>
                     </Link>
 
                     <Link
                       href="/operations/score-card"
-                      className="p-4 bg-slate-50 hover:bg-indigo-50/50 border border-slate-200 rounded-xl transition-all group flex items-start gap-3.5"
+                      className="group flex items-start gap-3.5 rounded-xl border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-accent-200 hover:bg-accent-50/60"
                     >
-                      <div className="p-2.5 rounded-lg bg-indigo-100 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                        <GraduationCap className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-indigo-600">Class Score Cards</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Inspect terminal scores and class report cards</p>
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-accent-50 text-accent-600 ring-1 ring-inset ring-accent-100 transition-colors duration-150 group-hover:bg-accent-600 group-hover:text-white group-hover:ring-accent-600">
+                        <GraduationCap className="h-4.5 w-4.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-display text-[13px] font-bold leading-snug tracking-tight text-ink transition-colors duration-150 group-hover:text-accent-700">
+                            Class Score Cards
+                          </h4>
+                          <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-colors duration-150 group-hover:text-accent-600" strokeWidth={2} />
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-muted">Inspect terminal scores and class report cards</p>
                       </div>
                     </Link>
 
                     <Link
                       href="/cbt"
-                      className="p-4 bg-slate-50 hover:bg-amber-50/50 border border-slate-200 rounded-xl transition-all group flex items-start gap-3.5"
+                      className="group flex items-start gap-3.5 rounded-xl border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-amber-200 hover:bg-amber-50/60"
                     >
-                      <div className="p-2.5 rounded-lg bg-amber-100 text-amber-800 group-hover:bg-amber-500 group-hover:text-slate-950 transition-colors">
-                        <Laptop className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-amber-800">CBT Questions & Monitor</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Contribute questions and monitor active sessions</p>
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-100 transition-colors duration-150 group-hover:bg-amber-600 group-hover:text-white group-hover:ring-amber-600">
+                        <Laptop className="h-4.5 w-4.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-display text-[13px] font-bold leading-snug tracking-tight text-ink transition-colors duration-150 group-hover:text-amber-800">
+                            CBT Questions &amp; Monitor
+                          </h4>
+                          <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-colors duration-150 group-hover:text-amber-700" strokeWidth={2} />
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-muted">Contribute questions and monitor active sessions</p>
                       </div>
                     </Link>
                   </>
@@ -250,53 +304,73 @@ export default function DashboardHome() {
                   <>
                     <Link
                       href="/accounts/invoicing"
-                      className="p-4 bg-slate-50 hover:bg-amber-50/50 border border-slate-200 rounded-xl transition-all group flex items-start gap-3.5"
+                      className="group flex items-start gap-3.5 rounded-xl border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-amber-200 hover:bg-amber-50/60"
                     >
-                      <div className="p-2.5 rounded-lg bg-amber-100 text-amber-700 group-hover:bg-amber-600 group-hover:text-white transition-colors">
-                        <Receipt className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-amber-600">Generate Student Invoices</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Bill enrolled students by class and fee schedule</p>
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-100 transition-colors duration-150 group-hover:bg-amber-600 group-hover:text-white group-hover:ring-amber-600">
+                        <Receipt className="h-4.5 w-4.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-display text-[13px] font-bold leading-snug tracking-tight text-ink transition-colors duration-150 group-hover:text-amber-800">
+                            Generate Student Invoices
+                          </h4>
+                          <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-colors duration-150 group-hover:text-amber-700" strokeWidth={2} />
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-muted">Bill enrolled students by class and fee schedule</p>
                       </div>
                     </Link>
 
                     <Link
                       href="/accounts/payment"
-                      className="p-4 bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 rounded-xl transition-all group flex items-start gap-3.5"
+                      className="group flex items-start gap-3.5 rounded-xl border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-emerald-200 hover:bg-emerald-50/60"
                     >
-                      <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-700 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-                        <CreditCard className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-emerald-600">Record Fee Payments</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Issue payment receipts and update ledger</p>
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-100 transition-colors duration-150 group-hover:bg-emerald-600 group-hover:text-white group-hover:ring-emerald-600">
+                        <CreditCard className="h-4.5 w-4.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-display text-[13px] font-bold leading-snug tracking-tight text-ink transition-colors duration-150 group-hover:text-emerald-700">
+                            Record Fee Payments
+                          </h4>
+                          <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-colors duration-150 group-hover:text-emerald-600" strokeWidth={2} />
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-muted">Issue payment receipts and update ledger</p>
                       </div>
                     </Link>
 
                     <Link
                       href="/setup/fees"
-                      className="p-4 bg-slate-50 hover:bg-blue-50/50 border border-slate-200 rounded-xl transition-all group flex items-start gap-3.5"
+                      className="group flex items-start gap-3.5 rounded-xl border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-brand-200 hover:bg-brand-50/60"
                     >
-                      <div className="p-2.5 rounded-lg bg-blue-100 text-blue-700 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                        <Settings2 className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-blue-600">Fee Structure Setup</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Manage tuition, development, and optional fee items</p>
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 ring-1 ring-inset ring-brand-100 transition-colors duration-150 group-hover:bg-brand-600 group-hover:text-white group-hover:ring-brand-600">
+                        <Settings2 className="h-4.5 w-4.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-display text-[13px] font-bold leading-snug tracking-tight text-ink transition-colors duration-150 group-hover:text-brand-700">
+                            Fee Structure Setup
+                          </h4>
+                          <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-colors duration-150 group-hover:text-brand-600" strokeWidth={2} />
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-muted">Manage tuition, development, and optional fee items</p>
                       </div>
                     </Link>
 
                     <Link
                       href="/accounts/transactions"
-                      className="p-4 bg-slate-50 hover:bg-purple-50/50 border border-slate-200 rounded-xl transition-all group flex items-start gap-3.5"
+                      className="group flex items-start gap-3.5 rounded-xl border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-slate-300 hover:bg-slate-100/70"
                     >
-                      <div className="p-2.5 rounded-lg bg-purple-100 text-purple-700 group-hover:bg-purple-600 group-hover:text-white transition-colors">
-                        <FileText className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-purple-600">Audit & Transactions</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Reconcile payments and track income streams</p>
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200 transition-colors duration-150 group-hover:bg-slate-700 group-hover:text-white group-hover:ring-slate-700">
+                        <FileText className="h-4.5 w-4.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-display text-[13px] font-bold leading-snug tracking-tight text-ink transition-colors duration-150 group-hover:text-slate-700">
+                            Audit &amp; Transactions
+                          </h4>
+                          <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-colors duration-150 group-hover:text-slate-600" strokeWidth={2} />
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-muted">Reconcile payments and track income streams</p>
                       </div>
                     </Link>
                   </>
@@ -307,85 +381,108 @@ export default function DashboardHome() {
                   <>
                     <Link
                       href="/operations/score-card"
-                      className="p-4 bg-slate-50 hover:bg-blue-50/50 border border-slate-200 rounded-xl transition-all group flex items-start gap-3.5"
+                      className="group flex items-start gap-3.5 rounded-xl border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-accent-200 hover:bg-accent-50/60"
                     >
-                      <div className="p-2.5 rounded-lg bg-blue-100 text-blue-700 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                        <GraduationCap className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-blue-600">View Terminal Score Card</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Access official report card, grades, and teacher remarks</p>
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-accent-50 text-accent-600 ring-1 ring-inset ring-accent-100 transition-colors duration-150 group-hover:bg-accent-600 group-hover:text-white group-hover:ring-accent-600">
+                        <GraduationCap className="h-4.5 w-4.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-display text-[13px] font-bold leading-snug tracking-tight text-ink transition-colors duration-150 group-hover:text-accent-700">
+                            View Terminal Score Card
+                          </h4>
+                          <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-colors duration-150 group-hover:text-accent-600" strokeWidth={2} />
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-muted">Access official report card, grades, and teacher remarks</p>
                       </div>
                     </Link>
 
                     <Link
                       href="/cbt"
-                      className="p-4 bg-slate-50 hover:bg-amber-50/50 border border-slate-200 rounded-xl transition-all group flex items-start gap-3.5"
+                      className="group flex items-start gap-3.5 rounded-xl border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-amber-200 hover:bg-amber-50/60"
                     >
-                      <div className="p-2.5 rounded-lg bg-amber-100 text-amber-800 group-hover:bg-amber-500 group-hover:text-slate-950 transition-colors">
-                        <Laptop className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-amber-800">CBT Online Exam Room</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Take scheduled continuous assessments and tests</p>
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-100 transition-colors duration-150 group-hover:bg-amber-600 group-hover:text-white group-hover:ring-amber-600">
+                        <Laptop className="h-4.5 w-4.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-display text-[13px] font-bold leading-snug tracking-tight text-ink transition-colors duration-150 group-hover:text-amber-800">
+                            CBT Online Exam Room
+                          </h4>
+                          <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-colors duration-150 group-hover:text-amber-700" strokeWidth={2} />
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-muted">Take scheduled continuous assessments and tests</p>
                       </div>
                     </Link>
 
                     <Link
                       href="/accounts/invoicing"
-                      className="p-4 bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 rounded-xl transition-all group flex items-start gap-3.5"
+                      className="group flex items-start gap-3.5 rounded-xl border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-emerald-200 hover:bg-emerald-50/60"
                     >
-                      <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-700 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-                        <Receipt className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-emerald-600">Fee Invoices & Receipts</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">View tuition breakdown and payment verification</p>
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-100 transition-colors duration-150 group-hover:bg-emerald-600 group-hover:text-white group-hover:ring-emerald-600">
+                        <Receipt className="h-4.5 w-4.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-display text-[13px] font-bold leading-snug tracking-tight text-ink transition-colors duration-150 group-hover:text-emerald-700">
+                            Fee Invoices &amp; Receipts
+                          </h4>
+                          <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-colors duration-150 group-hover:text-emerald-600" strokeWidth={2} />
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-muted">View tuition breakdown and payment verification</p>
                       </div>
                     </Link>
 
                     <Link
                       href="/inmail"
-                      className="p-4 bg-slate-50 hover:bg-purple-50/50 border border-slate-200 rounded-xl transition-all group flex items-start gap-3.5"
+                      className="group flex items-start gap-3.5 rounded-xl border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-azure-200 hover:bg-azure-50/60"
                     >
-                      <div className="p-2.5 rounded-lg bg-purple-100 text-purple-700 group-hover:bg-purple-600 group-hover:text-white transition-colors">
-                        <Mail className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900 group-hover:text-purple-600">Memo Drafts</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Write a memo on this machine — nothing is sent</p>
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-azure-50 text-azure-600 ring-1 ring-inset ring-azure-100 transition-colors duration-150 group-hover:bg-azure-600 group-hover:text-white group-hover:ring-azure-600">
+                        <Mail className="h-4.5 w-4.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-display text-[13px] font-bold leading-snug tracking-tight text-ink transition-colors duration-150 group-hover:text-azure-700">
+                            Memo Drafts
+                          </h4>
+                          <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-colors duration-150 group-hover:text-azure-600" strokeWidth={2} />
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-muted">Write a memo on this machine — nothing is sent</p>
                       </div>
                     </Link>
                   </>
                 )}
               </div>
-            </div>
+            </section>
 
             {/* Memo draft pad — deliberately not a mailbox */}
-            <div className="bg-gradient-to-r from-blue-900 to-indigo-950 text-white p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
-              <div className="space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-300 bg-cyan-400/20 px-2.5 py-0.5 rounded-full border border-cyan-400/30">
+            <div className="texture-grid-light relative flex flex-col items-start justify-between gap-4 overflow-hidden rounded-2xl bg-gradient-to-br from-brand-800 via-brand-900 to-night-900 p-5 text-white shadow-lg ring-1 ring-inset ring-white/10 sm:flex-row sm:items-center sm:p-6">
+              <div className="relative space-y-2">
+                <span className="inline-flex rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-brand-200">
                   Memo draft pad
                 </span>
-                <h4 className="text-base font-bold">Write it here, send it yourself</h4>
-                <p className="text-xs text-blue-200/80">
+                <h4 className="font-display text-base font-extrabold tracking-tight text-white">
+                  Write it here, send it yourself
+                </h4>
+                <p className="max-w-xl text-[12px] leading-relaxed text-white/65">
                   Drafts stay on the machine that wrote them. The portal sends no messages: copy the memo into the
                   school&apos;s email, print it, or make the call.
                 </p>
               </div>
               <Link
                 href="/inmail"
-                className="px-4 py-2.5 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5"
+                className="group relative inline-flex min-h-11 flex-shrink-0 items-center gap-2 rounded-xl bg-accent-600 px-4 font-display text-[13px] font-bold tracking-tight text-white transition-colors duration-150 hover:bg-accent-700"
               >
-                <Mail className="w-4 h-4" />
+                <Mail className="h-4 w-4" strokeWidth={2} />
                 <span>Open the pad</span>
+                <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-150 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" strokeWidth={2} />
               </Link>
             </div>
 
           </div>
 
           {/* Right Column: Today's duties, then the live presence widget */}
-          <div className="lg:col-span-1 space-y-6">
+          <div className="flex flex-col gap-6 lg:col-span-4">
             <TodayDutyPanel />
             <UsersOnlineWidget />
           </div>

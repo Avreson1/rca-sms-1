@@ -357,7 +357,7 @@ export default function TraitsAssessmentsPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <Link href="/" className="hover:text-blue-600 flex items-center gap-1">
+              <Link href="/" className="flex min-h-6 items-center gap-1 hover:text-blue-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -385,7 +385,7 @@ export default function TraitsAssessmentsPage() {
               type="button"
               onClick={handleFileClass}
               disabled={filing}
-              className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-500 text-white rounded-lg transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4" />
               {filing ? "Filing this class…" : "File this class into the school's records"}
@@ -499,7 +499,7 @@ export default function TraitsAssessmentsPage() {
             <select
               value={selectedClass}
               onChange={(e) => setSelectedClass(e.target.value)}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-[#0000FF] focus:outline-hidden"
+              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-brand-600 focus:outline-hidden"
             >
               {accessibleClasses.map((c) => (
                 <option key={c.id} value={c.name}>
@@ -527,27 +527,27 @@ export default function TraitsAssessmentsPage() {
         </div>
 
         {/* Quick Batch Toolbar & Rating Scale Guide */}
-        <div className="bg-slate-900 text-white rounded-2xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+        <div className="texture-grid-light relative overflow-hidden rounded-2xl border border-white/10 bg-brand-950 p-5 text-white shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="relative space-y-2">
+            <h3 className="text-xs font-bold uppercase tracking-[0.1em] text-accent-300 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5" />
               Rating Scale Keys (Standard 5-Point System)
             </h3>
             <div className="flex items-center gap-2 flex-wrap text-[11px]">
-              <span className="bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 px-2 py-0.5 rounded font-semibold">5 = Excellent / Exemplary</span>
-              <span className="bg-blue-950/80 text-blue-300 border border-blue-700/60 px-2 py-0.5 rounded font-semibold">4 = Very Good / Proficient</span>
-              <span className="bg-indigo-950/80 text-indigo-300 border border-indigo-700/60 px-2 py-0.5 rounded font-semibold">3 = Good / Satisfactory</span>
-              <span className="bg-amber-950/80 text-amber-300 border border-amber-700/60 px-2 py-0.5 rounded font-semibold">2 = Fair / Developing</span>
-              <span className="bg-rose-950/80 text-rose-300 border border-rose-700/60 px-2 py-0.5 rounded font-semibold">1 = Poor / Needs Support</span>
+              <span className="bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 px-2 py-0.5 rounded font-semibold">5 = Excellent / Exemplary</span>
+              <span className="bg-azure-500/15 text-azure-300 border border-azure-400/30 px-2 py-0.5 rounded font-semibold">4 = Very Good / Proficient</span>
+              <span className="bg-white/10 text-white/85 border border-white/20 px-2 py-0.5 rounded font-semibold">3 = Good / Satisfactory</span>
+              <span className="bg-amber-500/15 text-amber-300 border border-amber-400/30 px-2 py-0.5 rounded font-semibold">2 = Fair / Developing</span>
+              <span className="bg-accent-500/15 text-accent-300 border border-accent-400/30 px-2 py-0.5 rounded font-semibold">1 = Poor / Needs Support</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap self-start md:self-auto">
-            <span className="text-xs text-slate-400 font-semibold">Quick Batch:</span>
+          <div className="relative flex items-center gap-2 flex-wrap self-start md:self-auto">
+            <span className="text-xs text-white/60 font-semibold">Quick Batch:</span>
             <button
               type="button"
               onClick={() => handleBatchPreset(5)}
-              className="px-2.5 py-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors cursor-pointer"
+              className="px-3 min-h-9 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors duration-150 cursor-pointer"
               title="Set all students in this class to 5 (Excellent)"
             >
               All 5 (Excellent)
@@ -555,7 +555,7 @@ export default function TraitsAssessmentsPage() {
             <button
               type="button"
               onClick={() => handleBatchPreset(4)}
-              className="px-2.5 py-1 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors cursor-pointer"
+              className="px-3 min-h-9 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-lg transition-colors duration-150 cursor-pointer"
               title="Set all students in this class to 4 (Very Good)"
             >
               All 4 (Very Good)

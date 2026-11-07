@@ -103,20 +103,3 @@ export const ALL_SCHOOL_SECTIONS = [
     gradingModel: "WAEC_NECO_9POINT",
   },
 ] as const;
-
-export const COLOR_THEMES = {
-  SCHEME_1: {
-    name: "Scheme 1 (Vibrant Royal & Academic Contrast)",
-    primary: "#0000FF", // 60% Royal Blue
-    secondary: "#00FFFF", // 25% Cyan / Sky Blue
-    accent: "#FF0000", // 10% Vivid Red
-    surface: "#FFFFFF", // 5% Pure White
-  },
-  SCHEME_2: {
-    name: "Scheme 2 (Deep Corporate & Print Tone - Alternate)",
-    primary: "#0B2F9E", // 60% Deep Navy
-    secondary: "#FF00FF", // 25% Bright Magenta
-    accent: "#D90429", // 10% Crimson Red
-    surface: "#F8F9FA", // 5% Off-White / Cream
-  },
-} as const;

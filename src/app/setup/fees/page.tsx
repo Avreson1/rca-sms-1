@@ -151,7 +151,7 @@ export default function SetupFeesPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <Link href="/" className="hover:text-blue-600 flex items-center gap-1">
+              <Link href="/" className="flex min-h-6 items-center gap-1 hover:text-blue-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -229,32 +229,32 @@ export default function SetupFeesPage() {
         )}
 
         {/* Total Fee Banner */}
-        <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-md border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
+        <div className="texture-grid-light relative overflow-hidden rounded-2xl border border-white/10 bg-brand-950 p-6 text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="relative">
+            <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-emerald-300 bg-emerald-500/12 px-2 py-0.5 rounded border border-emerald-400/25">
               Term bill for: {previewClass}
             </span>
-            <h2 className="text-3xl font-black text-white mt-1">
+            <h2 className="font-display text-3xl font-extrabold tracking-tight text-white mt-2 tabular-nums">
               ₦{preview.total.toLocaleString()}{" "}
-              <span className="text-xs font-normal text-slate-400">per student ({preview.items.length} item chargeable)</span>
+              <span className="text-xs font-medium text-white/55">per student ({preview.items.length} item chargeable)</span>
             </h2>
-            <p className="text-xs text-slate-300 mt-1">
-              Session: <strong className="text-white">{scope.session}</strong> • Term:{" "}
-              <strong className="text-emerald-400">{scope.term}</strong>
+            <p className="text-xs text-white/70 mt-1.5">
+              Session: <strong className="font-semibold text-white">{scope.session}</strong> • Term:{" "}
+              <strong className="font-semibold text-emerald-300">{scope.term}</strong>
             </p>
-            <p className="text-[10px] text-slate-400 mt-1">
+            <p className="text-[11px] leading-relaxed text-white/55 mt-1.5 max-w-xl">
               A pupil is charged only the items aimed at their class or level, not the whole list. The full schedule
               comes to ₦{scheduleTotal.toLocaleString()} across {fees.length} item{fees.length === 1 ? "" : "s"}.
             </p>
           </div>
 
-          <div className="bg-slate-800 border border-slate-700 p-4 rounded-xl text-xs space-y-2 w-full sm:w-auto">
-            <label className="block text-slate-400">
+          <div className="relative bg-white/6 border border-white/12 p-4 rounded-xl text-xs space-y-2.5 w-full sm:w-auto">
+            <label className="block text-white/60 font-medium">
               Check a class&apos;s bill
               <select
                 value={previewClass}
                 onChange={(e) => setPreviewClass(e.target.value)}
-                className="mt-1 w-full sm:w-44 bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white font-semibold"
+                className="mt-1.5 w-full sm:w-44 min-h-10 bg-night-900 border border-white/15 rounded-lg px-2 text-white font-semibold [color-scheme:dark] focus:border-brand-400 focus:outline-none"
               >
                 <option value="All Classes">All Classes (whole list)</option>
                 {classes.map((c) => (
@@ -264,8 +264,8 @@ export default function SetupFeesPage() {
                 ))}
               </select>
             </label>
-            <p className="text-slate-400">
-              Currency: <strong className="text-emerald-400">Nigerian Naira (NGN - ₦)</strong>
+            <p className="text-white/60">
+              Currency: <strong className="font-semibold text-emerald-300">Nigerian Naira (NGN - ₦)</strong>
             </p>
           </div>
         </div>

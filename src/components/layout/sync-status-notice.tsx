@@ -25,14 +25,14 @@ export function SyncStatusNotice() {
     <div
       role="status"
       aria-live="polite"
-      className={`fixed bottom-4 right-4 z-50 max-w-[calc(100vw-2rem)] sm:max-w-sm rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-md ${
-        failed ? "border-rose-300 bg-rose-50/95 text-rose-900 shadow-rose-950/10" : "border-emerald-300 bg-emerald-50/95 text-emerald-900 shadow-emerald-950/10"
+      className={`fixed bottom-4 right-4 z-50 max-w-[calc(100vw-2rem)] sm:max-w-sm rounded-xl border px-4 py-3 shadow-lg backdrop-blur-md ${
+        failed ? "border-accent-200 bg-accent-50/96 text-accent-900" : "border-emerald-200 bg-emerald-50/96 text-emerald-900"
       }`}
     >
       <div className="flex items-start gap-3">
-        {failed ? <CloudOff className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />}
-        <div className="min-w-0 space-y-0.5">
-          <p className="text-[10px] font-black uppercase tracking-widest">{failed ? "Not saved to the server" : "Saved"}</p>
+        {failed ? <CloudOff className="mt-0.5 h-4 w-4 shrink-0 text-accent-600" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />}
+        <div className="min-w-0 space-y-1">
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em]">{failed ? "Not saved to the server" : "Saved"}</p>
           <p className="text-xs font-semibold leading-relaxed break-words">{snapshot.message}</p>
         </div>
         {failed && (
@@ -40,7 +40,7 @@ export function SyncStatusNotice() {
             type="button"
             aria-label="Dismiss this warning"
             onClick={dismissSyncNotice}
-            className="ml-auto shrink-0 rounded-lg p-1 text-rose-500 transition-colors hover:bg-rose-100 hover:text-rose-700"
+            className="-mr-1 ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-accent-600 transition-colors hover:bg-accent-100 hover:text-accent-700"
           >
             <X className="h-4 w-4" />
           </button>

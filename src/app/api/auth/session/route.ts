@@ -9,6 +9,8 @@ export async function GET() {
   const cookieStore = await cookies();
   const session = secret ? await verifySessionToken(cookieStore.get(SESSION_COOKIE)?.value, secret) : null;
 
-  if (!session) return NextResponse.json({ success: false, user: null }, { status: 401 });
+  // "Nobody is signed in" is an answer, not a failure: a 401 here made every
+  // public page log a console error on load.
+  if (!session) return NextResponse.json({ success: false, user: null });
   return NextResponse.json({ success: true, user: session });
 }

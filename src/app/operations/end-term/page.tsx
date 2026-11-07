@@ -243,7 +243,7 @@ export default function EndTermOperationsPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <Link href="/" className="hover:text-blue-600 flex items-center gap-1">
+              <Link href="/" className="flex min-h-6 items-center gap-1 hover:text-blue-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -284,14 +284,14 @@ export default function EndTermOperationsPage() {
           </div>
         </div>
 
-        <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-md border border-slate-800">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/20 px-2 py-0.5 rounded border border-blue-500/30">
+        <div className="texture-grid-light relative overflow-hidden rounded-2xl border border-white/10 bg-brand-950 p-6 text-white shadow-lg">
+          <span className="relative text-[10px] font-bold uppercase tracking-[0.1em] text-brand-200 bg-white/10 px-2 py-0.5 rounded border border-white/15">
             The school is on
           </span>
-          <h2 className="text-2xl font-black text-white mt-1">
+          <h2 className="relative font-display text-2xl font-extrabold tracking-tight text-white mt-2">
             {selectedTerm} — session {session}
           </h2>
-          <p className="text-xs text-slate-300 mt-1">
+          <p className="relative text-xs leading-relaxed text-white/70 mt-1.5">
             {usingDefaults && !config ? (
               <span className="text-amber-300">
                 This is the term built into the portal, not the one read from the school&apos;s records. The settings

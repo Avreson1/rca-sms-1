@@ -1,0 +1,327 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" role="img" aria-label="Illustration of the Royal Crown Academy campus at morning light">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1b4f9c"/>
+      <stop offset="34%" stop-color="#5b93d6"/>
+      <stop offset="66%" stop-color="#a8c8e8"/>
+      <stop offset="100%" stop-color="#f3e3c8"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.24" cy="0.3" r="0.42">
+      <stop offset="0%" stop-color="#fff6df" stop-opacity="0.95"/>
+      <stop offset="38%" stop-color="#ffe6b0" stop-opacity="0.42"/>
+      <stop offset="100%" stop-color="#ffdca0" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="hillFar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7d9dc4"/>
+      <stop offset="100%" stop-color="#9db8d6"/>
+    </linearGradient>
+    <linearGradient id="hillNear" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4f7396"/>
+      <stop offset="100%" stop-color="#6d8dab"/>
+    </linearGradient>
+    <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fdfaf3"/>
+      <stop offset="58%" stop-color="#f0e9dc"/>
+      <stop offset="100%" stop-color="#d9d0c0"/>
+    </linearGradient>
+    <linearGradient id="wallShade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e6ddcd"/>
+      <stop offset="100%" stop-color="#c3b8a5"/>
+    </linearGradient>
+    <linearGradient id="roof" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2a4f8f"/>
+      <stop offset="100%" stop-color="#16305e"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2f5f9e"/>
+      <stop offset="46%" stop-color="#1b3f74"/>
+      <stop offset="47%" stop-color="#4d7fbb"/>
+      <stop offset="100%" stop-color="#24507f"/>
+    </linearGradient>
+    <linearGradient id="veranda" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6b6355"/>
+      <stop offset="100%" stop-color="#9a9081"/>
+    </linearGradient>
+    <linearGradient id="court" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#cbbfa8"/>
+      <stop offset="42%" stop-color="#ddd3bf"/>
+      <stop offset="100%" stop-color="#efe7d8"/>
+    </linearGradient>
+    <linearGradient id="hedge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4d7a45"/>
+      <stop offset="100%" stop-color="#2f5730"/>
+    </linearGradient>
+    <linearGradient id="trunk" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#6d5b45"/>
+      <stop offset="45%" stop-color="#9c8768"/>
+      <stop offset="100%" stop-color="#5d4c39"/>
+    </linearGradient>
+    <linearGradient id="frond" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4f7f43"/>
+      <stop offset="100%" stop-color="#245128"/>
+    </linearGradient>
+    <radialGradient id="flamboyant" cx="0.4" cy="0.34" r="0.72">
+      <stop offset="0%" stop-color="#ff6a47"/>
+      <stop offset="52%" stop-color="#e02a10"/>
+      <stop offset="100%" stop-color="#8d2412"/>
+    </radialGradient>
+    <radialGradient id="vignette" cx="0.5" cy="0.46" r="0.78">
+      <stop offset="52%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#04102a" stop-opacity="0.5"/>
+    </radialGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+    <filter id="softer" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+    </filter>
+
+    <g id="window">
+      <rect x="0" y="0" width="46" height="62" rx="2" fill="#1034a6"/>
+      <rect x="4" y="4" width="38" height="54" fill="url(#glass)"/>
+      <rect x="22" y="4" width="2.5" height="54" fill="#1034a6" opacity="0.85"/>
+      <rect x="4" y="28" width="38" height="2.5" fill="#1034a6" opacity="0.85"/>
+      <rect x="-3" y="62" width="52" height="5" rx="1.5" fill="#e2d9c8"/>
+    </g>
+    <g id="windowSmall">
+      <rect x="0" y="0" width="34" height="46" rx="2" fill="#1034a6"/>
+      <rect x="3.5" y="3.5" width="27" height="39" fill="url(#glass)"/>
+      <rect x="16" y="3.5" width="2" height="39" fill="#1034a6" opacity="0.85"/>
+      <rect x="-2.5" y="46" width="39" height="4" rx="1.5" fill="#e2d9c8"/>
+    </g>
+    <g id="column">
+      <rect x="0" y="0" width="20" height="132" fill="#f6f0e4"/>
+      <rect x="14" y="0" width="6" height="132" fill="#cdc3b1"/>
+      <rect x="-4" y="-7" width="28" height="9" rx="2" fill="#fdfaf3"/>
+      <rect x="-5" y="130" width="30" height="10" rx="2" fill="#e7dfd0"/>
+    </g>
+    <g id="palm">
+      <path d="M0 0 C -5 -70 -9 -140 -16 -206" stroke="url(#trunk)" stroke-width="13" fill="none" stroke-linecap="round"/>
+      <g stroke-linecap="round" fill="none">
+        <path d="M-16 -206 C -60 -232 -104 -228 -138 -200" stroke="url(#frond)" stroke-width="11"/>
+        <path d="M-16 -206 C -54 -252 -96 -268 -136 -262" stroke="url(#frond)" stroke-width="10"/>
+        <path d="M-16 -206 C -22 -256 -12 -292 14 -316" stroke="url(#frond)" stroke-width="10"/>
+        <path d="M-16 -206 C 24 -244 66 -256 104 -244" stroke="url(#frond)" stroke-width="11"/>
+        <path d="M-16 -206 C 26 -216 70 -206 104 -178" stroke="url(#frond)" stroke-width="10"/>
+        <path d="M-16 -206 C -46 -190 -78 -166 -96 -134" stroke="#2c5a2e" stroke-width="9"/>
+        <path d="M-16 -206 C 12 -186 40 -160 54 -130" stroke="#2c5a2e" stroke-width="9"/>
+      </g>
+      <circle cx="-16" cy="-204" r="8" fill="#3d6b34"/>
+    </g>
+    <g id="figure">
+      <ellipse cx="0" cy="2" rx="9" ry="3" fill="#0b1c3a" opacity="0.22"/>
+      <rect x="-5" y="-22" width="10" height="16" rx="4" fill="#f7f4ec"/>
+      <rect x="-5" y="-8" width="10" height="10" rx="2" fill="#1d3f7d"/>
+      <circle cx="0" cy="-27" r="5" fill="#6b4a33"/>
+    </g>
+  </defs>
+
+  <!-- sky and light -->
+  <rect width="1600" height="900" fill="url(#sky)"/>
+  <rect width="1600" height="900" fill="url(#sun)"/>
+  <g filter="url(#soft)" opacity="0.5">
+    <ellipse cx="330" cy="150" rx="230" ry="26" fill="#ffffff"/>
+    <ellipse cx="760" cy="106" rx="290" ry="18" fill="#ffffff"/>
+    <ellipse cx="1250" cy="176" rx="250" ry="22" fill="#fff4dd"/>
+    <ellipse cx="1040" cy="238" rx="190" ry="14" fill="#ffffff"/>
+  </g>
+
+  <!-- the Jos plateau, two ridges back -->
+  <path d="M0 430 L0 372 C 120 336 214 350 320 322 C 430 292 520 330 640 316 C 760 302 850 340 980 326 C 1110 312 1230 344 1360 320 C 1460 302 1540 330 1600 316 L1600 430 Z" fill="url(#hillFar)" opacity="0.72"/>
+  <path d="M0 452 L0 404 C 150 380 260 402 400 386 C 540 370 660 400 800 392 C 940 384 1060 408 1200 392 C 1340 376 1470 400 1600 386 L1600 452 Z" fill="url(#hillNear)" opacity="0.8"/>
+  <rect x="0" y="418" width="1600" height="46" fill="#e8dcc4" opacity="0.35" filter="url(#softer)"/>
+
+  <!-- distant tree line -->
+  <g fill="#3f6350" opacity="0.55">
+    <circle cx="60" cy="428" r="26"/><circle cx="104" cy="434" r="20"/><circle cx="148" cy="426" r="24"/>
+    <circle cx="1452" cy="430" r="24"/><circle cx="1500" cy="424" r="28"/><circle cx="1552" cy="432" r="21"/>
+  </g>
+
+  <!-- ground plane -->
+  <rect x="0" y="440" width="1600" height="460" fill="url(#court)"/>
+
+  <!-- left wing -->
+  <g>
+    <rect x="96" y="356" width="330" height="176" fill="url(#wallShade)"/>
+    <path d="M76 356 L262 306 L446 356 Z" fill="url(#roof)"/>
+    <rect x="96" y="352" width="330" height="10" fill="#0f2a55"/>
+    <use href="#windowSmall" x="130" y="386"/>
+    <use href="#windowSmall" x="196" y="386"/>
+    <use href="#windowSmall" x="262" y="386"/>
+    <use href="#windowSmall" x="328" y="386"/>
+    <rect x="96" y="452" width="330" height="80" fill="#8d8474" opacity="0.55"/>
+    <g fill="#efe8da">
+      <rect x="122" y="452" width="15" height="80"/><rect x="196" y="452" width="15" height="80"/>
+      <rect x="270" y="452" width="15" height="80"/><rect x="344" y="452" width="15" height="80"/>
+    </g>
+  </g>
+
+  <!-- right wing -->
+  <g>
+    <rect x="1174" y="356" width="330" height="176" fill="url(#wallShade)"/>
+    <path d="M1154 356 L1340 306 L1524 356 Z" fill="url(#roof)"/>
+    <rect x="1174" y="352" width="330" height="10" fill="#0f2a55"/>
+    <use href="#windowSmall" x="1206" y="386"/>
+    <use href="#windowSmall" x="1272" y="386"/>
+    <use href="#windowSmall" x="1338" y="386"/>
+    <use href="#windowSmall" x="1404" y="386"/>
+    <rect x="1174" y="452" width="330" height="80" fill="#8d8474" opacity="0.55"/>
+    <g fill="#efe8da">
+      <rect x="1200" y="452" width="15" height="80"/><rect x="1274" y="452" width="15" height="80"/>
+      <rect x="1348" y="452" width="15" height="80"/><rect x="1422" y="452" width="15" height="80"/>
+    </g>
+  </g>
+
+  <!-- main academic block -->
+  <g>
+    <rect x="392" y="272" width="816" height="264" fill="url(#wall)"/>
+    <path d="M360 276 L800 196 L1240 276 Z" fill="url(#roof)"/>
+    <rect x="360" y="272" width="880" height="13" rx="2" fill="#0d2450"/>
+    <rect x="392" y="286" width="816" height="6" fill="#ffffff" opacity="0.5"/>
+    <rect x="392" y="392" width="816" height="9" fill="#e0d7c5"/>
+    <rect x="392" y="401" width="816" height="4" fill="#bdb2a0" opacity="0.7"/>
+
+    <!-- upper floor windows -->
+    <g>
+      <use href="#window" x="424" y="308"/><use href="#window" x="504" y="308"/>
+      <use href="#window" x="584" y="308"/><use href="#window" x="664" y="308"/>
+      <use href="#window" x="890" y="308"/><use href="#window" x="970" y="308"/>
+      <use href="#window" x="1050" y="308"/><use href="#window" x="1130" y="308"/>
+    </g>
+
+    <!-- shaded veranda -->
+    <rect x="392" y="405" width="816" height="131" fill="url(#veranda)"/>
+    <rect x="392" y="405" width="816" height="16" fill="#4e4739" opacity="0.55"/>
+    <g>
+      <use href="#column" x="416" y="404"/><use href="#column" x="512" y="404"/>
+      <use href="#column" x="608" y="404"/><use href="#column" x="704" y="404"/>
+      <use href="#column" x="876" y="404"/><use href="#column" x="972" y="404"/>
+      <use href="#column" x="1068" y="404"/><use href="#column" x="1164" y="404"/>
+    </g>
+    <!-- doorways behind the colonnade -->
+    <g fill="#2b3a55">
+      <rect x="462" y="440" width="34" height="92" rx="2"/>
+      <rect x="558" y="440" width="34" height="92" rx="2"/>
+      <rect x="654" y="440" width="34" height="92" rx="2"/>
+      <rect x="922" y="440" width="34" height="92" rx="2"/>
+      <rect x="1018" y="440" width="34" height="92" rx="2"/>
+      <rect x="1114" y="440" width="34" height="92" rx="2"/>
+    </g>
+    <g fill="#f3ece0" opacity="0.35">
+      <rect x="462" y="440" width="6" height="92"/><rect x="558" y="440" width="6" height="92"/>
+      <rect x="654" y="440" width="6" height="92"/><rect x="922" y="440" width="6" height="92"/>
+      <rect x="1018" y="440" width="6" height="92"/><rect x="1114" y="440" width="6" height="92"/>
+    </g>
+
+    <!-- steps -->
+    <path d="M700 536 L900 536 L924 560 L676 560 Z" fill="#ded4c1"/>
+    <path d="M676 560 L924 560 L946 582 L654 582 Z" fill="#e9e0cf"/>
+    <path d="M654 582 L946 582 L968 604 L632 604 Z" fill="#f2ead9"/>
+  </g>
+
+  <!-- central tower -->
+  <g>
+    <rect x="716" y="176" width="168" height="230" fill="url(#wall)"/>
+    <rect x="866" y="176" width="18" height="230" fill="#cdc3b1" opacity="0.75"/>
+    <path d="M698 180 L800 122 L902 180 Z" fill="url(#roof)"/>
+    <rect x="698" y="176" width="204" height="11" rx="2" fill="#0d2450"/>
+    <rect x="716" y="240" width="168" height="7" fill="#e0d7c5"/>
+    <!-- clock -->
+    <circle cx="800" cy="212" r="25" fill="#fdfaf3" stroke="#1034a6" stroke-width="4"/>
+    <circle cx="800" cy="212" r="2.6" fill="#1034a6"/>
+    <path d="M800 212 L800 196" stroke="#141a2e" stroke-width="3" stroke-linecap="round"/>
+    <path d="M800 212 L812 218" stroke="#e01b00" stroke-width="2.6" stroke-linecap="round"/>
+    <!-- louvred vent -->
+    <g fill="#1034a6" opacity="0.85">
+      <rect x="754" y="266" width="92" height="6" rx="3"/>
+      <rect x="754" y="280" width="92" height="6" rx="3"/>
+      <rect x="754" y="294" width="92" height="6" rx="3"/>
+    </g>
+    <!-- entrance -->
+    <path d="M762 406 L762 348 Q800 316 838 348 L838 406 Z" fill="#12305f"/>
+    <path d="M770 406 L770 352 Q800 326 830 352 L830 406 Z" fill="#1d4b8c"/>
+    <rect x="798" y="336" width="4" height="70" fill="#0d2450"/>
+    <rect x="744" y="404" width="112" height="9" rx="2" fill="#e7dfd0"/>
+    <!-- flag -->
+    <rect x="798" y="60" width="4" height="64" fill="#c9c2b4"/>
+    <path d="M802 64 L858 76 L802 92 Z" fill="#e01b00"/>
+    <circle cx="800" cy="58" r="5" fill="#f0e6d2"/>
+  </g>
+
+  <!-- hedges at the building line -->
+  <g>
+    <rect x="120" y="524" width="540" height="26" rx="12" fill="url(#hedge)"/>
+    <rect x="940" y="524" width="540" height="26" rx="12" fill="url(#hedge)"/>
+    <g fill="#5d8c4f" opacity="0.6">
+      <ellipse cx="200" cy="527" rx="42" ry="9"/><ellipse cx="330" cy="527" rx="46" ry="9"/>
+      <ellipse cx="470" cy="527" rx="44" ry="9"/><ellipse cx="600" cy="527" rx="40" ry="9"/>
+      <ellipse cx="1010" cy="527" rx="44" ry="9"/><ellipse cx="1150" cy="527" rx="46" ry="9"/>
+      <ellipse cx="1290" cy="527" rx="42" ry="9"/><ellipse cx="1420" cy="527" rx="40" ry="9"/>
+    </g>
+  </g>
+
+  <!-- assembly lines, painted in perspective -->
+  <g stroke="#ffffff" fill="none" opacity="0.62" stroke-linecap="round">
+    <path d="M632 616 L392 900" stroke-width="6"/>
+    <path d="M712 616 L620 900" stroke-width="6"/>
+    <path d="M800 618 L800 900" stroke-width="7"/>
+    <path d="M888 616 L980 900" stroke-width="6"/>
+    <path d="M968 616 L1208 900" stroke-width="6"/>
+  </g>
+  <g stroke="#1034a6" fill="none" opacity="0.2" stroke-linecap="round">
+    <path d="M470 700 L1130 700" stroke-width="4"/>
+    <path d="M392 790 L1208 790" stroke-width="5"/>
+  </g>
+  <ellipse cx="800" cy="660" rx="120" ry="26" fill="#ffffff" opacity="0.18"/>
+
+  <!-- pupils crossing the court, small and out of focus -->
+  <g filter="url(#softer)" opacity="0.9">
+    <use href="#figure" x="556" y="600"/>
+    <use href="#figure" x="596" y="608"/>
+    <use href="#figure" x="1032" y="602"/>
+    <use href="#figure" x="1070" y="612"/>
+    <use href="#figure" x="820" y="586"/>
+  </g>
+  <g opacity="0.95">
+    <use href="#figure" x="356" y="704" transform="translate(356 704) scale(1.35) translate(-356 -704)"/>
+    <use href="#figure" x="1268" y="716" transform="translate(1268 716) scale(1.4) translate(-1268 -716)"/>
+  </g>
+
+  <!-- palms framing the court -->
+  <g opacity="0.96">
+    <use href="#palm" x="112" y="742" transform="translate(112 742) scale(1.5) translate(-112 -742)"/>
+    <use href="#palm" x="1520" y="700" transform="translate(1520 700) scale(1.25) translate(-1520 -700)"/>
+    <use href="#palm" x="252" y="580" transform="translate(252 580) scale(0.78) translate(-252 -580)"/>
+    <use href="#palm" x="1372" y="576" transform="translate(1372 576) scale(0.72) translate(-1372 -576)"/>
+  </g>
+
+  <!-- flamboyant in flower, the one warm note in the scene -->
+  <g>
+    <path d="M1444 620 C 1440 566 1436 528 1428 494" stroke="url(#trunk)" stroke-width="17" fill="none" stroke-linecap="round"/>
+    <path d="M1432 520 C 1408 500 1392 486 1378 462" stroke="#6d5b45" stroke-width="8" fill="none" stroke-linecap="round"/>
+    <path d="M1434 512 C 1462 494 1482 480 1498 458" stroke="#6d5b45" stroke-width="8" fill="none" stroke-linecap="round"/>
+    <g filter="url(#softer)">
+      <ellipse cx="1424" cy="440" rx="132" ry="72" fill="url(#flamboyant)"/>
+      <ellipse cx="1340" cy="464" rx="72" ry="44" fill="#c9240c" opacity="0.9"/>
+      <ellipse cx="1508" cy="458" rx="76" ry="46" fill="#d62d10" opacity="0.9"/>
+      <ellipse cx="1408" cy="404" rx="76" ry="40" fill="#ff6a47" opacity="0.55"/>
+    </g>
+    <g fill="#2f5730" opacity="0.5">
+      <ellipse cx="1372" cy="486" rx="46" ry="16"/>
+      <ellipse cx="1478" cy="490" rx="44" ry="15"/>
+    </g>
+    <ellipse cx="1444" cy="624" rx="60" ry="12" fill="#0b1c3a" opacity="0.14"/>
+  </g>
+
+  <!-- foreground grass verge -->
+  <path d="M0 848 C 220 826 420 858 640 850 C 900 840 1180 866 1600 838 L1600 900 L0 900 Z" fill="#5f7f4c" opacity="0.55"/>
+  <path d="M0 874 C 260 858 520 886 800 872 C 1080 858 1340 884 1600 866 L1600 900 L0 900 Z" fill="#3f6340" opacity="0.6"/>
+
+  <!-- atmosphere -->
+  <rect width="1600" height="900" fill="url(#vignette)"/>
+  <rect width="1600" height="900" filter="url(#grain)" opacity="0.07" style="mix-blend-mode:overlay"/>
+</svg>

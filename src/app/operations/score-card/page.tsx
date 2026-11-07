@@ -101,69 +101,45 @@ const TIER_DEFAULT_SUBJECTS: Record<string, string[]> = {
 
 const THEME_STYLES = {
   royal: {
-    name: "Scheme 1: Vibrant Royal & Academic Contrast",
-    headerBg: "bg-[#0000FF]",
-    headerText: "text-white",
-    headerBorder: "border-[#0000FF]",
-    accentText: "text-cyan-300",
-    badgeBg: "bg-blue-900 text-cyan-200 border border-cyan-400/40",
-    cardBorder: "border-[#0000FF]/40",
-    highlightBg: "bg-blue-50/70",
-    tableHeaderBg: "bg-[#0000FF] text-white",
+    name: "Egyptian Blue & Scarlet",
+    headerBg: "bg-brand-600",
+    accentText: "text-accent-300",
+    cardBorder: "border-brand-600/40",
+    tableHeaderBg: "bg-brand-600 text-white",
   },
   scheme2: {
-    name: "Scheme 2: Deep Navy & Bright Magenta",
-    headerBg: "bg-[#0B2F9E]",
-    headerText: "text-white",
-    headerBorder: "border-[#0B2F9E]",
-    accentText: "text-pink-300",
-    badgeBg: "bg-[#0B2F9E] text-white border border-pink-400/40",
-    cardBorder: "border-[#0B2F9E]/40",
-    highlightBg: "bg-pink-50/40",
-    tableHeaderBg: "bg-[#0B2F9E] text-white",
+    name: "Deep Navy & Scarlet",
+    headerBg: "bg-brand-800",
+    accentText: "text-accent-300",
+    cardBorder: "border-brand-800/40",
+    tableHeaderBg: "bg-brand-800 text-white",
   },
   emerald: {
     name: "Emerald Green & Slate",
     headerBg: "bg-emerald-950",
-    headerText: "text-white",
-    headerBorder: "border-emerald-950",
     accentText: "text-emerald-300",
-    badgeBg: "bg-emerald-900 text-white",
     cardBorder: "border-emerald-950",
-    highlightBg: "bg-emerald-50/50",
     tableHeaderBg: "bg-emerald-950 text-white",
   },
   burgundy: {
     name: "Burgundy Wine & Gold",
     headerBg: "bg-rose-950",
-    headerText: "text-white",
-    headerBorder: "border-rose-950",
     accentText: "text-amber-300",
-    badgeBg: "bg-rose-900 text-white",
     cardBorder: "border-rose-950",
-    highlightBg: "bg-rose-50/50",
     tableHeaderBg: "bg-rose-950 text-white",
   },
   gold: {
     name: "Classic Gold & Royal Navy",
     headerBg: "bg-amber-900",
-    headerText: "text-white",
-    headerBorder: "border-amber-900",
     accentText: "text-amber-300",
-    badgeBg: "bg-amber-800 text-white",
     cardBorder: "border-amber-900",
-    highlightBg: "bg-amber-50/50",
     tableHeaderBg: "bg-amber-900 text-white",
   },
   slate: {
     name: "Executive Slate & Charcoal",
     headerBg: "bg-slate-900",
-    headerText: "text-white",
-    headerBorder: "border-slate-900",
     accentText: "text-slate-300",
-    badgeBg: "bg-slate-800 text-white",
     cardBorder: "border-slate-900",
-    highlightBg: "bg-slate-50/50",
     tableHeaderBg: "bg-slate-900 text-white",
   },
 };
@@ -588,7 +564,7 @@ export default function ScoreCardPage() {
           </div>
           <div>
             <span className="text-[10px] uppercase font-bold text-slate-400 block">Admission Number</span>
-            <strong className="text-[#0000FF] font-mono font-bold text-xs">{student.admissionNo}</strong>
+            <strong className="text-brand-600 font-mono font-bold text-xs">{student.admissionNo}</strong>
           </div>
           <div>
             <span className="text-[10px] uppercase font-bold text-slate-400 block">Class Level &amp; Arm</span>
@@ -844,7 +820,7 @@ export default function ScoreCardPage() {
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-[10px]">
               {gradingTiers[activeGradeTierKey].brackets.map((bracket) => (
                 <div key={bracket.grade} className="bg-white p-1 rounded border border-blue-200">
-                  <strong className="text-[#0000FF] block font-black">
+                  <strong className="text-brand-600 block font-black">
                     {bracket.grade}: {bracket.minScore} - {bracket.maxScore}%
                   </strong>
                   <span className="text-slate-500">
@@ -945,7 +921,7 @@ export default function ScoreCardPage() {
                         <Calendar className="w-3.5 h-3.5 text-blue-600" />
                         Upcoming Term Schedule:
                       </h4>
-                      <p className="text-[#0000FF] font-bold text-xs mb-1">
+                      <p className="text-brand-600 font-bold text-xs mb-1">
                         {bulletin.nextTermResumption
                           ? `Resumption: ${bulletin.nextTermResumption}`
                           : "Resumption date not announced."}
@@ -969,7 +945,7 @@ export default function ScoreCardPage() {
                         <div className="bg-white border border-slate-300 p-2 rounded-lg text-[11px] font-mono">
                           <p className="text-slate-500">Bank: <strong className="text-slate-900">{bulletin.bankAccountDetails.bankName}</strong></p>
                           <p className="text-slate-500">Account: <strong className="text-slate-900">{bulletin.bankAccountDetails.accountName}</strong></p>
-                          <p className="text-slate-500">Number: <strong className="text-[#0000FF] font-bold">{bulletin.bankAccountDetails.accountNumber}</strong></p>
+                          <p className="text-slate-500">Number: <strong className="text-brand-600 font-bold">{bulletin.bankAccountDetails.accountNumber}</strong></p>
                         </div>
                       ) : (
                         <p className="text-[11px] italic text-slate-500">
@@ -1001,7 +977,7 @@ export default function ScoreCardPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <Link href="/" className="hover:text-blue-600 flex items-center gap-1">
+              <Link href="/" className="flex min-h-6 items-center gap-1 hover:text-blue-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -1063,7 +1039,7 @@ export default function ScoreCardPage() {
 
             <button
               onClick={handlePrint}
-              className="px-4 py-2 text-xs font-bold bg-[#0000FF] hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold bg-brand-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <Printer className="w-4 h-4" />
               {isBatchPrintMode ? `Print All (${classStudents.length}) Dossiers` : "Print Official Report Card"}
@@ -1120,7 +1096,7 @@ export default function ScoreCardPage() {
               <select
                 value={selectedSession}
                 onChange={(e) => setSelectedSession(e.target.value)}
-                className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-[#0000FF] focus:outline-hidden"
+                className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-brand-600 focus:outline-hidden"
               >
                 {sessionList.map((option) => (
                   <option key={option} value={option}>
@@ -1144,7 +1120,7 @@ export default function ScoreCardPage() {
               <select
                 value={selectedTerm}
                 onChange={(e) => setSelectedTerm(e.target.value as ReportTerm)}
-                className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-[#0000FF] focus:outline-hidden"
+                className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-brand-600 focus:outline-hidden"
               >
                 {REPORT_TERMS.map((term) => (
                   <option key={term} value={term}>
@@ -1166,7 +1142,7 @@ export default function ScoreCardPage() {
                   setSelectedClass(e.target.value);
                   setSelectedStudentId("");
                 }}
-                className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-[#0000FF] focus:outline-hidden disabled:bg-slate-100 disabled:text-slate-500"
+                className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-brand-600 focus:outline-hidden disabled:bg-slate-100 disabled:text-slate-500"
               >
                 {accessibleClasses.map((c) => (
                   <option key={c.id} value={c.name}>
@@ -1185,7 +1161,7 @@ export default function ScoreCardPage() {
                 value={selectedStudentId || currentStudent?.id || ""}
                 disabled={isParentOrStudent || classStudents.length === 0}
                 onChange={(e) => setSelectedStudentId(e.target.value)}
-                className="w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-[#0000FF] focus:outline-hidden disabled:bg-slate-100 disabled:text-slate-500"
+                className="w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-brand-600 focus:outline-hidden disabled:bg-slate-100 disabled:text-slate-500"
               >
                 {classStudents.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -1246,7 +1222,7 @@ export default function ScoreCardPage() {
                 {printRunScheme !== null ? (
                   <button
                     onClick={() => setPrintRunScheme(null)}
-                    className="text-[11px] font-bold text-[#0000FF] hover:text-blue-800 cursor-pointer"
+                    className="text-[11px] font-bold text-brand-600 hover:text-blue-800 cursor-pointer"
                     title={`The scheme on the school's records${themeUpdatedBy ? `, filed by ${themeUpdatedBy}` : ""}${
                       themeUpdatedAt ? ` on ${new Date(themeUpdatedAt).toLocaleDateString()}` : ""
                     }`}
@@ -1262,7 +1238,7 @@ export default function ScoreCardPage() {
                 )}
                 <button
                   onClick={() => void reloadTheme()}
-                  className="text-[11px] font-bold text-slate-500 hover:text-blue-800 cursor-pointer"
+                  className="inline-flex min-h-6 items-center text-[11px] font-bold text-slate-500 hover:text-blue-800 cursor-pointer"
                   title="Read the school's card theme again"
                 >
                   re-read

@@ -66,14 +66,16 @@ export function TodayDutyPanel() {
   const hidden = duties.length - shown.length;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div>
-          <h3 className="font-bold text-sm text-slate-800 flex items-center gap-2">
-            <ClipboardList className="w-4 h-4 text-blue-600" />
+    <section className="rounded-2xl border border-hairline bg-surface p-5 shadow-2xs">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="flex items-center gap-2 font-display text-[13px] font-bold tracking-tight text-ink">
+            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 ring-1 ring-inset ring-brand-100">
+              <ClipboardList className="h-4 w-4" strokeWidth={1.75} />
+            </span>
             On Duty Today
           </h3>
-          <p className="text-[11px] text-slate-500 mt-0.5">
+          <p className="mt-1 text-[11px] leading-relaxed text-muted">
             {today
               ? formatDutyDate(today)
               : problem
@@ -81,8 +83,8 @@ export function TodayDutyPanel() {
                 : "Asking the school what day it is…"}
             {scope === "school" ? " · the whole school" : scope === "self" ? " · your own roster" : ""}
           </p>
-          <p className="text-[11px] text-slate-500 mt-0.5">
-            <span className="font-semibold text-slate-700">Designation:</span>{" "}
+          <p className="mt-0.5 text-[11px] leading-relaxed text-muted">
+            <span className="font-semibold text-slate-600">Designation:</span>{" "}
             {designation ? designation : <em className="text-slate-400">the staff register does not state one</em>}
           </p>
         </div>
@@ -90,15 +92,16 @@ export function TodayDutyPanel() {
           onClick={() => void load()}
           disabled={loading}
           title="Read the roster again"
-          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer disabled:opacity-40"
+          aria-label="Read the roster again"
+          className="flex h-10 w-10 flex-shrink-0 cursor-pointer items-center justify-center rounded-lg border border-hairline text-slate-400 transition-colors duration-150 hover:border-brand-200 hover:bg-brand-50 hover:text-brand-600 disabled:cursor-default disabled:opacity-40 lg:h-8 lg:w-8"
         >
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          <RefreshCw className={`h-4 w-4 ${loading ? "motion-safe:animate-spin" : ""}`} strokeWidth={1.75} />
         </button>
       </div>
 
       {problem && (
-        <div className="bg-amber-50 border border-amber-300 text-amber-950 rounded-lg p-3 text-[11px] font-semibold leading-snug flex items-start gap-2">
-          <TriangleAlert className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
+        <div role="alert" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] font-semibold leading-snug text-amber-900">
+          <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-700" strokeWidth={1.75} />
           <p>
             Today&apos;s duties could not be read: {problem}. Nothing is shown below in place of them — this screen will
             not guess who is at the gate.
@@ -107,15 +110,15 @@ export function TodayDutyPanel() {
       )}
 
       {!problem && !staffRecordLinked && note && (
-        <p className="text-[11px] text-slate-500 leading-snug bg-slate-50 border border-slate-200 rounded-lg p-3">{note}</p>
+        <p className="rounded-xl border border-hairline bg-canvas p-3 text-[11px] leading-snug text-muted">{note}</p>
       )}
 
       {!problem && loading && duties.length === 0 && (
-        <p className="text-[11px] text-slate-500">Reading today&apos;s roster from the school&apos;s records…</p>
+        <p className="text-[11px] text-muted">Reading today&apos;s roster from the school&apos;s records…</p>
       )}
 
       {!problem && staffRecordLinked && duties.length === 0 && !loading && (
-        <p className="text-[11px] text-slate-600 leading-snug">
+        <p className="text-[11px] leading-relaxed text-slate-600">
           {scope === "school"
             ? "No duty is filed for anyone today."
             : "No duty is filed for you today."}{" "}
@@ -127,20 +130,20 @@ export function TodayDutyPanel() {
       {!problem && shown.length > 0 && (
         <ul className="space-y-2">
           {shown.map((row) => (
-            <li key={row.id} className="border border-slate-200 rounded-lg p-3">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-100">
+            <li key={row.id} className="rounded-xl border border-hairline bg-canvas p-3 transition-colors duration-150 hover:border-brand-200">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded border border-azure-100 bg-azure-50 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-azure-800">
                   {row.time_window}
                 </span>
-                <p className="text-xs font-bold text-slate-900">{row.duty}</p>
+                <p className="font-display text-xs font-bold tracking-tight text-ink">{row.duty}</p>
               </div>
-              <p className="text-[11px] text-slate-600 mt-1">
+              <p className="mt-1 text-[11px] leading-relaxed text-slate-600">
                 {row.staff_name}
                 {row.designation ? ` · ${row.designation}` : ""}
                 {row.location ? ` · ${row.location}` : ""}
               </p>
-              {row.notes && <p className="text-[11px] text-slate-500 mt-0.5 italic">{row.notes}</p>}
-              <p className="text-[10px] text-slate-400 mt-1">
+              {row.notes && <p className="mt-0.5 text-[11px] italic leading-relaxed text-muted">{row.notes}</p>}
+              <p className="mt-1 text-[10px] text-slate-400">
                 Assigned by <span className="font-mono">{row.assigned_by || "a login no longer named"}</span>
               </p>
             </li>
@@ -149,7 +152,7 @@ export function TodayDutyPanel() {
       )}
 
       {hidden > 0 && (
-        <p className="text-[11px] text-slate-500 mt-2">
+        <p className="mt-2 text-[11px] tabular-nums text-muted">
           And {hidden} more filed for today — the roster prints all of them.
         </p>
       )}
@@ -157,12 +160,12 @@ export function TodayDutyPanel() {
       {isRouteAllowed(role, "/operations/duties") && (
         <Link
           href="/operations/duties"
-          className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-bold text-blue-700 hover:text-blue-800"
+          className="mt-3 inline-flex min-h-10 items-center gap-1.5 text-[11px] font-bold text-brand-700 transition-colors duration-150 hover:text-brand-800"
         >
           Open the duty roster
-          <ArrowRight className="w-3.5 h-3.5" />
+          <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} />
         </Link>
       )}
-    </div>
+    </section>
   );
 }

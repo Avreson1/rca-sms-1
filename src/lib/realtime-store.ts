@@ -503,7 +503,7 @@ export const DEFAULT_CBT_CONFIG: CBTConfigRecord = {
 export const UNIVERSAL_GRADING_BRACKETS: GradeBracket[] = [
   { grade: "A", minScore: 70, maxScore: 100, gradePoint: 4.0, remark: "Distinction / Excellent", classification: "Distinction", colorBadge: "bg-blue-100 text-blue-900 border-blue-300" },
   { grade: "B", minScore: 60, maxScore: 69, gradePoint: 3.0, remark: "Very Good / Upper Credit", classification: "Credit", colorBadge: "bg-cyan-100 text-cyan-900 border-cyan-300" },
-  { grade: "C", minScore: 50, maxScore: 59, gradePoint: 2.0, remark: "Good / Lower Credit", classification: "Credit", colorBadge: "bg-sky-100 text-sky-900 border-sky-300" },
+  { grade: "C", minScore: 50, maxScore: 59, gradePoint: 2.0, remark: "Good / Lower Credit", classification: "Credit", colorBadge: "bg-emerald-100 text-emerald-900 border-emerald-300" },
   { grade: "D", minScore: 45, maxScore: 49, gradePoint: 1.0, remark: "Fair / Pass Mark", classification: "Pass", colorBadge: "bg-amber-100 text-amber-900 border-amber-300" },
   { grade: "F", minScore: 0, maxScore: 44, gradePoint: 0.0, remark: "Fail / Needs Improvement", classification: "Fail", colorBadge: "bg-red-100 text-red-900 border-red-300" },
 ];

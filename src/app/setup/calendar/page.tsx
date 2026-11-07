@@ -394,9 +394,9 @@ export default function AcademicCalendarPage() {
         
         {/* Toast Alert */}
         {toastMessage && (
-          <div className="fixed top-20 right-6 bg-[#0a1128] text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 z-50 animate-in slide-in-from-top-3 border border-cyan-400">
-            <CheckCircle2 className="w-4 h-4 text-cyan-400" />
-            <span className="text-xs font-bold">{toastMessage}</span>
+          <div role="status" className="fixed top-20 right-4 sm:right-6 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-2.5 rounded-xl border border-hairline bg-surface px-4 py-3 text-ink shadow-lg animate-in slide-in-from-top-3">
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-600" />
+            <span className="text-xs font-semibold">{toastMessage}</span>
           </div>
         )}
 
@@ -404,7 +404,7 @@ export default function AcademicCalendarPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <Link href="/" className="hover:text-[#0000FF] flex items-center gap-1 font-semibold">
+              <Link href="/" className="flex min-h-6 items-center gap-1 font-semibold hover:text-brand-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -415,13 +415,13 @@ export default function AcademicCalendarPage() {
             </div>
             <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
               <span>Academic Calendar & Activity Management</span>
-              <span className="text-xs bg-blue-100 text-[#0000FF] font-black px-2.5 py-0.5 rounded-full border border-blue-300 uppercase">
+              <span className="text-xs bg-blue-100 text-brand-600 font-black px-2.5 py-0.5 rounded-full border border-blue-300 uppercase">
                 Scheme 1
               </span>
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
               Current Session: <strong className="text-slate-800">{scope.session}</strong> • Term:{" "}
-              <strong className="text-[#0000FF]">{scope.term}</strong> • Milestones this session:{" "}
+              <strong className="text-brand-600">{scope.term}</strong> • Milestones this session:{" "}
               <strong className="text-slate-800">{sessionEvents.length}</strong> • Activity templates:{" "}
               <strong className="text-slate-800">{activityTemplates.length}</strong>
             </p>
@@ -446,7 +446,7 @@ export default function AcademicCalendarPage() {
                     className="px-3.5 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:cursor-wait disabled:opacity-60"
                     title="Files the standard term outline on the school's records, undated and upcoming, for every machine to see."
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-[#0000FF]" />
+                    <Sparkles className="w-3.5 h-3.5 text-brand-600" />
                     {isFiling ? "Filing on the school's records…" : "Populate Term Milestones"}
                   </button>
                 )}
@@ -455,7 +455,7 @@ export default function AcademicCalendarPage() {
                     setRefusal(null);
                     setIsModalOpen(true);
                   }}
-                  className="px-4 py-2 text-xs font-bold bg-[#0000FF] hover:bg-blue-700 text-white rounded-xl transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2 text-xs font-bold bg-brand-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   Add Calendar Milestone
@@ -467,7 +467,7 @@ export default function AcademicCalendarPage() {
                   setRefusal(null);
                   setIsActivityModalOpen(true);
                 }}
-                className="px-4 py-2 text-xs font-bold bg-[#0000FF] hover:bg-blue-700 text-white rounded-xl transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5 cursor-pointer"
+                className="px-4 py-2 text-xs font-bold bg-brand-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 Create Activity Template
@@ -503,7 +503,7 @@ export default function AcademicCalendarPage() {
             onClick={() => setActiveTab("calendar")}
             className={`pb-3 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
               activeTab === "calendar"
-                ? "border-[#0000FF] text-[#0000FF]"
+                ? "border-brand-600 text-brand-600"
                 : "border-transparent text-slate-500 hover:text-slate-800"
             }`}
           >
@@ -515,7 +515,7 @@ export default function AcademicCalendarPage() {
             onClick={() => setActiveTab("activity-templates")}
             className={`pb-3 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
               activeTab === "activity-templates"
-                ? "border-[#0000FF] text-[#0000FF]"
+                ? "border-brand-600 text-brand-600"
                 : "border-transparent text-slate-500 hover:text-slate-800"
             }`}
           >
@@ -539,7 +539,7 @@ export default function AcademicCalendarPage() {
                       onClick={() => setTermFilter(term)}
                       className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
                         termFilter === term
-                          ? "bg-[#0000FF] text-white shadow-xs"
+                          ? "bg-brand-600 text-white shadow-xs"
                           : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                       }`}
                     >
@@ -553,7 +553,7 @@ export default function AcademicCalendarPage() {
                 <button
                   onClick={() => void handleClearCalendar()}
                   disabled={isFiling}
-                  className="text-xs text-[#FF0000] hover:text-red-700 font-bold flex items-center gap-1 cursor-pointer disabled:cursor-wait disabled:opacity-60"
+                  className="text-xs text-accent-600 hover:text-red-700 font-bold flex items-center gap-1 cursor-pointer disabled:cursor-wait disabled:opacity-60"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   Clear the school&apos;s calendar
@@ -573,7 +573,7 @@ export default function AcademicCalendarPage() {
             <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-6">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-[#0000FF]" />
+                  <Calendar className="w-4 h-4 text-brand-600" />
                   Official Term Schedule ({scope.session} Session)
                 </h3>
                 <span className="text-xs bg-cyan-50 text-cyan-900 font-black px-2.5 py-0.5 rounded-full border border-cyan-200">
@@ -601,7 +601,7 @@ export default function AcademicCalendarPage() {
                       <div
                         className={`absolute -left-[31px] top-1.5 w-4 h-4 rounded-full border-2 bg-white transition-all ${
                           ev.status === "Current"
-                            ? "border-[#0000FF] ring-4 ring-blue-100 bg-[#0000FF]"
+                            ? "border-brand-600 ring-4 ring-blue-100 bg-brand-600"
                             : ev.status === "Completed"
                             ? "border-emerald-500 bg-emerald-500"
                             : "border-slate-300"
@@ -625,7 +625,7 @@ export default function AcademicCalendarPage() {
                                 ev.category === "Examination"
                                   ? "bg-purple-100 text-purple-800 border border-purple-200"
                                   : ev.category === "Academic"
-                                  ? "bg-blue-100 text-[#0000FF] border border-blue-200"
+                                  ? "bg-blue-100 text-brand-600 border border-blue-200"
                                   : ev.category === "Holiday"
                                   ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
                                   : ev.category === "Sports"
@@ -645,7 +645,7 @@ export default function AcademicCalendarPage() {
                               {ev.term}
                             </span>
                             {ev.status === "Current" && (
-                              <span className="text-[10px] font-black bg-[#0000FF] text-white px-2.5 py-0.5 rounded-full shadow-xs animate-pulse">
+                              <span className="text-[10px] font-black bg-brand-600 text-white px-2.5 py-0.5 rounded-full shadow-xs animate-pulse">
                                 Active Now
                               </span>
                             )}
@@ -672,7 +672,7 @@ export default function AcademicCalendarPage() {
                             <button
                               onClick={() => void handleDeleteEvent(ev)}
                               disabled={isFiling}
-                              className="text-slate-400 hover:text-[#FF0000] p-1.5 transition-all cursor-pointer rounded-lg hover:bg-rose-50 disabled:cursor-wait disabled:opacity-50"
+                              className="text-slate-400 hover:text-accent-600 p-1.5 transition-all cursor-pointer rounded-lg hover:bg-rose-50 disabled:cursor-wait disabled:opacity-50"
                               title="Remove this milestone from the school's calendar"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -696,13 +696,13 @@ export default function AcademicCalendarPage() {
         {/* TAB 2: ACTIVITY INPUT TEMPLATES */}
         {activeTab === "activity-templates" && (
           <div className="space-y-6">
-            <div className="bg-gradient-to-r from-blue-900 to-[#0a1128] text-white rounded-3xl p-6 shadow-xl border border-cyan-400/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-500/20 text-cyan-300 font-bold text-[10px] uppercase tracking-wider mb-2 border border-cyan-400/30">
-                  <Activity className="w-3 h-3" /> Dedicated Template Engine
+            <div className="texture-grid-light relative flex flex-col items-start justify-between gap-4 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-brand-800 via-brand-950 to-night-900 p-6 text-white shadow-lg md:flex-row md:items-center">
+              <div className="min-w-0">
+                <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-brand-200">
+                  <Activity className="h-3 w-3" strokeWidth={2} /> Dedicated Template Engine
                 </div>
-                <h3 className="text-xl font-black text-white">Input Templates for Extracurricular & Co-Curricular Activities</h3>
-                <p className="text-xs text-blue-200/80 max-w-2xl mt-1 leading-relaxed">
+                <h3 className="font-display text-xl font-extrabold tracking-tight text-white">Input Templates for Extracurricular & Co-Curricular Activities</h3>
+                <p className="mt-1 max-w-2xl text-xs leading-relaxed text-white/70">
                   A blueprint is one activity the school runs often, written down once — who it is for, who leads it,
                   where it is held, what it costs and how long it takes. Scheduling one files a milestone on the
                   school&apos;s calendar carrying this text, undated until the office fixes a date.
@@ -713,9 +713,9 @@ export default function AcademicCalendarPage() {
                   setRefusal(null);
                   setIsActivityModalOpen(true);
                 }}
-                className="px-4 py-2.5 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer"
+                className="flex min-h-11 flex-shrink-0 cursor-pointer items-center gap-1.5 rounded-xl bg-accent-600 px-4 py-2.5 text-xs font-extrabold text-white shadow-sm transition-colors duration-150 hover:bg-accent-700"
               >
-                <BookmarkPlus className="w-4 h-4 text-blue-950" />
+                <BookmarkPlus className="h-4 w-4" strokeWidth={2} />
                 <span>Add New Template</span>
               </button>
             </div>
@@ -739,13 +739,13 @@ export default function AcademicCalendarPage() {
                 >
                   <div className="space-y-3">
                     <div className="flex items-start justify-between gap-2">
-                      <span className="text-[10px] font-black px-2.5 py-1 rounded-md uppercase tracking-wider bg-blue-50 text-[#0000FF] border border-blue-200">
+                      <span className="text-[10px] font-black px-2.5 py-1 rounded-md uppercase tracking-wider bg-blue-50 text-brand-600 border border-blue-200">
                         {template.category}
                       </span>
                       <button
                         onClick={() => void handleDeleteTemplate(template)}
                         disabled={isFiling}
-                        className="text-slate-300 hover:text-[#FF0000] p-1 transition-colors cursor-pointer disabled:cursor-wait disabled:opacity-50"
+                        className="text-slate-300 hover:text-accent-600 p-1 transition-colors cursor-pointer disabled:cursor-wait disabled:opacity-50"
                         title="Remove this blueprint from the school's activity templates"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -805,7 +805,7 @@ export default function AcademicCalendarPage() {
                       type="button"
                       onClick={() => void handleScheduleTemplate(template)}
                       disabled={isFiling}
-                      className="px-3.5 py-1.5 bg-[#0000FF] hover:bg-cyan-500 hover:text-slate-950 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:cursor-wait disabled:opacity-60"
+                      className="px-3.5 py-1.5 bg-brand-600 hover:bg-cyan-500 hover:text-slate-950 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:cursor-wait disabled:opacity-60"
                       title="Files a milestone on the school's calendar under the current session and term, undated."
                     >
                       <Send className="w-3 h-3" />
@@ -825,7 +825,7 @@ export default function AcademicCalendarPage() {
             <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-[#0000FF]" />
+                  <Calendar className="w-5 h-5 text-brand-600" />
                   Add Calendar Milestone
                 </h3>
                 <button
@@ -850,7 +850,7 @@ export default function AcademicCalendarPage() {
                     placeholder="e.g. Science Fair & Inter-House Sports"
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold outline-none focus:border-[#0000FF] focus:ring-1 focus:ring-[#0000FF]"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-600"
                   />
                 </div>
 
@@ -862,7 +862,7 @@ export default function AcademicCalendarPage() {
                       placeholder="Leave blank until the school fixes it"
                       value={newDateRange}
                       onChange={(e) => setNewDateRange(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:border-[#0000FF]"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:border-brand-600"
                     />
                     <p className="text-[10px] text-slate-500 mt-1">
                       The portal does not fill this in. Blank shows as &quot;Date not fixed&quot; rather than a day
@@ -875,7 +875,7 @@ export default function AcademicCalendarPage() {
                     <select
                       value={newCat}
                       onChange={(e) => setNewCat(e.target.value as CalendarEventRecord["category"])}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold outline-none focus:border-[#0000FF]"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold outline-none focus:border-brand-600"
                     >
                       {CALENDAR_CATEGORIES.map((category) => (
                         <option key={category} value={category}>
@@ -896,7 +896,7 @@ export default function AcademicCalendarPage() {
                     <select
                       value={newTerm}
                       onChange={(e) => setNewTerm(e.target.value as CalendarEventRecord["term"])}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold outline-none focus:border-[#0000FF]"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold outline-none focus:border-brand-600"
                     >
                       <option value="First Term">First Term</option>
                       <option value="Second Term">Second Term</option>
@@ -909,7 +909,7 @@ export default function AcademicCalendarPage() {
                     <select
                       value={newStatus}
                       onChange={(e) => setNewStatus(e.target.value as CalendarEventRecord["status"])}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold outline-none focus:border-[#0000FF]"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold outline-none focus:border-brand-600"
                     >
                       <option value="Upcoming">Upcoming</option>
                       <option value="Current">Active Now</option>
@@ -925,7 +925,7 @@ export default function AcademicCalendarPage() {
                     placeholder="Brief description of the event, requirements or scope..."
                     value={newDesc}
                     onChange={(e) => setNewDesc(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:border-[#0000FF]"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:border-brand-600"
                   />
                 </div>
 
@@ -940,7 +940,7 @@ export default function AcademicCalendarPage() {
                   <button
                     type="submit"
                     disabled={isFiling}
-                    className="px-5 py-2 rounded-xl bg-[#0000FF] hover:bg-blue-700 text-white font-black cursor-pointer shadow-md shadow-blue-600/30 disabled:cursor-wait disabled:opacity-60"
+                    className="px-5 py-2 rounded-xl bg-brand-600 hover:bg-blue-700 text-white font-black cursor-pointer shadow-2xs disabled:cursor-wait disabled:opacity-60"
                   >
                     {isFiling ? "Filing…" : "File on the school's calendar"}
                   </button>
@@ -982,7 +982,7 @@ export default function AcademicCalendarPage() {
                     placeholder="e.g. Inter-House Football & Athletics Tournament"
                     value={actTitle}
                     onChange={(e) => setActTitle(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold outline-none focus:border-[#0000FF]"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold outline-none focus:border-brand-600"
                   />
                 </div>
 
@@ -992,7 +992,7 @@ export default function AcademicCalendarPage() {
                     <select
                       value={actCategory}
                       onChange={(e) => setActCategory(e.target.value as ActivityTemplateRecord["category"])}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold outline-none focus:border-[#0000FF]"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold outline-none focus:border-brand-600"
                     >
                       <option value="Sports">Sports</option>
                       <option value="Academic">Academic</option>
@@ -1010,7 +1010,7 @@ export default function AcademicCalendarPage() {
                       placeholder="e.g. Primary 3-5, Secondary"
                       value={actTargetSection}
                       onChange={(e) => setActTargetSection(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:border-[#0000FF]"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:border-brand-600"
                     />
                   </div>
                 </div>
@@ -1023,7 +1023,7 @@ export default function AcademicCalendarPage() {
                       placeholder="e.g. Head of Sports"
                       value={actCoordinator}
                       onChange={(e) => setActCoordinator(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:border-[#0000FF]"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:border-brand-600"
                     />
                   </div>
 
@@ -1034,7 +1034,7 @@ export default function AcademicCalendarPage() {
                       placeholder="e.g. Sports Complex, Rayfield"
                       value={actVenue}
                       onChange={(e) => setActVenue(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:border-[#0000FF]"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:border-brand-600"
                     />
                   </div>
                 </div>
@@ -1047,7 +1047,7 @@ export default function AcademicCalendarPage() {
                       placeholder="e.g. ₦350,000"
                       value={actBudget}
                       onChange={(e) => setActBudget(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-mono outline-none focus:border-[#0000FF]"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-mono outline-none focus:border-brand-600"
                     />
                   </div>
 
@@ -1059,7 +1059,7 @@ export default function AcademicCalendarPage() {
                       max={30}
                       value={actDuration}
                       onChange={(e) => setActDuration(Number(e.target.value))}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-mono outline-none focus:border-[#0000FF]"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-mono outline-none focus:border-brand-600"
                     />
                   </div>
                 </div>
@@ -1071,7 +1071,7 @@ export default function AcademicCalendarPage() {
                     placeholder="State key learning goals, developmental milestones, or event outcomes..."
                     value={actObjectives}
                     onChange={(e) => setActObjectives(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:border-[#0000FF]"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:border-brand-600"
                   />
                 </div>
 
@@ -1086,7 +1086,7 @@ export default function AcademicCalendarPage() {
                   <button
                     type="submit"
                     disabled={isFiling}
-                    className="px-5 py-2 rounded-xl bg-[#0000FF] hover:bg-blue-700 text-white font-black cursor-pointer shadow-md shadow-blue-600/30 disabled:cursor-wait disabled:opacity-60"
+                    className="px-5 py-2 rounded-xl bg-brand-600 hover:bg-blue-700 text-white font-black cursor-pointer shadow-2xs disabled:cursor-wait disabled:opacity-60"
                   >
                     {isFiling ? "Filing…" : "File on the school's records"}
                   </button>

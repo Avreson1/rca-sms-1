@@ -161,9 +161,9 @@ export default function CAStructurePage() {
         
         {/* Toast Alert */}
         {toastMessage && (
-          <div className="fixed top-20 right-6 bg-[#0a1128] text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 z-50 animate-in slide-in-from-top-3 border border-cyan-400">
-            <CheckCircle2 className="w-4 h-4 text-cyan-400" />
-            <span className="text-xs font-bold">{toastMessage}</span>
+          <div role="status" className="fixed top-20 right-4 sm:right-6 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-2.5 rounded-xl border border-hairline bg-surface px-4 py-3 text-ink shadow-lg animate-in slide-in-from-top-3">
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-600" />
+            <span className="text-xs font-semibold">{toastMessage}</span>
           </div>
         )}
 
@@ -171,7 +171,7 @@ export default function CAStructurePage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <Link href="/" className="hover:text-[#0000FF] flex items-center gap-1 font-semibold">
+              <Link href="/" className="flex min-h-6 items-center gap-1 font-semibold hover:text-brand-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -204,7 +204,7 @@ export default function CAStructurePage() {
             )}
             <Link
               href="/operations/update-ca"
-              className="px-4 py-2 text-xs font-black bg-[#0000FF] hover:bg-blue-700 text-white rounded-xl transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5 self-start md:self-auto cursor-pointer"
+              className="px-4 py-2 text-xs font-black bg-brand-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-2xs flex items-center gap-1.5 self-start md:self-auto cursor-pointer"
             >
               Open Live CA Gradebook
               <ArrowUpRight className="w-4 h-4 text-cyan-300" />
@@ -244,22 +244,26 @@ export default function CAStructurePage() {
         )}
 
         {/* Permissions & Roles Banner */}
-        <div className="p-4 rounded-3xl bg-gradient-to-r from-blue-950 via-[#0a1128] to-blue-950 text-white border border-cyan-400/30 flex items-center justify-between shadow-lg">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-[#0000FF] text-cyan-200 ring-1 ring-cyan-400/50">
-              <ShieldCheck className="w-5 h-5" />
+        <div className="texture-grid-light relative flex flex-col items-start justify-between gap-4 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-brand-800 via-brand-950 to-night-900 p-4 text-white shadow-lg sm:flex-row sm:items-center">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex-shrink-0 rounded-xl bg-white/10 p-2.5 text-white ring-1 ring-inset ring-white/20">
+              <ShieldCheck className="h-5 w-5" strokeWidth={1.75} />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-sm text-white">Tier Assessment Authorization</h3>
-                <span className="text-[10px] bg-cyan-400/20 text-cyan-300 font-mono font-bold px-2 py-0.5 rounded border border-cyan-400/40">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="font-display text-sm font-extrabold tracking-tight text-white">Tier Assessment Authorization</h3>
+                <span className={`rounded border px-2 py-0.5 font-mono text-[10px] font-bold ${
+                  canEdit
+                    ? "border-emerald-400/30 bg-emerald-500/15 text-emerald-300"
+                    : "border-white/15 bg-white/10 text-white/75"
+                }`}>
                   {canEdit ? "EDIT ACCESS GRANTED" : "READ ONLY VIEW"}
                 </span>
               </div>
-              <p className="text-xs text-blue-200/80 mt-0.5">
+              <p className="mt-0.5 text-xs leading-relaxed text-white/70">
                 {currentUser ? (
                   <>
-                    Logged in as <strong>{currentUser.fullName}</strong> ({currentUser.role}).
+                    Logged in as <strong className="font-semibold text-white">{currentUser.fullName}</strong> ({currentUser.role}).
                   </>
                 ) : (
                   "Signing in… the server has not named this session yet."
@@ -268,9 +272,9 @@ export default function CAStructurePage() {
             </div>
           </div>
 
-          <div className="text-right hidden sm:block">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Standard Scale</span>
-            <span className="text-sm font-black text-cyan-300">100 Max Cumulative Marks</span>
+          <div className="hidden flex-shrink-0 text-right sm:block">
+            <span className="block text-[10px] font-bold uppercase tracking-wider text-white/55">Standard Scale</span>
+            <span className="font-display text-sm font-extrabold tabular-nums text-brand-200">100 Max Cumulative Marks</span>
           </div>
         </div>
 
@@ -286,15 +290,15 @@ export default function CAStructurePage() {
                 onClick={() => setSelectedTierKey(tierKey)}
                 className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
                   isSelected
-                    ? "bg-[#0000FF] text-white border-cyan-400 shadow-lg shadow-blue-900/40 ring-2 ring-cyan-400/30"
-                    : "bg-white text-slate-700 border-slate-200 hover:border-blue-400 hover:bg-slate-50"
+                    ? "bg-brand-600 text-white border-brand-700 shadow-md ring-2 ring-accent-500/45"
+                    : "bg-white text-slate-700 border-slate-200 hover:border-brand-300 hover:bg-slate-50"
                 }`}
               >
                 <div className="flex items-center justify-between mb-1 gap-2">
-                  <span className={`text-[10px] font-black uppercase tracking-wider ${isSelected ? "text-cyan-200" : "text-slate-400"}`}>
+                  <span className={`text-[10px] font-black uppercase tracking-wider ${isSelected ? "text-brand-200" : "text-slate-400"}`}>
                     Tier {CA_TIER_KEYS.indexOf(tierKey) + 1}
                   </span>
-                  {isSelected && <Sparkles className="w-3.5 h-3.5 text-cyan-300 flex-shrink-0" />}
+                  {isSelected && <Sparkles className="w-3.5 h-3.5 text-accent-300 flex-shrink-0" />}
                 </div>
                 <h4 className={`text-sm font-black leading-tight ${isSelected ? "text-white" : "text-slate-900"}`}>
                   {caStructures[tierKey].tierTitle}
@@ -317,7 +321,7 @@ export default function CAStructurePage() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 mb-1">
-                <span className="text-[10px] font-black px-2.5 py-0.5 rounded uppercase tracking-wider bg-blue-100 text-[#0000FF] border border-blue-200">
+                <span className="text-[10px] font-black px-2.5 py-0.5 rounded uppercase tracking-wider bg-blue-100 text-brand-600 border border-blue-200">
                   {activeStructure.tierKey}
                 </span>
                 <span className="text-xs text-slate-500">
@@ -335,7 +339,7 @@ export default function CAStructurePage() {
                     value={currentNote}
                     onChange={(e) => setEditingNote(e.target.value)}
                     placeholder="How this tier is assessed, in the school's own words (left blank until now)"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-[#0000FF]"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-brand-600"
                   />
                 </div>
               ) : (
@@ -370,7 +374,7 @@ export default function CAStructurePage() {
                   onClick={handleAddComponent}
                   className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
                 >
-                  <Plus className="w-4 h-4 text-[#0000FF]" />
+                  <Plus className="w-4 h-4 text-brand-600" />
                   <span>Add Assessment</span>
                 </button>
               )}
@@ -399,7 +403,7 @@ export default function CAStructurePage() {
                   className="bg-slate-50/70 hover:bg-slate-50 p-4 rounded-2xl border border-slate-200/80 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
                 >
                   <div className="flex items-center gap-3.5 flex-1 min-w-0">
-                    <div className="w-8 h-8 rounded-xl bg-[#0000FF] text-white flex items-center justify-center font-black text-xs flex-shrink-0 shadow-sm">
+                    <div className="w-8 h-8 rounded-xl bg-brand-600 text-white flex items-center justify-center font-black text-xs flex-shrink-0 shadow-sm">
                       {idx + 1}
                     </div>
                     <div className="space-y-1 flex-1 min-w-0">
@@ -408,7 +412,7 @@ export default function CAStructurePage() {
                           type="text"
                           value={comp.name}
                           onChange={(e) => handleComponentChange(idx, "name", e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-900 outline-none focus:border-[#0000FF]"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-900 outline-none focus:border-brand-600"
                         />
                       ) : (
                         <h4 className="text-sm font-black text-slate-900 break-words">{comp.name}</h4>
@@ -419,7 +423,7 @@ export default function CAStructurePage() {
                           value={comp.description}
                           onChange={(e) => handleComponentChange(idx, "description", e.target.value)}
                           placeholder="What this component is (optional)"
-                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-[11px] text-slate-600 outline-none focus:border-[#0000FF]"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-[11px] text-slate-600 outline-none focus:border-brand-600"
                         />
                       ) : (
                         <p className="text-xs text-slate-500">
@@ -439,10 +443,10 @@ export default function CAStructurePage() {
                           max={100}
                           value={comp.maxScore}
                           onChange={(e) => handleComponentChange(idx, "maxScore", e.target.value)}
-                          className="w-14 font-mono font-black text-xs text-[#0000FF] bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-center outline-none focus:border-[#0000FF]"
+                          className="w-14 font-mono font-black text-xs text-brand-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-center outline-none focus:border-brand-600"
                         />
                       ) : (
-                        <span className="font-mono font-black text-xs text-[#0000FF]">{comp.maxScore}</span>
+                        <span className="font-mono font-black text-xs text-brand-600">{comp.maxScore}</span>
                       )}
                       <span className="text-xs font-bold text-slate-400">Marks</span>
                     </div>
@@ -450,7 +454,7 @@ export default function CAStructurePage() {
                     {canEdit && currentComponents.length > 1 && (
                       <button
                         onClick={() => handleDeleteComponent(idx)}
-                        className="text-slate-300 hover:text-[#FF0000] p-2 transition-colors rounded-lg hover:bg-rose-50"
+                        className="text-slate-300 hover:text-accent-600 p-2 transition-colors rounded-lg hover:bg-rose-50"
                         title="Remove Component"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -489,7 +493,7 @@ export default function CAStructurePage() {
                 <button
                   onClick={handleSaveStructure}
                   disabled={isFiling}
-                  className="px-5 py-2.5 bg-[#0000FF] hover:bg-blue-700 disabled:bg-slate-400 text-white font-black text-xs rounded-xl transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5 cursor-pointer"
+                  className="px-5 py-2.5 bg-brand-600 hover:bg-blue-700 disabled:bg-slate-400 text-white font-black text-xs rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
                 >
                   <Save className="w-4 h-4 text-cyan-300" />
                   <span>{isFiling ? "Filing on the school's records…" : "File on the school's records"}</span>
@@ -501,7 +505,7 @@ export default function CAStructurePage() {
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <button
               onClick={() => void reloadCAStructures()}
-              className="text-[11px] font-bold text-[#0000FF] hover:text-blue-800 cursor-pointer"
+              className="inline-flex min-h-6 items-center text-[11px] font-bold text-brand-600 hover:text-blue-800 cursor-pointer"
             >
               Read the school&apos;s filed structures again
             </button>

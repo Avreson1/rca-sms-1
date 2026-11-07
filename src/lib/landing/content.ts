@@ -14,6 +14,7 @@ export interface GalleryItem {
   caption: string;
   category: "Campus" | "Academics" | "Events" | "Sports & Clubs";
   gradient: string;
+  image?: string;
 }
 
 // Editorial content for the public site. Replace with real announcements
@@ -77,50 +78,54 @@ export const BLOG_POSTS: BlogPost[] = [
   },
 ];
 
-// Gallery tiles. Each tile is a styled placeholder until real photographs are
-// dropped into public/ and the image field is wired up.
+// Gallery plates. The campus tile carries original artwork drawn for this
+// portal; the rest are six labelled hues from the palette, so the tiles stay
+// apart without pretending to be photographs the school has not taken yet.
+// Drop real images into public/ and set the image field when there are
+// photographs to show.
 export const GALLERY_ITEMS: GalleryItem[] = [
   {
     id: "campus-gate",
     title: "The Main Gate",
     caption: "No 5 Resort Road, Rayfield — welcome to the academy.",
     category: "Campus",
-    gradient: "from-blue-900 via-[#0a1128] to-slate-950",
+    gradient: "from-brand-600 via-brand-800 to-night-900",
+    image: "/images/rca-campus.svg",
   },
   {
     id: "early-years",
     title: "Early Years Wing",
     caption: "Montessori-inspired classrooms for Pre-Play and Nursery.",
     category: "Campus",
-    gradient: "from-cyan-600 via-blue-800 to-slate-900",
+    gradient: "from-azure-500 via-azure-700 to-night-900",
   },
   {
     id: "science-lab",
     title: "Science & ICT Labs",
     caption: "Practical sessions for JSS and SSS students.",
     category: "Academics",
-    gradient: "from-emerald-700 via-teal-800 to-slate-950",
+    gradient: "from-emerald-600 via-emerald-800 to-night-900",
   },
   {
     id: "cbt-hall",
     title: "CBT Examination Hall",
     caption: "Terminal exams delivered on the computer-based testing engine.",
     category: "Academics",
-    gradient: "from-indigo-700 via-blue-900 to-slate-950",
+    gradient: "from-slate-500 via-slate-700 to-night-900",
   },
   {
     id: "prize-giving",
     title: "Prize-Giving Day",
     caption: "Honouring academic excellence and the Crown House Trophy.",
     category: "Events",
-    gradient: "from-amber-500 via-orange-700 to-slate-900",
+    gradient: "from-amber-500 via-amber-700 to-night-900",
   },
   {
     id: "inter-house-sports",
     title: "Inter-House Sports",
     caption: "Sapphire, Ruby, Emerald and Topaz on the field.",
     category: "Sports & Clubs",
-    gradient: "from-rose-600 via-red-800 to-slate-950",
+    gradient: "from-accent-500 via-accent-700 to-night-900",
   },
 ];
 

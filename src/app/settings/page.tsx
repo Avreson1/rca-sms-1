@@ -190,7 +190,7 @@ export default function SettingsPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <Link href="/" className="hover:text-[#0000FF] flex items-center gap-1 font-semibold">
+              <Link href="/" className="flex min-h-6 items-center gap-1 font-semibold hover:text-brand-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -199,7 +199,7 @@ export default function SettingsPage() {
             </div>
             <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
               <span>Institutional &amp; Portal Preferences</span>
-              <span className="text-xs bg-blue-100 text-[#0000FF] font-black px-2.5 py-0.5 rounded-full border border-blue-300 uppercase">
+              <span className="text-xs bg-blue-100 text-brand-600 font-black px-2.5 py-0.5 rounded-full border border-blue-300 uppercase">
                 Scheme 1
               </span>
             </h1>
@@ -211,7 +211,7 @@ export default function SettingsPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={handlePurgeSessions}
-              className="px-4 py-2 text-xs font-bold bg-rose-50 hover:bg-[#FF0000] text-rose-700 hover:text-white border border-rose-200 rounded-xl transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold bg-rose-50 hover:bg-accent-600 text-rose-700 hover:text-white border border-rose-200 rounded-xl transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
               <span>Purge Active Sessions</span>
@@ -221,8 +221,8 @@ export default function SettingsPage() {
 
         {/* Toast Alert */}
         {toastMessage && (
-          <div className="bg-[#0a1128] text-white border border-cyan-400 px-5 py-3 rounded-2xl text-xs font-bold flex items-center gap-2.5 z-50 animate-in fade-in shadow-xl">
-            <CheckCircle2 className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+          <div role="status" className="flex items-center gap-2.5 rounded-xl border border-hairline bg-surface px-4 py-3 text-xs font-semibold text-ink shadow-sm animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
             {toastMessage}
           </div>
         )}
@@ -256,8 +256,8 @@ export default function SettingsPage() {
         )}
 
         {isCBTSaved && (
-          <div className="bg-cyan-50 border border-cyan-300 text-cyan-950 rounded-2xl p-4 text-xs font-bold flex items-center gap-2 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 text-cyan-600 flex-shrink-0" />
+          <div role="status" className="flex items-center gap-2.5 rounded-xl border border-hairline bg-surface p-4 text-xs font-bold text-ink shadow-sm animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
             Filed on the school&apos;s records. The CBT screen, the exam room and every other machine read this same row.
           </div>
         )}
@@ -277,7 +277,7 @@ export default function SettingsPage() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
                 <div className="flex items-center gap-3">
                   <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-white shadow-md ${
-                    cbtConfig.isOpen ? "bg-[#0000FF] ring-2 ring-cyan-400/40" : "bg-[#FF0000] ring-2 ring-rose-300"
+                    cbtConfig.isOpen ? "bg-brand-600 ring-2 ring-cyan-400/40" : "bg-accent-600 ring-2 ring-rose-300"
                   }`}>
                     <Laptop className="w-5 h-5 text-white" />
                   </div>
@@ -326,12 +326,12 @@ export default function SettingsPage() {
                   <p className="font-black text-slate-900 flex items-center gap-1.5">
                     {cbtConfig.isOpen ? (
                       <>
-                        <Radio className="w-4 h-4 text-[#0000FF]" />
+                        <Radio className="w-4 h-4 text-brand-600" />
                         Assessment Engine is Live &amp; Accessible to Candidates
                       </>
                     ) : (
                       <>
-                        <Lock className="w-4 h-4 text-[#FF0000]" />
+                        <Lock className="w-4 h-4 text-accent-600" />
                         Assessment Engine is Closed &amp; Locked Down
                       </>
                     )}
@@ -355,7 +355,7 @@ export default function SettingsPage() {
                     <button
                       type="button"
                       onClick={() => handleToggleCBTEngine(false)}
-                      className="w-full sm:w-auto px-4 py-2.5 bg-[#FF0000] hover:bg-red-700 text-white font-bold text-xs rounded-xl transition-all shadow-md shadow-red-600/30 flex items-center justify-center gap-2 cursor-pointer"
+                      className="w-full sm:w-auto min-h-11 px-4 py-2.5 bg-accent-600 hover:bg-accent-700 text-white font-bold text-xs rounded-xl transition-colors duration-150 shadow-2xs flex items-center justify-center gap-2 cursor-pointer"
                     >
                       <Lock className="w-4 h-4" />
                       <span>Lockdown / Close CBT Portal</span>
@@ -364,9 +364,9 @@ export default function SettingsPage() {
                     <button
                       type="button"
                       onClick={() => handleToggleCBTEngine(true)}
-                      className="w-full sm:w-auto px-4 py-2.5 bg-[#0000FF] hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition-all shadow-md shadow-blue-600/30 flex items-center justify-center gap-2 cursor-pointer"
+                      className="w-full sm:w-auto min-h-11 px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl transition-colors duration-150 shadow-2xs flex items-center justify-center gap-2 cursor-pointer"
                     >
-                      <Unlock className="w-4 h-4 text-cyan-300" />
+                      <Unlock className="w-4 h-4" />
                       <span>Open CBT Portal for Candidates</span>
                     </button>
                   )}
@@ -383,7 +383,7 @@ export default function SettingsPage() {
                     <select
                       value={cbtExamMode}
                       onChange={(e) => setCBTExamMode(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold outline-none focus:border-[#0000FF] cursor-pointer"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold outline-none focus:border-brand-600 cursor-pointer"
                     >
                       <option value="">Choose the mode this paper is being run as…</option>
                       <option value="Terminal Examination">Terminal Examination (Final Exams)</option>
@@ -404,7 +404,7 @@ export default function SettingsPage() {
                       value={cbtWindow}
                       onChange={(e) => setCBTWindow(e.target.value)}
                       placeholder="e.g. Monday - Friday (8:00 AM - 2:00 PM)"
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-semibold outline-none focus:border-[#0000FF]"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-semibold outline-none focus:border-brand-600"
                     />
                   </div>
                 </div>
@@ -418,7 +418,7 @@ export default function SettingsPage() {
                     value={cbtMessage}
                     onChange={(e) => setCBTMessage(e.target.value)}
                     placeholder="Notice displayed to candidates when the CBT portal is closed..."
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs outline-none focus:border-[#0000FF] leading-relaxed resize-none"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs outline-none focus:border-brand-600 leading-relaxed resize-none"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">
                     Candidates see this notice whenever the switch is shut. The window above is what the school announces
@@ -434,9 +434,9 @@ export default function SettingsPage() {
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
                   <button
                     type="submit"
-                    className="w-full sm:w-auto px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full sm:w-auto min-h-11 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-xs rounded-xl transition-colors duration-150 shadow-2xs flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    <Save className="w-4 h-4 text-cyan-400" />
+                    <Save className="w-4 h-4" />
                     <span>Save CBT Governance Parameters</span>
                   </button>
 
@@ -458,7 +458,7 @@ export default function SettingsPage() {
                 {/* School Identity */}
                 <div>
                   <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
-                    <Building className="w-4 h-4 text-[#0000FF]" />
+                    <Building className="w-4 h-4 text-brand-600" />
                     School Institutional Identity
                   </h3>
 
@@ -469,7 +469,7 @@ export default function SettingsPage() {
                         type="text"
                         value={schoolName}
                         onChange={(e) => setSchoolName(e.target.value)}
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold outline-none focus:border-[#0000FF]"
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold outline-none focus:border-brand-600"
                       />
                     </div>
 
@@ -479,7 +479,7 @@ export default function SettingsPage() {
                         type="text"
                         value={schoolAddress}
                         onChange={(e) => setSchoolAddress(e.target.value)}
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-[#0000FF]"
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-brand-600"
                       />
                     </div>
 
@@ -490,7 +490,7 @@ export default function SettingsPage() {
                           type="text"
                           value={currentSession}
                           onChange={(e) => setCurrentSession(e.target.value)}
-                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-mono outline-none focus:border-[#0000FF]"
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-mono outline-none focus:border-brand-600"
                         />
                       </div>
 
@@ -499,7 +499,7 @@ export default function SettingsPage() {
                         <select
                           value={currentTerm}
                           onChange={(e) => setCurrentTerm(e.target.value)}
-                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-bold outline-none focus:border-[#0000FF]"
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-bold outline-none focus:border-brand-600"
                         >
                           <option value="First Term">First Term</option>
                           <option value="Second Term">Second Term</option>
@@ -567,7 +567,7 @@ export default function SettingsPage() {
                     )}
                     <Link
                       href="/setup/report-templates"
-                      className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#0000FF] hover:text-blue-800"
+                      className="inline-flex min-h-6 items-center gap-1.5 text-[11px] font-bold text-brand-600 hover:text-blue-800"
                     >
                       <FileText className="w-3.5 h-3.5" />
                       Open the circular editor
@@ -579,9 +579,9 @@ export default function SettingsPage() {
                   <button
                     type="submit"
                     disabled={savingSchool}
-                    className="px-5 py-2.5 bg-[#0000FF] hover:bg-blue-700 disabled:bg-slate-400 text-white font-black text-xs rounded-xl transition-all shadow-md shadow-blue-600/30 flex items-center gap-2 cursor-pointer"
+                    className="min-h-11 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:bg-slate-200 disabled:text-slate-500 text-white font-extrabold text-xs rounded-xl transition-colors duration-150 shadow-2xs flex items-center gap-2 cursor-pointer disabled:cursor-wait"
                   >
-                    <Save className="w-4 h-4 text-cyan-300" />
+                    <Save className="w-4 h-4" />
                     <span>{savingSchool ? "Saving to the school's records…" : "Save Portal Preferences"}</span>
                   </button>
                   <p className="text-[11px] text-slate-500">
@@ -596,12 +596,12 @@ export default function SettingsPage() {
             <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
                 <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
-                  <Award className="w-4 h-4 text-[#0000FF]" />
+                  <Award className="w-4 h-4 text-brand-600" />
                   Approved Universal Grading System (A – F Scale)
                 </h3>
                 <Link
                   href="/setup/grading"
-                  className="text-xs font-black text-[#0000FF] hover:text-blue-800 flex items-center gap-1"
+                  className="flex min-h-6 items-center gap-1 text-xs font-black text-brand-600 hover:text-blue-800"
                 >
                   <Sliders className="w-3.5 h-3.5" />
                   View Scale Details →
@@ -610,7 +610,7 @@ export default function SettingsPage() {
 
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs text-center">
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl">
-                  <strong className="text-base font-black text-[#0000FF] block">A</strong>
+                  <strong className="text-base font-black text-brand-600 block">A</strong>
                   <span className="text-[11px] font-bold text-slate-700 block">70 – 100%</span>
                   <span className="text-[10px] text-slate-500">Distinction (4.0)</span>
                 </div>
@@ -651,7 +651,7 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={handlePurge}
-                  className="w-full sm:w-auto px-4 py-2.5 bg-rose-50 hover:bg-[#FF0000] text-[#FF0000] hover:text-white border border-rose-200 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  className="w-full sm:w-auto px-4 py-2.5 bg-rose-50 hover:bg-accent-600 text-accent-600 hover:text-white border border-rose-200 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   Purge All Demo Data (Start 100% Clean)
@@ -671,29 +671,29 @@ export default function SettingsPage() {
 
           {/* Admin Profile Sidebar */}
           <div className="lg:col-span-4 space-y-4">
-            <div className="bg-[#0a1128] border border-blue-950 rounded-3xl p-5 text-white shadow-xl space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-[#0000FF] text-white flex items-center justify-center font-black text-lg shadow-md shadow-blue-700/40 ring-1 ring-cyan-400/50">
+            <div className="texture-grid-light relative overflow-hidden rounded-2xl border border-white/10 bg-brand-950 p-5 text-white shadow-lg space-y-4">
+              <div className="relative flex items-center gap-3">
+                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-brand-600 font-display text-lg font-extrabold text-white ring-1 ring-inset ring-white/20">
                   {currentUser?.fullName ? currentUser.fullName.slice(0, 2).toUpperCase() : "—"}
                 </div>
-                <div>
-                  <h4 className="font-extrabold text-sm text-white">{currentUser?.fullName || "Signing in…"}</h4>
-                  <p className="text-xs text-cyan-400 font-mono">{currentUser ? `@${currentUser.username}` : "—"}</p>
+                <div className="min-w-0">
+                  <h4 className="truncate font-display text-sm font-extrabold tracking-tight text-white">{currentUser?.fullName || "Signing in…"}</h4>
+                  <p className="truncate font-mono text-xs text-brand-300">{currentUser ? `@${currentUser.username}` : "—"}</p>
                 </div>
               </div>
 
-              <div className="text-xs text-slate-300 space-y-1.5 pt-2 border-t border-blue-900/60 font-mono">
-                <p>Staff ID: <strong className="text-white">{currentUser?.staffId || "—"}</strong></p>
-                <p>Role: <strong className="text-cyan-300">{currentUser?.role || "—"}</strong></p>
-                <p>Subject: <strong className="text-white">{currentUser?.assignedSubject || "—"}</strong></p>
+              <div className="relative space-y-1.5 border-t border-white/10 pt-3 font-mono text-xs tabular-nums text-white/60">
+                <p>Staff ID: <strong className="font-semibold text-white">{currentUser?.staffId || "—"}</strong></p>
+                <p>Role: <strong className="font-semibold text-brand-300">{currentUser?.role || "—"}</strong></p>
+                <p>Subject: <strong className="font-semibold text-white">{currentUser?.assignedSubject || "—"}</strong></p>
               </div>
 
-              <div className="p-3 bg-[#060b19]/80 rounded-2xl border border-cyan-500/20 text-[11px] text-slate-400 space-y-1">
-                <div className="flex items-center gap-1.5 text-cyan-300 font-bold">
+              <div className="relative space-y-1.5 rounded-xl border border-white/10 bg-night-900/70 p-3 text-[11px] leading-relaxed text-white/60">
+                <div className="flex items-center gap-1.5 font-bold text-emerald-300">
                   <Shield className="w-3.5 h-3.5" />
-                  Active Session Authorized
+                  Active session authorized
                 </div>
-                <p>Tiered draft logins and universal role permissions are enabled across all 5 user tiers.</p>
+                <p>Your role and permissions come from the school&apos;s signed-in session, not from this browser.</p>
               </div>
             </div>
 
@@ -703,28 +703,28 @@ export default function SettingsPage() {
               <div className="space-y-2 font-semibold text-slate-700">
                 <Link
                   href="/login"
-                  className="block p-2 rounded-xl hover:bg-blue-50 transition-colors text-[#0000FF] flex items-center justify-between"
+                  className="block p-2 rounded-xl hover:bg-blue-50 transition-colors text-brand-600 flex items-center justify-between"
                 >
                   <span>🔐 Open Portal Sign-In / Draft Logins</span>
                   <span>→</span>
                 </Link>
                 <Link
                   href="/setup/ca-structure"
-                  className="block p-2 rounded-xl hover:bg-blue-50 transition-colors text-[#0000FF] flex items-center justify-between"
+                  className="block p-2 rounded-xl hover:bg-blue-50 transition-colors text-brand-600 flex items-center justify-between"
                 >
                   <span>📊 Tier CA Structure Assignment</span>
                   <span>→</span>
                 </Link>
                 <Link
                   href="/setup/calendar"
-                  className="block p-2 rounded-xl hover:bg-blue-50 transition-colors text-[#0000FF] flex items-center justify-between"
+                  className="block p-2 rounded-xl hover:bg-blue-50 transition-colors text-brand-600 flex items-center justify-between"
                 >
                   <span>📅 Activity Input Templates</span>
                   <span>→</span>
                 </Link>
                 <Link
                   href="/operations/score-card"
-                  className="block p-2 rounded-xl hover:bg-blue-50 transition-colors text-[#0000FF] flex items-center justify-between"
+                  className="block p-2 rounded-xl hover:bg-blue-50 transition-colors text-brand-600 flex items-center justify-between"
                 >
                   <span>🎓 Terminal Scorecards &amp; Newsletter</span>
                   <span>→</span>

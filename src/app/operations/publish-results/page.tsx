@@ -145,7 +145,7 @@ export default function PublishResultsPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <Link href="/" className="hover:text-blue-600 flex items-center gap-1">
+              <Link href="/" className="flex min-h-6 items-center gap-1 hover:text-blue-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -226,29 +226,29 @@ export default function PublishResultsPage() {
           </div>
         )}
 
-        <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-md border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/20 px-2 py-0.5 rounded border border-blue-500/30">
+        <div className="texture-grid-light relative overflow-hidden rounded-2xl border border-white/10 bg-brand-950 p-6 text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="relative">
+            <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-brand-200 bg-white/10 px-2 py-0.5 rounded border border-white/15">
               Release status
             </span>
-            <h2 className="text-2xl font-black text-white mt-1">
+            <h2 className="font-display text-2xl font-extrabold tracking-tight text-white mt-2 tabular-nums">
               {publishedCount} of {classes.length} classes released
             </h2>
-            <p className="text-xs text-slate-300 mt-1">
-              Session <strong className="text-white">{session}</strong> • Term{" "}
-              <strong className="text-blue-400">{selectedTerm}</strong> • {students.length} pupils on the register •{" "}
+            <p className="text-xs text-white/70 mt-1.5">
+              Session <strong className="font-semibold text-white">{session}</strong> • Term{" "}
+              <strong className="font-semibold text-brand-300">{selectedTerm}</strong> • {students.length} pupils on the register •{" "}
               {filedLoaded ? `${publishEligible.length} classes have marks filed` : "marks are still being read"}
             </p>
           </div>
 
           {canPublish && (
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative flex items-center gap-2 flex-wrap">
               <button
                 onClick={() => void applyToClasses(publishEligible, true)}
                 disabled={busy || !filedLoaded || publishEligible.length === 0}
-                className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-700 disabled:text-slate-400 text-slate-950 font-bold text-xs rounded-xl transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                className="px-4 min-h-11 bg-emerald-600 hover:bg-emerald-700 disabled:bg-white/10 disabled:text-white/40 text-white font-bold text-xs rounded-xl transition-colors duration-150 shadow-xs cursor-pointer flex items-center gap-1.5"
               >
-                <CheckCircle2 className="w-4 h-4 text-slate-950" />
+                <CheckCircle2 className="w-4 h-4" />
                 Release every class with marks
               </button>
               <button

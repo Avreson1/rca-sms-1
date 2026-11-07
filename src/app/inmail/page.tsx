@@ -126,7 +126,7 @@ export default function InmailPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1 flex-wrap">
-              <Link href="/" className="hover:text-blue-600 flex items-center gap-1">
+              <Link href="/" className="flex min-h-6 items-center gap-1 hover:text-blue-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -189,7 +189,7 @@ export default function InmailPage() {
         )}
 
         {isComposing && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="fixed inset-0 bg-scrim/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl max-w-lg w-full border shadow-xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
@@ -396,7 +396,7 @@ export default function InmailPage() {
                   setRefusal(null);
                   setIsComposing(true);
                 }}
-                className="font-bold text-blue-600 hover:text-blue-700 whitespace-nowrap shrink-0 cursor-pointer"
+                className="inline-flex min-h-6 items-center font-bold text-blue-600 hover:text-blue-700 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 Write another →
               </button>

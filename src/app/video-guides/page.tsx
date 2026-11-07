@@ -694,7 +694,7 @@ export default function SOPManualPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <Link href="/" className="hover:text-blue-600 flex items-center gap-1">
+              <Link href="/" className="flex min-h-6 items-center gap-1 hover:text-blue-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -733,7 +733,7 @@ export default function SOPManualPage() {
             </button>
             <button
               onClick={handlePrintManual}
-              className="px-4 py-2 text-xs font-bold bg-[#0000FF] hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold bg-brand-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <Printer className="w-4 h-4" />
               Download / Print Manual (PDF)
@@ -742,21 +742,21 @@ export default function SOPManualPage() {
         </div>
 
         {/* RBAC Role Clearance Notice Banner */}
-        <div className="bg-gradient-to-r from-blue-50/80 via-cyan-50/40 to-slate-50 border border-blue-200/80 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4 print:hidden">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#0000FF] text-white flex items-center justify-center font-bold shadow-sm">
-              <UserCheck className="w-5 h-5 text-cyan-300" />
+        <div className="flex flex-col items-start justify-between gap-4 rounded-2xl border border-brand-100 bg-gradient-to-r from-brand-50 via-azure-50/60 to-canvas p-4 shadow-2xs sm:flex-row sm:items-center print:hidden">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white shadow-2xs">
+              <UserCheck className="h-5 w-5" strokeWidth={1.75} />
             </div>
-            <div>
-              <p className="text-xs font-bold text-slate-900">
-                Active Role Workspace: <strong className="text-[#0000FF]">{currentUser?.fullName || "No name on this login"}</strong> ({currentRole ?? "no role read on this browser"})
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-ink">
+                Active Role Workspace: <strong className="text-brand-700">{currentUser?.fullName || "No name on this login"}</strong> ({currentRole ?? "no role read on this browser"})
               </p>
-              <p className="text-[11px] text-slate-600">
+              <p className="mt-0.5 text-[11px] leading-relaxed text-muted">
                 Displaying {filteredSOPs.length} standard operating procedure(s) authorized for your security clearance level.
               </p>
             </div>
           </div>
-          <span className="text-[10px] font-mono font-bold bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600">
+          <span className="flex-shrink-0 rounded-lg border border-hairline bg-surface px-2.5 py-1 font-mono text-[10px] font-bold text-slate-600">
             RBAC Enforced
           </span>
         </div>
@@ -770,7 +770,7 @@ export default function SOPManualPage() {
               placeholder="Search authorized SOP title, code (e.g. SOP-ADM-001, SOP-PAR-001), keyword, or procedure..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-3 py-2.5 text-slate-800 focus:ring-2 focus:ring-[#0000FF] focus:outline-hidden"
+              className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-3 py-2.5 text-slate-800 focus:ring-2 focus:ring-brand-600 focus:outline-hidden"
             />
           </div>
 
@@ -778,7 +778,7 @@ export default function SOPManualPage() {
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-[#0000FF] focus:outline-hidden cursor-pointer"
+              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-brand-600 focus:outline-hidden cursor-pointer"
             >
               {allowedCategories.includes("all") && (
                 <option value="all">All Authorized Categories ({allowedCategories.length - 1} Tiers)</option>
@@ -864,7 +864,7 @@ export default function SOPManualPage() {
 
                     <div className="pt-1 flex-shrink-0 print:hidden">
                       {isExpanded ? (
-                        <div className="p-1 rounded-lg bg-blue-50 text-[#0000FF]">
+                        <div className="p-1 rounded-lg bg-blue-50 text-brand-600">
                           <ChevronDown className="w-5 h-5" />
                         </div>
                       ) : (
@@ -902,7 +902,7 @@ export default function SOPManualPage() {
                         <ol className="space-y-2 text-slate-800">
                           {sop.procedureSteps.map((step, i) => (
                             <li key={i} className="flex items-start gap-2.5 leading-relaxed bg-white border border-slate-100 p-2.5 rounded-lg shadow-2xs">
-                              <span className="w-5 h-5 rounded-full bg-[#0000FF] text-white font-mono text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs">
+                              <span className="w-5 h-5 rounded-full bg-brand-600 text-white font-mono text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs">
                                 {i + 1}
                               </span>
                               <span>{step}</span>
@@ -914,8 +914,8 @@ export default function SOPManualPage() {
                       {/* Safety & Compliance Rules */}
                       {sop.safetyRules && sop.safetyRules.length > 0 && (
                         <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-950 space-y-1.5">
-                          <div className="flex items-center gap-1.5 font-black text-[11px] uppercase tracking-wider text-[#FF0000]">
-                            <AlertTriangle className="w-4 h-4 text-[#FF0000]" />
+                          <div className="flex items-center gap-1.5 font-black text-[11px] uppercase tracking-wider text-accent-600">
+                            <AlertTriangle className="w-4 h-4 text-accent-600" />
                             Institutional Safety, Audit &amp; Compliance Rules
                           </div>
                           <ul className="list-disc list-inside space-y-0.5 text-red-900 text-[11px]">
@@ -928,9 +928,9 @@ export default function SOPManualPage() {
 
                       {/* Expected Deliverable / Output */}
                       <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-950 font-medium">
-                        <Sparkles className="w-4 h-4 text-[#0000FF] flex-shrink-0" />
+                        <Sparkles className="w-4 h-4 text-brand-600 flex-shrink-0" />
                         <div>
-                          <strong className="text-[#0000FF] font-bold">Expected Output: </strong>
+                          <strong className="text-brand-600 font-bold">Expected Output: </strong>
                           <span className="text-blue-900">{sop.expectedOutput}</span>
                         </div>
                       </div>

@@ -198,7 +198,7 @@ export function UserAccess() {
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm max-w-5xl">
       <div className="p-5 border-b border-slate-100 flex items-center gap-2.5 flex-wrap">
         <div className="bg-blue-50 p-2 rounded-xl border border-blue-200">
-          <KeyRound className="w-4 h-4 text-[#0000FF]" />
+          <KeyRound className="w-4 h-4 text-brand-600" />
         </div>
         <div className="min-w-0">
           <h2 className="text-sm font-black text-slate-900 tracking-tight">User Access</h2>
@@ -222,18 +222,18 @@ export function UserAccess() {
         )}
 
         {freshCredentials?.password && (
-          <div className="bg-[#0a1128] text-white rounded-xl p-4 border border-cyan-400/60 space-y-2">
-            <p className="text-xs font-black text-cyan-300 uppercase tracking-wider">
+          <div className="bg-night-900 text-white rounded-xl p-4 border border-white/12 space-y-2.5 ring-1 ring-inset ring-white/5">
+            <p className="text-[11px] font-bold text-accent-300 uppercase tracking-[0.1em]">
               New credentials — copy now, this password will not be shown again
             </p>
-            <div className="flex flex-wrap items-center gap-2 font-mono text-sm">
-              <span className="text-slate-400">username:</span>
+            <div className="flex flex-wrap items-center gap-2 font-mono text-sm tabular-nums">
+              <span className="text-white/55">username:</span>
               <span className="font-bold">{freshCredentials.username}</span>
-              <span className="text-slate-400 ml-3">password:</span>
-              <span className="font-bold text-cyan-300">{freshCredentials.password}</span>
+              <span className="text-white/55 ml-3">password:</span>
+              <span className="font-bold text-azure-300">{freshCredentials.password}</span>
               <button
                 onClick={copyCredentials}
-                className="ml-auto flex items-center gap-1.5 bg-cyan-400/10 hover:bg-cyan-400/20 border border-cyan-400/50 text-cyan-200 rounded-lg px-3 py-1.5 text-xs font-bold cursor-pointer transition-colors"
+                className="ml-auto flex min-h-9 items-center gap-1.5 rounded-lg border border-white/15 bg-white/8 px-3 text-xs font-bold text-white/85 cursor-pointer transition-colors duration-150 hover:bg-white/15 hover:text-white"
               >
                 {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 {copied ? "Copied" : "Copy"}
@@ -247,18 +247,18 @@ export function UserAccess() {
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             placeholder="Full name (e.g. Mrs. Grace Adams)"
-            className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-sm font-semibold outline-none focus:border-[#0000FF]"
+            className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-sm font-semibold outline-none focus:border-brand-600"
           />
           <input
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Username (optional — auto-generated)"
-            className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-sm font-semibold outline-none focus:border-[#0000FF]"
+            className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-sm font-semibold outline-none focus:border-brand-600"
           />
           <select
             value={role}
             onChange={(e) => setRole(e.target.value)}
-            className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-sm font-semibold outline-none focus:border-[#0000FF] min-w-0 max-w-full"
+            className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-sm font-semibold outline-none focus:border-brand-600 min-w-0 max-w-full"
           >
             {ROLE_ORDER.map((value) => (
               <option key={value} value={value}>
@@ -271,13 +271,13 @@ export function UserAccess() {
               value={staffId}
               onChange={(e) => setStaffId(e.target.value)}
               placeholder="Staff / admission ID"
-              className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-sm font-semibold outline-none focus:border-[#0000FF] min-w-0"
+              className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-sm font-semibold outline-none focus:border-brand-600 min-w-0"
             />
             <input
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Email (optional)"
-              className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-sm font-semibold outline-none focus:border-[#0000FF] min-w-0"
+              className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-sm font-semibold outline-none focus:border-brand-600 min-w-0"
             />
           </div>
         </div>
@@ -291,7 +291,7 @@ export function UserAccess() {
               value={childNumbers}
               onChange={(e) => setChildNumbers(e.target.value)}
               placeholder="RCA/2025/001, RCA/2025/014"
-              className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-slate-800 text-sm font-semibold outline-none focus:border-[#0000FF] font-mono"
+              className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-slate-800 text-sm font-semibold outline-none focus:border-brand-600 font-mono"
             />
             <p className="text-[11px] text-slate-600">
               Separate them with commas. This login will only ever see these pupils&rsquo; scorecards and invoices, and
@@ -303,7 +303,7 @@ export function UserAccess() {
         <button
           onClick={createAccount}
           disabled={creating || !fullName.trim()}
-          className="w-full sm:w-auto px-5 py-2.5 bg-[#0000FF] hover:bg-blue-600 text-white text-xs font-black rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+          className="w-full sm:w-auto px-5 py-2.5 bg-brand-600 hover:bg-blue-600 text-white text-xs font-black rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
         >
           <UserPlus className="w-4 h-4" />
           {creating ? "Creating..." : "Create Login"}
@@ -354,7 +354,7 @@ export function UserAccess() {
                       (draft === null ? (
                         <button
                           onClick={() => setLinkDraft({ id: account.id, value: linked.join(", ") })}
-                          className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 hover:text-[#0000FF] cursor-pointer"
+                          className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 hover:text-brand-600 cursor-pointer"
                         >
                           <Users className="w-3 h-3" />
                           {linked.length > 0 ? linked.join(", ") : "No child linked yet — add admission numbers"}
@@ -365,7 +365,7 @@ export function UserAccess() {
                             value={draft}
                             onChange={(e) => setLinkDraft((current) => (current ? { ...current, value: e.target.value } : current))}
                             placeholder="RCA/2025/001, RCA/2025/014"
-                            className="flex-1 min-w-[200px] p-2 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs font-semibold outline-none focus:border-[#0000FF] font-mono"
+                            className="flex-1 min-w-[200px] p-2 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs font-semibold outline-none focus:border-brand-600 font-mono"
                           />
                           <button
                             onClick={() => {
@@ -373,7 +373,7 @@ export function UserAccess() {
                               setLinkDraft(null);
                             }}
                             disabled={busyId === account.id}
-                            className="px-3 py-1.5 text-[11px] font-black bg-[#0000FF] hover:bg-blue-600 text-white rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                            className="px-3 py-1.5 text-[11px] font-black bg-brand-600 hover:bg-blue-600 text-white rounded-lg transition-colors cursor-pointer disabled:opacity-50"
                           >
                             Save children
                           </button>
@@ -390,7 +390,7 @@ export function UserAccess() {
                     <button
                       onClick={() => patch(account.id, { resetPassword: true })}
                       disabled={busyId === account.id}
-                      className="px-3 py-1.5 text-xs font-bold bg-white border border-slate-200 hover:border-[#0000FF] hover:text-[#0000FF] rounded-lg transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      className="px-3 py-1.5 text-xs font-bold bg-white border border-slate-200 hover:border-brand-600 hover:text-brand-600 rounded-lg transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
                       New Password

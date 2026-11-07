@@ -550,7 +550,7 @@ export default function ProctoredCBTPage() {
               </Link>
               <Link
                 href="/operations/score-card"
-                className="w-full sm:w-auto px-6 py-2.5 bg-blue-50 hover:bg-blue-100 text-[#0000FF] font-bold text-xs rounded-xl transition-all border border-blue-200 flex items-center justify-center gap-2"
+                className="w-full sm:w-auto px-6 py-2.5 bg-blue-50 hover:bg-blue-100 text-brand-600 font-bold text-xs rounded-xl transition-all border border-blue-200 flex items-center justify-center gap-2"
               >
                 <Printer className="w-4 h-4" />
                 <span>View Terminal Score Cards</span>
@@ -571,7 +571,7 @@ export default function ProctoredCBTPage() {
           <div className="bg-gradient-to-r from-amber-50 via-rose-50 to-slate-50 border-2 border-amber-300 rounded-2xl p-4 shadow-sm space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-sm flex-shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center font-bold shadow-sm flex-shrink-0">
                   <Lock className="w-5 h-5" />
                 </div>
                 <div className="text-xs space-y-0.5">
@@ -599,7 +599,7 @@ export default function ProctoredCBTPage() {
                       const outcome = await toggleCBTAccess(true);
                       setSwitchRefusal(outcome.ok ? null : outcome.reason ?? "the switch was not moved");
                     }}
-                    className="px-3.5 py-2 bg-[#0000FF] hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                    className="px-3.5 py-2 bg-brand-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
                   >
                     <Unlock className="w-3.5 h-3.5 text-cyan-300" />
                     <span>Open for Candidates</span>
@@ -631,7 +631,7 @@ export default function ProctoredCBTPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <Link href="/" className="hover:text-blue-600 flex items-center gap-1">
+              <Link href="/" className="flex min-h-6 items-center gap-1 hover:text-blue-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -748,18 +748,18 @@ export default function ProctoredCBTPage() {
             </div>
 
             {/* Proctoring Specifications Banner */}
-            <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-md border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-              <div className="space-y-2 max-w-2xl">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] uppercase font-bold tracking-wider bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded">
+            <div className="texture-grid-light relative overflow-hidden rounded-2xl border border-white/10 bg-brand-950 p-6 text-white shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+              <div className="relative space-y-2 max-w-2xl">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] uppercase font-bold tracking-[0.1em] bg-azure-500/15 text-azure-300 border border-azure-400/25 px-2 py-0.5 rounded">
                     What this sitting watches
                   </span>
-                  <span className="text-xs text-slate-400">• Nothing but the four events below is watched</span>
+                  <span className="text-xs text-white/55">• Nothing but the four events below is watched</span>
                 </div>
-                <h2 className="text-xl font-bold text-white">
+                <h2 className="font-display text-xl font-extrabold tracking-tight text-white">
                   Automated Invigilation
                 </h2>
-                <p className="text-xs text-slate-300 leading-relaxed">
+                <p className="text-xs text-white/70 leading-relaxed">
                   The score is marked in this browser — it holds the answers the paper ships with — and scaled to the
                   exam&apos;s 60-mark weight for display when the candidate finishes. What is filed on the school&apos;s
                   records is the attempt: that figure, the question count and the infractions. The Continuous Assessment
@@ -769,14 +769,14 @@ export default function ProctoredCBTPage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full md:w-auto md:shrink-0">
-                <div className="bg-slate-800/80 border border-slate-700 p-3 rounded-xl text-center min-w-[9rem]">
-                  <span className="text-xs text-slate-400 block">Tab Switch Cap</span>
-                  <strong className="text-amber-400 text-base font-extrabold">Max 2 Strikes</strong>
+              <div className="relative grid grid-cols-1 sm:grid-cols-2 gap-3 w-full md:w-auto md:shrink-0">
+                <div className="bg-white/6 border border-white/12 p-3 rounded-xl text-center min-w-[9rem]">
+                  <span className="text-xs text-white/55 block">Tab Switch Cap</span>
+                  <strong className="text-amber-300 text-base font-extrabold">Max 2 Strikes</strong>
                 </div>
-                <div className="bg-slate-800/80 border border-slate-700 p-3 rounded-xl text-center min-w-[9rem]">
-                  <span className="text-xs text-slate-400 block">Scaled for display as</span>
-                  <strong className="text-emerald-400 text-base font-extrabold">Exam / 60 Mks</strong>
+                <div className="bg-white/6 border border-white/12 p-3 rounded-xl text-center min-w-[9rem]">
+                  <span className="text-xs text-white/55 block">Scaled for display as</span>
+                  <strong className="text-emerald-300 text-base font-extrabold">Exam / 60 Mks</strong>
                 </div>
               </div>
             </div>
@@ -1062,8 +1062,8 @@ export default function ProctoredCBTPage() {
 
             {/* Expelled / Disqualified Lockout Screen */}
             {isExpelled ? (
-              <div className="bg-red-950 border-2 border-red-600 rounded-3xl p-8 text-white shadow-2xl space-y-6 max-w-3xl mx-auto text-center animate-in zoom-in-95">
-                <div className="w-20 h-20 bg-red-600 text-white rounded-full flex items-center justify-center mx-auto shadow-lg shadow-red-500/50">
+              <div className="bg-accent-950 border-2 border-accent-600 rounded-2xl p-8 text-white shadow-2xl space-y-6 max-w-3xl mx-auto text-center animate-in zoom-in-95">
+                <div className="w-20 h-20 bg-accent-600 text-white rounded-full flex items-center justify-center mx-auto shadow-lg">
                   <Lock className="w-10 h-10" />
                 </div>
                 <div>
@@ -1371,8 +1371,8 @@ export default function ProctoredCBTPage() {
                 <div className="lg:col-span-4 space-y-4">
                   
                   {/* What this screen actually watches */}
-                  <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 text-white shadow-md space-y-4">
-                    <div className="flex items-center justify-between">
+                  <div className="bg-brand-950 border border-white/10 rounded-2xl p-5 text-white shadow-lg space-y-4">
+                    <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
                         <span className="relative flex h-2.5 w-2.5">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -1380,7 +1380,7 @@ export default function ProctoredCBTPage() {
                         </span>
                         <h4 className="text-xs font-bold tracking-wide uppercase">Browser Lockdown</h4>
                       </div>
-                      <span className="text-[10px] bg-slate-800 text-slate-300 font-mono px-2 py-0.5 rounded">
+                      <span className="text-[10px] bg-white/10 text-white/75 font-mono px-2 py-0.5 rounded">
                         {isFullscreen ? "Full-screen" : "Not full-screen"}
                       </span>
                     </div>
@@ -1392,7 +1392,7 @@ export default function ProctoredCBTPage() {
                         a pupil sat an exam believing their face was being watched. These are the
                         four things this page really detects, because they are the four listeners
                         actually attached. */}
-                    <ul className="space-y-1.5 text-[11px] text-slate-300">
+                    <ul className="space-y-1.5 text-[11px] text-white/70">
                       <li className="flex items-start gap-1.5">
                         <span className="text-emerald-400 mt-0.5">•</span>
                         Leaving full-screen while the clock is running
@@ -1410,7 +1410,7 @@ export default function ProctoredCBTPage() {
                         Three of the above ends this sitting and scores it 0
                       </li>
                     </ul>
-                    <p className="text-[10px] text-slate-400 border-t border-slate-800 pt-2">
+                    <p className="text-[10px] leading-relaxed text-white/55 border-t border-white/10 pt-2.5">
                       No camera, microphone, face or gaze check runs here — this portal never asks
                       the browser for that access. The log below is what this browser noticed of the
                       four events above; when the sitting ends it is filed alongside the attempt, so

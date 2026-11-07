@@ -527,7 +527,7 @@ export default function OperationsAcademicsPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <Link href="/" className="hover:text-blue-600 flex items-center gap-1">
+              <Link href="/" className="flex min-h-6 items-center gap-1 hover:text-blue-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -601,7 +601,7 @@ export default function OperationsAcademicsPage() {
               <button
                 onClick={() => selectedClass && openSlot(days[0] ?? "Monday", slots[0]?.index ?? 0)}
                 disabled={!selectedClass || slots.length === 0}
-                className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 Schedule Class Period
@@ -795,7 +795,7 @@ export default function OperationsAcademicsPage() {
                   type="button"
                   onClick={() => void handleFileDayShape()}
                   disabled={busy || shapeDraft.days.length === 0}
-                  className="px-4 py-2 text-xs font-bold bg-purple-700 hover:bg-purple-800 disabled:bg-slate-300 text-white rounded-lg transition-colors shadow-xs cursor-pointer"
+                  className="px-4 py-2 text-xs font-bold bg-purple-700 hover:bg-purple-800 disabled:bg-slate-200 disabled:text-slate-500 text-white rounded-lg transition-colors shadow-xs cursor-pointer"
                 >
                   {busy ? "Filing…" : "File this day on the school's records"}
                 </button>
@@ -826,7 +826,7 @@ export default function OperationsAcademicsPage() {
                 <button
                   onClick={() => void handleCarryOver()}
                   disabled={busy}
-                  className="px-3.5 py-2 text-xs font-bold bg-sky-700 hover:bg-sky-800 disabled:bg-slate-300 text-white rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-2 text-xs font-bold bg-sky-700 hover:bg-sky-800 disabled:bg-slate-200 disabled:text-slate-500 text-white rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <Upload className="w-4 h-4" />
                   {busy ? "Filing…" : `Carry these ${legacyCopy.length} period(s) into the school's records`}
@@ -1078,19 +1078,19 @@ export default function OperationsAcademicsPage() {
         {/* Tab 2: every class arm at once */}
         {activeTab === "master" && canWrite && (
           <div className="space-y-4">
-            <div className="bg-slate-900 text-white p-5 rounded-2xl border border-slate-800 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400 bg-purple-500/20 px-2 py-0.5 rounded border border-purple-500/30">
+            <div className="texture-grid-light relative overflow-hidden rounded-2xl border border-white/10 bg-brand-950 p-5 text-white shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="relative">
+                <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-brand-200 bg-white/10 px-2 py-0.5 rounded border border-white/15">
                   Institutional Master Schedule
                 </span>
-                <h3 className="text-lg font-bold text-white mt-1">Master Allocation Matrix Across All Class Arms</h3>
-                <p className="text-xs text-slate-300 mt-0.5">
+                <h3 className="font-display text-lg font-extrabold tracking-tight text-white mt-2">Master Allocation Matrix Across All Class Arms</h3>
+                <p className="text-xs text-white/70 mt-1">
                   Every lesson filed for {term}, {session}, counted per class arm on the school&apos;s records.
                 </p>
               </div>
               <button
                 onClick={() => window.print()}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                className="relative px-4 min-h-11 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-lg transition-colors duration-150 shadow-xs flex items-center justify-center gap-1.5 cursor-pointer flex-shrink-0"
               >
                 <Printer className="w-4 h-4" />
                 Print Master Matrix
@@ -1391,7 +1391,7 @@ export default function OperationsAcademicsPage() {
                   type="button"
                   onClick={() => void handleDraft()}
                   disabled={drafting || busy || loading}
-                  className="px-4 py-2 text-xs font-bold bg-indigo-700 hover:bg-indigo-800 disabled:bg-slate-300 text-white rounded-lg transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                  className="px-4 py-2 text-xs font-bold bg-indigo-700 hover:bg-indigo-800 disabled:bg-slate-200 disabled:text-slate-500 text-white rounded-lg transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
                 >
                   <Sparkles className="w-4 h-4" />
                   {drafting ? "Placing the week…" : "Draft the week"}
@@ -1428,7 +1428,7 @@ export default function OperationsAcademicsPage() {
                       type="button"
                       onClick={() => void handleFileDraft()}
                       disabled={busy || draftProposed.length === 0}
-                      className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-lg transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                      className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 text-white rounded-lg transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
                     >
                       <Upload className="w-4 h-4" />
                       {busy ? "Filing…" : `File these ${draftProposed.length} lesson(s)`}
@@ -1595,7 +1595,7 @@ export default function OperationsAcademicsPage() {
                 <button
                   type="submit"
                   disabled={busy}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-lg font-bold shadow-xs text-xs cursor-pointer"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 text-white rounded-lg font-bold shadow-xs text-xs cursor-pointer"
                 >
                   {busy ? "Filing…" : "File On The School's Timetable"}
                 </button>

@@ -64,7 +64,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
   const allowedRoles = knownRole === null ? [] : rolesAllowedForPath(pathname);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-canvas">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {sidebarOpen && (
@@ -72,7 +72,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
           type="button"
           aria-label="Close navigation"
           onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs lg:hidden"
+          className="animate-in fade-in fixed inset-0 z-40 bg-scrim/60 backdrop-blur-sm lg:hidden"
         />
       )}
 
@@ -83,11 +83,15 @@ export function DashboardShell({ children }: DashboardShellProps) {
           {isAllowed ? (
             children
           ) : knownRole === null ? (
-            <div className="min-h-[70vh] flex flex-col items-center justify-center text-center p-6">
-              <div className="max-w-md w-full bg-white border border-slate-200 rounded-3xl p-8 shadow-sm space-y-4">
-                <ShieldAlert className="w-8 h-8 text-slate-400 mx-auto" />
-                <h2 className="text-base font-black text-slate-900">This screen is waiting for your login</h2>
-                <p className="text-xs text-slate-500 leading-relaxed">
+            <div className="flex min-h-[70vh] flex-col items-center justify-center p-6 text-center">
+              <div className="w-full max-w-md space-y-4 rounded-2xl border border-hairline bg-surface p-8 shadow-sm">
+                <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-400 ring-1 ring-inset ring-slate-200">
+                  <ShieldAlert className="h-5 w-5" strokeWidth={1.75} />
+                </span>
+                <h2 className="font-display text-lg font-extrabold tracking-tight text-ink">
+                  This screen is waiting for your login
+                </h2>
+                <p className="text-[13px] leading-relaxed text-muted">
                   The portal has not read a signed-in role on this browser yet, so it shows you nothing —
                   not even a menu. Nothing has been refused: every record on this page is still on the
                   school&apos;s server, and none of it was sent to this device. If this line does not clear
@@ -95,58 +99,65 @@ export function DashboardShell({ children }: DashboardShellProps) {
                 </p>
                 <Link
                   href="/login"
-                  className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5"
+                  className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-brand-600 px-4 font-display text-[13px] font-bold tracking-tight text-white transition-colors duration-150 hover:bg-brand-700"
                 >
-                  <LogIn className="w-3.5 h-3.5" />
+                  <LogIn className="h-3.5 w-3.5" strokeWidth={2} />
                   <span>Go to the login</span>
                 </Link>
               </div>
             </div>
           ) : (
-            <div className="min-h-[70vh] flex flex-col items-center justify-center text-center p-6">
-              <div className="max-w-md w-full bg-white border border-rose-200 rounded-3xl p-8 shadow-xl shadow-rose-950/5 space-y-5">
-                <div className="w-16 h-16 bg-rose-100 text-[#FF0000] rounded-2xl flex items-center justify-center mx-auto ring-8 ring-rose-50">
-                  <ShieldAlert className="w-8 h-8" />
-                </div>
+            <div className="flex min-h-[70vh] flex-col items-center justify-center p-6 text-center">
+              <div className="w-full max-w-md space-y-5 rounded-2xl border border-hairline bg-surface p-8 shadow-lg">
+                <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-50 text-accent-600 ring-1 ring-inset ring-accent-100">
+                  <ShieldAlert className="h-6 w-6" strokeWidth={1.75} />
+                </span>
 
                 <div className="space-y-2">
-                  <span className="text-[10px] bg-rose-100 text-rose-800 font-extrabold px-3 py-1 rounded-full uppercase tracking-wider border border-rose-200">
-                    RBAC Security Boundary
+                  <span className="inline-block rounded-full bg-accent-50 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-accent-700 ring-1 ring-inset ring-accent-200">
+                    Role boundary
                   </span>
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">Access Restricted</h2>
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    The login on this browser has the role <strong>{knownRole.replace("_", " ")}</strong>, and this
-                    portal does not open <code className="bg-slate-100 px-1.5 py-0.5 rounded text-rose-600 font-mono text-[11px]">{pathname}</code> to it. Nothing
-                    is broken and no record was lost — the screen was simply never part of this role.
+                  <h2 className="font-display text-2xl font-extrabold tracking-tight text-ink">
+                    Access restricted
+                  </h2>
+                  <p className="text-[13px] leading-relaxed text-muted">
+                    The login on this browser has the role{" "}
+                    <strong className="font-semibold text-ink">{knownRole.replace("_", " ")}</strong>, and this
+                    portal does not open{" "}
+                    <code className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-accent-700">
+                      {pathname}
+                    </code>{" "}
+                    to it. Nothing is broken and no record was lost — the screen was simply never part of
+                    this role.
                   </p>
                 </div>
 
-                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-left text-xs space-y-1 text-slate-600">
-                  <div className="flex items-center gap-2 font-bold text-slate-800">
-                    <Lock className="w-3.5 h-3.5 text-blue-600" />
+                <div className="space-y-1.5 rounded-xl border border-hairline bg-slate-50 p-4 text-left">
+                  <div className="flex items-center gap-2 font-display text-[13px] font-bold tracking-tight text-ink">
+                    <Lock className="h-3.5 w-3.5 text-brand-600" strokeWidth={1.75} />
                     <span>Who does open this screen</span>
                   </div>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[12px] leading-relaxed text-muted">
                     {allowedRoles.map((role) => role.replace("_", " ")).join(", ")}. A super admin can issue a
                     login for the role your work needs from Settings → User Access; the login decides the
                     screen, not anything this browser can ask for.
                   </p>
                 </div>
 
-                <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-2">
+                <div className="flex flex-col items-center gap-2.5 pt-1 sm:flex-row">
                   <Link
                     href="/"
-                    className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                    className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-brand-600 px-4 font-display text-[13px] font-bold tracking-tight text-white transition-colors duration-150 hover:bg-brand-700"
                   >
-                    <ArrowLeft className="w-3.5 h-3.5" />
-                    <span>Return to Dashboard</span>
+                    <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2} />
+                    <span>Return to dashboard</span>
                   </Link>
                   <Link
                     href="/login"
-                    className="w-full py-2.5 px-4 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 border border-blue-200"
+                    className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-hairline bg-surface px-4 text-[13px] font-semibold text-slate-600 transition-colors duration-150 hover:bg-slate-50 hover:text-brand-700"
                   >
-                    <LogIn className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Switch Portal Login</span>
+                    <LogIn className="h-3.5 w-3.5 text-brand-600" strokeWidth={2} />
+                    <span>Switch login</span>
                   </Link>
                 </div>
               </div>

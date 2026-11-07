@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { MapPin, Menu, ShieldCheck, LogOut, CheckCircle2 } from "lucide-react";
 import { SCHOOL_INFO } from "@/lib/constants";
@@ -11,6 +11,18 @@ interface NavbarProps {
   onMenuClick: () => void;
 }
 
+// Six roles, six tones, all inside the portal's palette: brand and azure for the
+// two administrative offices, the semantic green and amber for teaching and
+// money, neutral for families, and scarlet for a QA login that is not a real user.
+const ROLE_TONES: Record<string, string> = {
+  SUPER_ADMIN: "bg-brand-50 text-brand-700 ring-brand-200",
+  EXAM_OFFICER: "bg-azure-50 text-azure-700 ring-azure-200",
+  TEACHER: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  ACCOUNTANT: "bg-amber-50 text-amber-700 ring-amber-200",
+  STUDENT_PARENT: "bg-slate-100 text-slate-600 ring-slate-200",
+  TESTERS: "bg-accent-50 text-accent-700 ring-accent-200",
+};
+
 export function Navbar({ onMenuClick }: NavbarProps) {
   const router = useRouter();
   const { currentUser, logout } = useRealtimeAuth();
@@ -18,27 +30,21 @@ export function Navbar({ onMenuClick }: NavbarProps) {
   const [mounted, setMounted] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [loggedOutToast, setLoggedOutToast] = useState(false);
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const getRoleBadgeStyle = (role?: string) => {
-    switch (role) {
-      case "SUPER_ADMIN":
-        return "bg-purple-100 text-purple-800 border-purple-300";
-      case "EXAM_OFFICER":
-        return "bg-blue-100 text-blue-800 border-blue-300";
-      case "TEACHER":
-        return "bg-emerald-100 text-emerald-800 border-emerald-300";
-      case "ACCOUNTANT":
-        return "bg-amber-100 text-amber-800 border-amber-300";
-      case "STUDENT_PARENT":
-        return "bg-cyan-100 text-cyan-800 border-cyan-300";
-      default:
-        return "bg-purple-100 text-purple-800 border-purple-300";
-    }
-  };
+  useEffect(() => {
+    if (!showLogoutModal) return;
+    cancelRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowLogoutModal(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showLogoutModal]);
 
   const handleLogout = () => {
     setShowLogoutModal(false);
@@ -61,41 +67,46 @@ export function Navbar({ onMenuClick }: NavbarProps) {
 
   return (
     <>
-      <header className="h-16 border-b border-slate-200 bg-white px-3 sm:px-4 md:px-6 flex items-center justify-between gap-2 sticky top-0 z-30 shadow-xs select-none">
-        {/* Left: Mobile navigation trigger, location & school indicator */}
-        <div className="flex items-center gap-2 min-w-0 text-xs text-slate-500">
+      <header className="sticky top-0 z-30 flex h-16 select-none items-center justify-between gap-3 border-b border-hairline bg-surface/92 px-3 backdrop-blur-md sm:px-4 md:px-6">
+        {/* Location & school */}
+        <div className="flex min-w-0 items-center gap-2 text-xs text-muted">
           <button
             type="button"
             onClick={onMenuClick}
             aria-label="Open navigation"
-            aria-expanded="false"
-            className="lg:hidden flex-shrink-0 p-2 -ml-1 rounded-xl text-slate-600 hover:bg-blue-50 hover:text-[#0000FF] transition-colors cursor-pointer"
+            className="-ml-1 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-slate-500 transition-colors duration-150 hover:bg-brand-50 hover:text-brand-600 lg:hidden"
           >
-            <Menu className="w-5 h-5" />
+            <Menu className="h-5 w-5" strokeWidth={1.75} />
           </button>
-          <MapPin className="w-3.5 h-3.5 text-[#0000FF] flex-shrink-0 hidden sm:block" />
-          <span className="font-extrabold text-slate-900 hidden md:inline tracking-tight truncate">
+          <MapPin className="hidden h-3.5 w-3.5 flex-shrink-0 text-brand-600 sm:block" strokeWidth={1.75} />
+          <span className="hidden truncate font-display text-[13px] font-extrabold tracking-tight text-ink md:inline">
             {school?.school_name || SCHOOL_INFO.name}
           </span>
-          <span className="text-slate-300 hidden md:inline">•</span>
-          <span className="text-slate-500 text-[11px] truncate hidden sm:inline max-w-[200px] lg:max-w-none">
+          <span aria-hidden="true" className="hidden text-slate-300 md:inline">
+            •
+          </span>
+          <span className="hidden max-w-[220px] truncate text-[11px] font-medium text-muted sm:inline lg:max-w-none">
             {school?.address?.trim() || "No address on the school's record — set it in Settings"}
           </span>
         </div>
 
-        {/* Right: Authenticated User, Role Indicator & Logout */}
-        <div className="flex items-center gap-2 lg:gap-3 flex-shrink-0">
-          
-          {/* Role Badge (Live Active Session Indicator) */}
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold shadow-2xs">
-            <ShieldCheck className="w-3.5 h-3.5 text-[#0000FF]" />
-            <span className="font-bold text-slate-900 hidden md:inline text-[11px]">Role:</span>
+        {/* Session */}
+        <div className="flex flex-shrink-0 items-center gap-2 lg:gap-3">
+          <div className="hidden items-center gap-2 rounded-xl border border-hairline bg-slate-50 px-3 py-2 sm:flex">
+            <ShieldCheck className="h-3.5 w-3.5 text-brand-600" strokeWidth={1.75} />
+            <span className="hidden text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400 md:inline">
+              Role
+            </span>
             {activeUser ? (
-              <span className={`px-2 py-0.5 rounded-md text-[10px] font-black tracking-wide border ${getRoleBadgeStyle(activeUser.role)}`}>
+              <span
+                className={`rounded-md px-2 py-1 font-mono text-[10px] font-bold tabular-nums ring-1 ring-inset ${
+                  ROLE_TONES[activeUser.role] ?? "bg-slate-100 text-slate-600 ring-slate-200"
+                }`}
+              >
                 {activeUser.role}
               </span>
             ) : (
-              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wide border border-slate-200 bg-slate-100 text-slate-500">
+              <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-400 ring-1 ring-inset ring-slate-200">
                 Signing in…
               </span>
             )}
@@ -106,74 +117,81 @@ export function Navbar({ onMenuClick }: NavbarProps) {
               email or SMS and holds no notification table, so there is nothing to
               report as unread yet. */}
 
-          {/* User Profile */}
-          <div className="flex items-center gap-2.5 pl-2.5 border-l border-slate-200">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#0000FF] to-blue-600 text-white flex items-center justify-center font-black text-xs shadow-md shadow-blue-500/20 ring-1 ring-cyan-400/50">
+          <div className="flex items-center gap-2.5 border-l border-hairline pl-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 font-display text-xs font-extrabold text-white ring-1 ring-inset ring-white/20">
               {activeUser ? getInitials(activeUser.fullName) : "—"}
             </div>
-            <div className="text-xs hidden xl:block">
-              <p className="font-bold text-slate-900 leading-tight truncate max-w-[140px]">
+            <div className="hidden text-xs xl:block">
+              <p className="max-w-[150px] truncate font-display text-[13px] font-bold leading-tight tracking-tight text-ink">
                 {activeUser?.fullName || "Signing in…"}
               </p>
-              <p className="text-slate-500 text-[10px] font-mono font-medium">{activeUser?.staffId || "—"}</p>
+              <p className="mt-0.5 truncate font-mono text-[10px] tabular-nums text-slate-400">
+                {activeUser?.staffId || "—"}
+              </p>
             </div>
           </div>
 
-          {/* Logout Button */}
           <button
             type="button"
             onClick={() => setShowLogoutModal(true)}
-            className="flex min-h-10 items-center justify-center gap-1.5 px-2.5 sm:px-3 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-[#FF0000] hover:text-white border border-rose-200 hover:border-transparent rounded-xl transition-all shadow-2xs cursor-pointer ml-1 group"
-            title="Log Out of Session"
+            className="group ml-1 flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-hairline bg-surface px-2.5 text-xs font-semibold text-slate-500 transition-colors duration-150 hover:border-accent-200 hover:bg-accent-50 hover:text-accent-700 sm:px-3"
+            title="Log out of this session"
           >
-            <LogOut className="w-3.5 h-3.5 text-[#FF0000] group-hover:text-white transition-colors" />
-            <span className="hidden md:inline">Log Out</span>
+            <LogOut className="h-3.5 w-3.5" strokeWidth={1.75} />
+            <span className="hidden md:inline">Log out</span>
           </button>
-
         </div>
       </header>
 
-      {/* Toast Notification */}
       {loggedOutToast && (
-        <div className="fixed bottom-6 right-6 bg-[#0a1128] text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 z-50 animate-in slide-in-from-bottom-5 border border-cyan-400/40">
-          <CheckCircle2 className="w-4 h-4 text-cyan-400" />
-          <span className="text-xs font-bold">Successfully logged out. Redirecting to login portal...</span>
+        <div
+          role="status"
+          className="animate-in slide-in-from-bottom-5 fixed bottom-4 right-4 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-2.5 rounded-xl border border-hairline bg-surface px-4 py-3 text-ink shadow-xl sm:bottom-6 sm:right-6"
+        >
+          <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-emerald-600" strokeWidth={2} />
+          <span className="text-xs font-semibold">Signed out. Returning to the login…</span>
         </div>
       )}
 
-      {/* Logout Confirmation Modal */}
       {showLogoutModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-sm w-full border border-slate-200 shadow-2xl p-6 text-center space-y-4">
-            <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-200 text-[#FF0000] flex items-center justify-center mx-auto shadow-sm">
-              <LogOut className="w-7 h-7" />
+        <div className="animate-in fade-in fixed inset-0 z-50 flex items-center justify-center bg-scrim/60 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="logout-title"
+            className="animate-in zoom-in-95 w-full max-w-sm rounded-2xl border border-hairline bg-surface p-6 shadow-2xl"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-50 text-accent-600 ring-1 ring-inset ring-accent-100">
+              <LogOut className="h-5 w-5" strokeWidth={1.75} />
             </div>
-            <div>
-              <h3 className="text-base font-extrabold text-slate-900">Sign Out of RCA Portal?</h3>
-              <p className="text-xs text-slate-500 mt-1">
-                {activeUser ? (
-                  <>
-                    Are you sure you want to end active session for <strong>{activeUser.fullName}</strong> ({activeUser.role})?
-                  </>
-                ) : (
-                  "The server has not named the signed-in user yet, so this would end an unidentified session."
-                )}
-              </p>
-            </div>
-            <div className="flex gap-2 justify-center pt-2">
+            <h3 id="logout-title" className="mt-4 font-display text-lg font-extrabold tracking-tight text-ink">
+              Sign out of the RCA portal?
+            </h3>
+            <p className="mt-2 text-[13px] leading-relaxed text-muted">
+              {activeUser ? (
+                <>
+                  This ends the active session for <strong className="font-semibold text-ink">{activeUser.fullName}</strong>{" "}
+                  ({activeUser.role}). Any draft still open on this machine stays on this machine.
+                </>
+              ) : (
+                "The server has not named the signed-in user yet, so this would end an unidentified session."
+              )}
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button
+                ref={cancelRef}
                 type="button"
                 onClick={() => setShowLogoutModal(false)}
-                className="px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                className="min-h-11 rounded-xl border border-hairline bg-surface px-4 text-[13px] font-semibold text-slate-600 transition-colors duration-150 hover:bg-slate-50 hover:text-ink"
               >
-                Cancel
+                Stay signed in
               </button>
               <button
                 type="button"
                 onClick={handleLogout}
-                className="px-4 py-2 text-xs font-bold text-white bg-[#FF0000] hover:bg-red-700 rounded-xl transition-colors shadow-md shadow-red-500/20 cursor-pointer"
+                className="min-h-11 rounded-xl bg-accent-600 px-4 font-display text-[13px] font-bold tracking-tight text-white transition-colors duration-150 hover:bg-accent-700"
               >
-                Yes, Sign Out
+                Yes, sign out
               </button>
             </div>
           </div>

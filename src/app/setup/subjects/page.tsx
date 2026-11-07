@@ -270,7 +270,7 @@ export default function SetupSubjectsPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <Link href="/" className="hover:text-blue-600 flex items-center gap-1">
+              <Link href="/" className="flex min-h-6 items-center gap-1 hover:text-blue-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -580,7 +580,7 @@ export default function SetupSubjectsPage() {
         {/* Modal: Seamless Subject Addition (Single & Batch Modes) */}
         {isModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-            <div className="bg-white rounded-2xl max-w-xl w-full border shadow-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4 max-h-[92vh] overflow-y-auto">
+            <div className="bg-white rounded-2xl max-w-xl w-full border shadow-2xl max-h-[92vh] overflow-y-auto p-6 space-y-4">
               {/* Modal Header */}
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">

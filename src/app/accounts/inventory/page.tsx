@@ -234,7 +234,7 @@ export default function AccountsInventoryPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <Link href="/" className="hover:text-blue-600 flex items-center gap-1">
+              <Link href="/" className="flex min-h-6 items-center gap-1 hover:text-blue-600">
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </Link>
@@ -387,7 +387,7 @@ export default function AccountsInventoryPage() {
             <button
               onClick={() => setLowOnly((current) => !current)}
               className={`px-3 py-2 rounded-lg text-[11px] font-bold transition-all cursor-pointer border ${
-                lowOnly ? "bg-amber-500 text-white border-amber-600" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                lowOnly ? "bg-amber-600 text-white border-amber-700" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
               }`}
             >
               {lowOnly ? "Showing items to reorder" : "Only items to reorder"}
@@ -667,7 +667,7 @@ function ItemForm({
           <button
             type="submit"
             disabled={busy}
-            className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-lg cursor-pointer"
+            className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 text-white rounded-lg cursor-pointer"
           >
             {busy ? "Filing…" : "File on the school's register"}
           </button>
@@ -762,7 +762,7 @@ function MovementForm({
           <button
             type="submit"
             disabled={busy}
-            className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-lg cursor-pointer"
+            className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 text-white rounded-lg cursor-pointer"
           >
             {busy ? "Filing…" : "File this movement"}
           </button>
