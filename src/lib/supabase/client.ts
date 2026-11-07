@@ -3,8 +3,13 @@
 // decides what the signed-in role may see.
 //
 // What is left here is one question the screens ask: does this build point at a
-// database at all? A portal deployed without those two public variables cannot
-// file anything, and the screens say so instead of pretending a write landed.
+// database at all? A portal deployed without the address cannot file anything,
+// and the screens say so instead of pretending a write landed.
+//
+// Only the address is asked for. The anon/publishable key used to be part of
+// this check, but nothing in the browser reads it any more — the server routes
+// hold their own secret key — so demanding it refused enrolments on deployments
+// whose database was perfectly reachable.
 //
 // A Supabase client built from the anon key used to live in this file. It could
 // read nothing — the tables are protected by row-level security with no policy
@@ -12,11 +17,7 @@
 // result, and its presence invited the next screen to bypass the API routes.
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
 export const isSupabaseConfigured = Boolean(
-  supabaseUrl &&
-  supabaseAnonKey &&
-  !supabaseUrl.includes("placeholder") &&
-  !supabaseAnonKey.includes("placeholder")
+  supabaseUrl && !supabaseUrl.includes("placeholder")
 );

@@ -198,8 +198,10 @@ graph TD
    - Navigate to **Project Settings** (gear icon) → **API Keys** → **Publishable / Secret keys**.
    - Copy:
      - **Project URL** (`https://<project-ref>.supabase.co`)
-     - **Publishable key** — starts `sb_publishable_…` → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
      - **Secret key** — starts `sb_secret_…` → `SUPABASE_SERVICE_ROLE_KEY`
+     - The **publishable key** (`sb_publishable_…`) is not needed: the browser never
+       talks to Supabase directly, every read and write goes through `/api/*`,
+       which holds the secret key server-side.
    - The older `eyJhbGciOi…` JWTs (labelled *anon* and *service_role*) are a retired key generation.
      This project's legacy pair is **disabled**; a disabled legacy key makes every route answer `502`
      with `Legacy API keys are disabled`, which is the correct failure — it is loud, rather than
@@ -217,7 +219,6 @@ graph TD
 5. Render will automatically detect [`render.yaml`](render.yaml) and configure the web service.
 6. When prompted, fill in the Environment Variables:
    - `NEXT_PUBLIC_SUPABASE_URL`: Your Supabase Project URL.
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your Supabase Anon Key.
    - `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase Service Role Key.
    - `AUTH_SUPER_ADMIN_PASSWORD`: A strong password for the `dominic370` super-admin account.
 7. Click **"Apply"** to trigger automatic build and deployment.
@@ -236,7 +237,6 @@ graph TD
    |---|---|---|
    | `NODE_ENV` | `production` | Production mode |
    | `NEXT_PUBLIC_SUPABASE_URL` | `https://your-ref.supabase.co` | Supabase endpoint |
-   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `eyJhbGciOi...` | Supabase Anon Key |
    | `SUPABASE_SERVICE_ROLE_KEY` | `eyJhbGciOi...` | Supabase Service Role Key |
    | `AUTH_SESSION_SECRET` | *(Random 32+ char string)* | Signs login session cookies |
    | `AUTH_SUPER_ADMIN_USERNAME` | `dominic370` | Super-admin login username |

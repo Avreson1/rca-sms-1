@@ -118,7 +118,7 @@ Everything that must change, in the order that avoids surprises:
    `service_role`, so a new project needs them again); a clone that skips it shows
    *"permission denied for table school_config"*.
 2. New Render service from the cloned repository; set `NEXT_PUBLIC_SUPABASE_URL`,
-   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (the `sb_secret_…` form), a fresh
+   `SUPABASE_SERVICE_ROLE_KEY` (the `sb_secret_…` form), a fresh
    `AUTH_SESSION_SECRET`, and the `AUTH_SUPER_ADMIN_*` bootstrap account.
 3. New bucket and new `SUPABASE_DB_URL` in the clone's secrets; verify a backup run and a restore.
 4. Repo variable `KEEP_WARM_URL` pointing at the new host, or edit the fallback in
@@ -214,8 +214,7 @@ See [.env.example](.env.example). The essentials:
 
 | Variable | Purpose |
 | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser-safe Supabase key. The server routes do **not** fall back to it |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL. Also the browser's only "is a database configured" signal |
 | `SUPABASE_SERVICE_ROLE_KEY` | **Required.** Server-only key used by `/api/*` routes — never expose it. Row-level security denies the anon key on every school table, so without this the data routes answer 503 and accounts created in User Access cannot sign in |
 | `AUTH_SESSION_SECRET` | Signs the login cookie; required in production |
 | `AUTH_SUPER_ADMIN_USERNAME` / `AUTH_SUPER_ADMIN_PASSWORD` | Bootstrap administrator |
