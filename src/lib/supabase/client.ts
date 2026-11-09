@@ -18,6 +18,16 @@
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 
-export const isSupabaseConfigured = Boolean(
-  supabaseUrl && !supabaseUrl.includes("placeholder")
-);
+// Next inlines NEXT_PUBLIC_ addresses from .env files at build time, but a host
+// like Render supplies them in the runtime environment only, so the built
+// bundle can carry no address at all. The proxy stamps what the server actually
+// holds onto every document response; this cookie is that answer. It carries a
+// boolean, never a key or an address.
+export const DATABASE_FLAG_COOKIE = "rca_db_configured";
+
+const runtimeSaysConfigured =
+  typeof document !== "undefined" &&
+  document.cookie.split("; ").includes(`${DATABASE_FLAG_COOKIE}=1`);
+
+export const isSupabaseConfigured =
+  Boolean(supabaseUrl && !supabaseUrl.includes("placeholder")) || runtimeSaysConfigured;

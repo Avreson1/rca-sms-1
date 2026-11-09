@@ -295,7 +295,7 @@ export default function CAStructurePage() {
                 }`}
               >
                 <div className="flex items-center justify-between mb-1 gap-2">
-                  <span className={`text-[10px] font-black uppercase tracking-wider ${isSelected ? "text-brand-200" : "text-slate-400"}`}>
+                  <span className={`text-[10px] font-black uppercase tracking-wider ${isSelected ? "text-brand-100" : "text-slate-400"}`}>
                     Tier {CA_TIER_KEYS.indexOf(tierKey) + 1}
                   </span>
                   {isSelected && <Sparkles className="w-3.5 h-3.5 text-accent-300 flex-shrink-0" />}
@@ -306,7 +306,7 @@ export default function CAStructurePage() {
                 <p className={`text-[11px] mt-1 truncate ${isSelected ? "text-blue-100" : "text-slate-500"}`}>
                   {TIER_TAB_SUBTITLES[tierKey]}
                 </p>
-                <p className={`text-[10px] mt-1 font-bold ${isSelected ? "text-cyan-200" : filed ? "text-emerald-700" : "text-slate-400"}`}>
+                <p className={`text-[10px] mt-1 font-bold ${isSelected ? "text-cyan-100" : filed ? "text-emerald-700" : "text-slate-400"}`}>
                   {filed
                     ? `${caStructures[tierKey].components.length} components filed`
                     : "Nothing filed for this tier"}

@@ -13,7 +13,10 @@ without signing in.
 - Supabase (Postgres) for persistence; the UI falls back to seeded local demo data when
   Supabase is not configured
 - Server-side login with a signed, HttpOnly session cookie, enforced by `src/proxy.ts`
-  on every non-public route
+  on every non-public route. The cookie is browser-session only (dropped when the
+  browser closes) and the token expires five minutes after the last action; activity
+  slides that window forward through `/api/auth/touch`, and `IdleGuard` returns an
+  idle browser to `/login?reason=idle`
 
 ## Before go-live — read this first
 

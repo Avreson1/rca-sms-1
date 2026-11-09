@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { IdleGuard } from "@/components/auth/idle-guard";
 
 export const metadata: Metadata = {
   title: {
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#1034a6",
+  themeColor: "#4169e1",
 };
 
 export default function RootLayout({
@@ -26,6 +27,7 @@ export default function RootLayout({
       <body className="min-h-full bg-canvas font-sans text-ink" suppressHydrationWarning>
         <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         <link rel="preload" href="/fonts/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <IdleGuard />
         {children}
       </body>
     </html>

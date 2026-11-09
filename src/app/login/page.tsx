@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -19,6 +19,7 @@ import {
   MapPin,
   LifeBuoy,
   ArrowUpRight,
+  Clock,
 } from "lucide-react";
 import { SCHOOL_INFO } from "@/lib/constants";
 import { useRealtimeAuth } from "@/lib/realtime-store";
@@ -54,10 +55,19 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [idleNotice, setIdleNotice] = useState(false);
+
+  // Read the idle sign-out flag from the URL after mount. useSearchParams would
+  // force a Suspense boundary on this otherwise static page; the query string is
+  // only ever present on a real browser navigation to /login?reason=idle.
+  useEffect(() => {
+    setIdleNotice(new URLSearchParams(window.location.search).get("reason") === "idle");
+  }, []);
 
   const handleManualLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+    setIdleNotice(false);
 
     if (!username.trim() || !password.trim()) {
       setErrorMessage("Please enter both username / staff ID and security access passcode.");
@@ -96,9 +106,9 @@ export default function LoginPage() {
       {/* The campus, drawn for this portal. */}
       <div aria-hidden="true" className="campus-backdrop absolute inset-0" />
 
-      {/* Egyptian Blue laid over the image at 40% opacity — the overlay is 60%
+      {/* Royal Blue laid over the image at 40% opacity — the overlay is 60%
           transparent, so the photograph still reads through it. */}
-      <div aria-hidden="true" className="absolute inset-0 bg-[#1034a6]/40" />
+      <div aria-hidden="true" className="absolute inset-0 bg-[#4169e1]/40" />
 
       {/* A second, directional scrim. It is not the blue overlay: it only keeps
           the left-hand copy and the card edge legible over the bright sky. */}
@@ -212,6 +222,18 @@ export default function LoginPage() {
                   Enter the username and security passcode issued by the school office to reach your
                   workspace.
                 </p>
+
+                {idleNotice && (
+                  <div
+                    role="status"
+                    className="animate-in fade-in mt-5 flex items-start gap-2.5 rounded-xl border border-brand-200 bg-brand-50 p-3.5 text-[13px] font-medium leading-relaxed text-brand-800"
+                  >
+                    <Clock className="mt-px h-4 w-4 flex-shrink-0 text-brand-600" strokeWidth={2} />
+                    <span>
+                      You were signed out after 5 minutes of inactivity. Sign in again to continue.
+                    </span>
+                  </div>
+                )}
 
                 {errorMessage && (
                   <div

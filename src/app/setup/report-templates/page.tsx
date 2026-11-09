@@ -33,11 +33,11 @@ import {
 export const COLOR_SCHEMES = [
   {
     id: "royal" as const,
-    name: "Egyptian Blue & Scarlet",
+    name: "Royal Blue & Scarlet",
     badgeClass: "bg-brand-600 text-white",
     borderClass: "border-brand-600",
     previewBg: "from-brand-600 via-brand-700 to-accent-600",
-    desc: "The school's flagship: Egyptian Blue #1034A6 carries the headers and rules, Scarlet #FF2400 marks the session and the totals, white holds the paper.",
+    desc: "The school's flagship: Royal Blue #4169E1 carries the marks and rules, its deep print step #3059D0 the headers, Scarlet #FF2400 the session and the totals, white holds the paper.",
   },
   {
     id: "scheme2" as const,

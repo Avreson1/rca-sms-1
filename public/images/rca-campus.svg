@@ -81,16 +81,16 @@
     </filter>
 
     <g id="window">
-      <rect x="0" y="0" width="46" height="62" rx="2" fill="#1034a6"/>
+      <rect x="0" y="0" width="46" height="62" rx="2" fill="#4169e1"/>
       <rect x="4" y="4" width="38" height="54" fill="url(#glass)"/>
-      <rect x="22" y="4" width="2.5" height="54" fill="#1034a6" opacity="0.85"/>
-      <rect x="4" y="28" width="38" height="2.5" fill="#1034a6" opacity="0.85"/>
+      <rect x="22" y="4" width="2.5" height="54" fill="#4169e1" opacity="0.85"/>
+      <rect x="4" y="28" width="38" height="2.5" fill="#4169e1" opacity="0.85"/>
       <rect x="-3" y="62" width="52" height="5" rx="1.5" fill="#e2d9c8"/>
     </g>
     <g id="windowSmall">
-      <rect x="0" y="0" width="34" height="46" rx="2" fill="#1034a6"/>
+      <rect x="0" y="0" width="34" height="46" rx="2" fill="#4169e1"/>
       <rect x="3.5" y="3.5" width="27" height="39" fill="url(#glass)"/>
-      <rect x="16" y="3.5" width="2" height="39" fill="#1034a6" opacity="0.85"/>
+      <rect x="16" y="3.5" width="2" height="39" fill="#4169e1" opacity="0.85"/>
       <rect x="-2.5" y="46" width="39" height="4" rx="1.5" fill="#e2d9c8"/>
     </g>
     <g id="column">
@@ -231,12 +231,12 @@
     <rect x="698" y="176" width="204" height="11" rx="2" fill="#0d2450"/>
     <rect x="716" y="240" width="168" height="7" fill="#e0d7c5"/>
     <!-- clock -->
-    <circle cx="800" cy="212" r="25" fill="#fdfaf3" stroke="#1034a6" stroke-width="4"/>
-    <circle cx="800" cy="212" r="2.6" fill="#1034a6"/>
+    <circle cx="800" cy="212" r="25" fill="#fdfaf3" stroke="#4169e1" stroke-width="4"/>
+    <circle cx="800" cy="212" r="2.6" fill="#4169e1"/>
     <path d="M800 212 L800 196" stroke="#141a2e" stroke-width="3" stroke-linecap="round"/>
     <path d="M800 212 L812 218" stroke="#e01b00" stroke-width="2.6" stroke-linecap="round"/>
     <!-- louvred vent -->
-    <g fill="#1034a6" opacity="0.85">
+    <g fill="#4169e1" opacity="0.85">
       <rect x="754" y="266" width="92" height="6" rx="3"/>
       <rect x="754" y="280" width="92" height="6" rx="3"/>
       <rect x="754" y="294" width="92" height="6" rx="3"/>
@@ -272,7 +272,7 @@
     <path d="M888 616 L980 900" stroke-width="6"/>
     <path d="M968 616 L1208 900" stroke-width="6"/>
   </g>
-  <g stroke="#1034a6" fill="none" opacity="0.2" stroke-linecap="round">
+  <g stroke="#4169e1" fill="none" opacity="0.2" stroke-linecap="round">
     <path d="M470 700 L1130 700" stroke-width="4"/>
     <path d="M392 790 L1208 790" stroke-width="5"/>
   </g>

@@ -106,7 +106,7 @@ export default function WelcomePage() {
           <div className="rise-in lg:col-span-5" style={{ animationDelay: "90ms" }}>
             <figure className="relative overflow-hidden rounded-2xl bg-brand-950 shadow-xl ring-1 ring-inset ring-black/5">
               <div className="campus-backdrop aspect-[4/3] w-full" />
-              <div aria-hidden="true" className="absolute inset-0 bg-[#1034a6]/25" />
+              <div aria-hidden="true" className="absolute inset-0 bg-[#4169e1]/25" />
               <div
                 aria-hidden="true"
                 className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-night-900/90 to-transparent"

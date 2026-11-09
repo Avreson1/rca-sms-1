@@ -1,6 +1,30 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isAppAccountSessionCurrent } from "@/lib/auth/revocation";
 import { getSessionSecret, SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
+import { DATABASE_FLAG_COOKIE } from "@/lib/supabase/client";
+
+// The browser's copy of the address is inlined at build time, which misses
+// hosts that only supply it at runtime. The server knows the truth on every
+// request, so it tells the browser once per document response.
+//
+// Next inlines `process.env.NEXT_PUBLIC_*` reads into this proxy bundle at build
+// time — literal keys, aliases and concatenated keys all get folded — which
+// would freeze the address and stamp the flag "0" forever on a host that only
+// supplies it at runtime. Reflect.get is not a member expression the compiler
+// can substitute, so this stays a live lookup of the server's environment.
+const supabaseUrl =
+  (Reflect.get(process.env, "NEXT_PUBLIC_SUPABASE_URL") as string | undefined) || "";
+const databaseConfigured = Boolean(
+  supabaseUrl && !supabaseUrl.includes("placeholder") && process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+function stampDatabaseFlag(response: NextResponse) {
+  response.cookies.set(DATABASE_FLAG_COOKIE, databaseConfigured ? "1" : "0", {
+    path: "/",
+    sameSite: "lax",
+  });
+  return response;
+}
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -15,7 +39,7 @@ export async function proxy(request: NextRequest) {
     // cookie, so suspending someone or resetting their password takes effect
     // on the next request rather than at cookie expiry.
     if (!session.epoch || (await isAppAccountSessionCurrent(session.username, session.epoch))) {
-      return NextResponse.next();
+      return stampDatabaseFlag(NextResponse.next());
     }
 
     if (pathname.startsWith("/api/")) {
@@ -27,7 +51,7 @@ export async function proxy(request: NextRequest) {
     revokedUrl.pathname = "/login";
     const revoked = NextResponse.redirect(revokedUrl);
     revoked.cookies.delete(SESSION_COOKIE);
-    return revoked;
+    return stampDatabaseFlag(revoked);
   }
 
   if (pathname.startsWith("/api/")) {
@@ -44,7 +68,7 @@ export async function proxy(request: NextRequest) {
   } else {
     redirectUrl.pathname = "/login";
   }
-  return NextResponse.redirect(redirectUrl);
+  return stampDatabaseFlag(NextResponse.redirect(redirectUrl));
 }
 
 export const config = {

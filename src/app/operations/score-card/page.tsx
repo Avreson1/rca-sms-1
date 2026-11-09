@@ -101,9 +101,9 @@ const TIER_DEFAULT_SUBJECTS: Record<string, string[]> = {
 
 const THEME_STYLES = {
   royal: {
-    name: "Egyptian Blue & Scarlet",
+    name: "Royal Blue & Scarlet",
     headerBg: "bg-brand-600",
-    accentText: "text-accent-300",
+    accentText: "text-accent-100",
     cardBorder: "border-brand-600/40",
     tableHeaderBg: "bg-brand-600 text-white",
   },

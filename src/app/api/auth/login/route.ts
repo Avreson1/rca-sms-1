@@ -7,7 +7,7 @@ import {
   registerSuccessfulLogin,
   requestClientIp,
 } from "@/lib/auth/login-throttle";
-import { createSessionToken, getSessionSecret, SESSION_COOKIE, SESSION_MAX_AGE } from "@/lib/auth/session";
+import { createSessionToken, getSessionSecret, SESSION_COOKIE } from "@/lib/auth/session";
 
 export async function POST(request: Request) {
   const secret = getSessionSecret();
@@ -64,7 +64,8 @@ export async function POST(request: Request) {
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: SESSION_MAX_AGE,
+    // No max-age/expires: a browser-session cookie, dropped when the browser
+    // closes. The token's own exp enforces the five-minute idle window.
   });
 
   return response;

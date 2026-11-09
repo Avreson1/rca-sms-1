@@ -21,7 +21,14 @@ export interface SessionUser {
 }
 
 export const SESSION_COOKIE = "rca_session";
-export const SESSION_MAX_AGE = 60 * 60 * 8;
+/**
+ * Length of the inactivity window. The token's `exp` is set to "now + this" on
+ * sign-in and slid forward by the same amount on every activity heartbeat
+ * (`/api/auth/touch`), so a session dies five minutes after the last action.
+ * The cookie itself carries no max-age: it is a browser-session cookie and is
+ * dropped when the browser closes, independent of this idle window.
+ */
+export const SESSION_IDLE_SECONDS = 5 * 60;
 
 const encoder = new TextEncoder();
 
@@ -57,7 +64,7 @@ export function getSessionSecret(): string {
 }
 
 export async function createSessionToken(user: SessionUser, secret: string): Promise<string> {
-  const payload = { ...user, exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE };
+  const payload = { ...user, exp: Math.floor(Date.now() / 1000) + SESSION_IDLE_SECONDS };
   const body = toBase64Url(encoder.encode(JSON.stringify(payload)));
   const signature = await crypto.subtle.sign("HMAC", await importHmacKey(secret), encoder.encode(body));
   return `${body}.${toBase64Url(new Uint8Array(signature))}`;
