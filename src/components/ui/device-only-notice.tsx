@@ -24,9 +24,10 @@ import { TriangleAlert } from "lucide-react";
  * staff is designated as and who is on duty on a given day, the CBT question
  * bank, the sittings filed as attempts and the switch that opens or shuts the
  * module, the term calendar with its milestones and the activity blueprints the
- * office schedules from, and — once the form teacher files them from
- * Operations → Traits & Psychomotor — the character, psychomotor and attendance
- * ratings that fill the other half of a child's card.
+ * office schedules from, the identity card filed for a pupil or a member of
+ * staff with the photograph the office chose for it, and — once the form teacher
+ * files them from Operations → Traits & Psychomotor — the character, psychomotor
+ * and attendance ratings that fill the other half of a child's card.
  */
 export function DeviceOnlyNotice({ what, className = "" }: { what: string; className?: string }) {
   return (
@@ -42,7 +43,8 @@ export function DeviceOnlyNotice({ what, className = "" }: { what: string; class
         term, released results, closed terms, the trait rubric, the colour scheme the cards are printed in, the circular
         filed for each session and term, the stores register with its stock movements, the timetable once it is filed,
         who is on duty on a given day, the CBT questions, the sittings and the open/close switch, the term&apos;s
-        milestones and the activity blueprints once they are filed, and the character assessments once they are filed.
+        milestones and the activity blueprints once they are filed, the identity cards with their photographs once they
+        are filed, and the character assessments once they are filed.
       </p>
     </div>
   );

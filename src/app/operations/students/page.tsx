@@ -3,7 +3,8 @@
 import React, { useState, useRef } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { useRealtimeStudents, useRealtimeClasses, StudentRecord } from "@/lib/realtime-store";
+import { useRealtimeAuth, useRealtimeStudents, useRealtimeClasses, StudentRecord } from "@/lib/realtime-store";
+import { isRouteAllowed } from "@/lib/rbac";
 import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import { exportToCSV, parseCSV, downloadSampleTemplate } from "@/lib/csv-utils";
 import {
@@ -32,6 +33,10 @@ type CsvStudentRow = {
 
 export default function StudentsPage() {
   const { students, addStudent, bulkAddStudents, deleteStudent } = useRealtimeStudents();
+  const { currentUser } = useRealtimeAuth();
+  // A teacher and a bursar may enrol a pupil but are refused the card desk, so
+  // they are not offered a button that only leads to a refusal.
+  const canReachCards = isRouteAllowed(currentUser?.role, "/operations/id-cards");
   const { classes, classesSource } = useRealtimeClasses();
   const [search, setSearch] = useState("");
   const [classFilter, setClassFilter] = useState("all");
@@ -459,6 +464,15 @@ export default function StudentsPage() {
                         >
                           Gradebook
                         </Link>
+                        {canReachCards && (
+                          <Link
+                            href={`/operations/id-cards?holder=student&ref=${encodeURIComponent(s.admissionNo)}`}
+                            className="px-2.5 py-1 rounded bg-brand-600 hover:bg-brand-700 text-white font-bold text-[11px]"
+                            title={`Design and print the identity card for ${s.fullName}`}
+                          >
+                            ID Card
+                          </Link>
+                        )}
                         <button
                           onClick={() => {
                             if (confirm(`Remove ${s.fullName} from enrollment records? Their saved CA scores and invoices go with them.`)) {

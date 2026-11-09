@@ -497,3 +497,55 @@
     width: 100%;
   }
 }
+
+/* Identity cards. The artwork is sized in millimetres because CR80 is the stock
+   the school buys, so the print sheet must not be scaled to fit anything. */
+.id-card-artwork {
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+/* A named page, so asking for A4 here does not change how a scorecard or a
+   bursary receipt lands on the paper. A browser without named-page support
+   keeps its own margins, and every pair still fits inside them. */
+@page id-card-sheet {
+  size: A4 portrait;
+  margin: 8mm;
+}
+
+.id-card-sheet {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 4mm;
+}
+
+.id-card-pair {
+  display: flex;
+  gap: 3mm;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.id-card-cut .id-card-artwork {
+  outline: 0.2mm dashed #94a3b8;
+  outline-offset: 0.7mm;
+}
+
+@media print {
+  .id-card-print-root {
+    page: id-card-sheet;
+    background: #ffffff;
+  }
+
+  /* The screen behind the sheet would otherwise still take up its own height
+     and trail blank pages after the cards. Only done when a card sheet exists,
+     so printing a receipt on its own is untouched. */
+  body:has(.id-card-print-root) > *:not(.id-card-print-root) {
+    display: none !important;
+  }
+
+  .id-card-print-root .id-card-artwork {
+    box-shadow: none !important;
+  }
+}

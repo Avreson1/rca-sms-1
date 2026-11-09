@@ -31,6 +31,7 @@ import {
   Check,
   Printer,
   Lock,
+  CreditCard,
 } from "lucide-react";
 
 const DEFAULT_TEACHER_PERMISSIONS: StaffPermissions = {
@@ -690,6 +691,14 @@ export default function StaffManagementPage() {
                               <KeyRound className="w-3 h-3 text-brand-600" />
                               {slipBusy === s.staffId ? "Issuing…" : "Access Slip"}
                             </button>
+                            <Link
+                              href={`/operations/id-cards?holder=staff&ref=${encodeURIComponent(s.staffId)}`}
+                              className="px-2 py-1 bg-brand-600 hover:bg-brand-700 text-white text-[10px] font-bold rounded flex items-center gap-1 whitespace-nowrap cursor-pointer shadow-2xs"
+                              title={`Design and print the identity card for ${s.fullName}`}
+                            >
+                              <CreditCard className="w-3 h-3" />
+                              ID Card
+                            </Link>
                             <button
                               onClick={() => setEditingStaff(s)}
                               className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded flex items-center gap-1 cursor-pointer"

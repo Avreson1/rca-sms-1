@@ -21,6 +21,13 @@ import {
   ReportTheme,
 } from "../realtime-store";
 import { DEFAULT_TIMETABLE_DAYS, DEFAULT_TIMETABLE_PERIODS, type TimetablePeriod } from "../timetable/day-shape";
+import {
+  ID_CARD_LAYOUTS,
+  ID_CARD_THEMES,
+  type IdCardHolderType,
+  type IdCardInput,
+  type IdCardRecord,
+} from "../id-cards";
 
 // All reads and writes go through the authenticated API routes. The browser no
 // longer touches student/staff/invoice tables directly, so the anon key cannot
@@ -2847,4 +2854,160 @@ export async function saveNewsletterOnServer(
   if (reason) reportSyncFailure(`The newsletter was NOT filed on the school's records: ${reason}.`);
   else reportSyncSaved(`${newsletter.term} of ${newsletter.session} circular filed on the school's records.`);
   return { ok: !reason, reason };
+}
+
+// ============================================================================
+// 18. IDENTITY CARDS
+// ============================================================================
+// The photograph and what the office adds to it. Two reads, on purpose: the
+// list comes from a view that leaves the photographs behind (three hundred of
+// them is tens of megabytes), and a card comes whole only when the designer or a
+// print run names the holders it wants.
+
+interface IdCardRow {
+  id: string;
+  holder_type: string;
+  holder_ref: string;
+  holder_name: string | null;
+  photo?: string | null;
+  photo_zoom: number | string | null;
+  photo_x: number | string | null;
+  photo_y: number | string | null;
+  layout: string | null;
+  theme: string | null;
+  card_no: string | null;
+  blood_group: string | null;
+  issued_on: string | null;
+  expires_on: string | null;
+  emergency_name: string | null;
+  emergency_phone: string | null;
+  back_notes: string | null;
+  show_back: boolean | null;
+  updated_at: string | null;
+  updated_by: string | null;
+  has_photo?: boolean | null;
+}
+
+function toIdCardRecord(row: IdCardRow): IdCardRecord {
+  const photo = row.photo ?? "";
+  return {
+    id: row.id,
+    holderType: row.holder_type === "staff" ? "staff" : "student",
+    holderRef: row.holder_ref,
+    holderName: row.holder_name ?? "",
+    photo,
+    photoZoom: Number(row.photo_zoom) || 1,
+    photoX: Number(row.photo_x) || 0,
+    photoY: Number(row.photo_y) || 0,
+    layout: (ID_CARD_LAYOUTS.some((option) => option.key === row.layout) ? row.layout : "portrait") as IdCardRecord["layout"],
+    theme: (ID_CARD_THEMES.some((option) => option.key === row.theme) ? row.theme : "royal") as IdCardRecord["theme"],
+    cardNo: row.card_no ?? "",
+    bloodGroup: row.blood_group ?? "",
+    issuedOn: row.issued_on ?? "",
+    expiresOn: row.expires_on ?? "",
+    emergencyName: row.emergency_name ?? "",
+    emergencyPhone: row.emergency_phone ?? "",
+    backNotes: row.back_notes ?? "",
+    showBack: row.show_back !== false,
+    hasPhoto: row.has_photo ?? photo !== "",
+    updatedBy: row.updated_by ?? "",
+    updatedAt: row.updated_at ?? null,
+  };
+}
+
+/** Every card on file, without the photographs. */
+export async function fetchIdCardIndexFromSupabase(): Promise<IdCardRecord[] | null> {
+  const { rows, reason } = await readList<IdCardRow>("/api/id-cards");
+  if (reason) {
+    reportSyncFailure(`The identity cards could not be loaded: ${reason}.`);
+    return null;
+  }
+  return (rows ?? []).map(toIdCardRecord);
+}
+
+/** The named cards, whole. A print run asks for exactly the holders it prints. */
+export async function fetchIdCardsFromSupabase(
+  holderType: IdCardHolderType,
+  refs: string[]
+): Promise<{ cards: IdCardRecord[]; reason: string | null }> {
+  if (refs.length === 0) return { cards: [], reason: null };
+  const params = new URLSearchParams({ holderType });
+  for (const ref of refs) params.append("holderRef", ref);
+  const { rows, reason } = await readList<IdCardRow>(`/api/id-cards?${params.toString()}`);
+  if (reason) {
+    reportSyncFailure(`The identity cards could not be loaded: ${reason}.`);
+    return { cards: [], reason };
+  }
+  return { cards: (rows ?? []).map(toIdCardRecord), reason: null };
+}
+
+/**
+ * Files one card and hands back the row the school's records now hold, so the
+ * designer shows the server's own answer rather than the copy it sent.
+ */
+export async function saveIdCardOnServer(
+  card: IdCardInput
+): Promise<{ ok: boolean; reason: string | null; saved: IdCardRecord | null }> {
+  let reason: string | null = null;
+  let saved: IdCardRecord | null = null;
+  try {
+    const response = await fetch("/api/id-cards", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(card),
+    });
+    if (response.ok) {
+      const payload = (await response.json().catch(() => null)) as { data?: IdCardRow[] } | null;
+      const row = payload?.data?.[0];
+      if (row) saved = toIdCardRecord({ ...row, photo: card.photo });
+    } else {
+      reason = await serverReason(response);
+    }
+  } catch (error) {
+    console.warn("API /api/id-cards write failed", error);
+    reason = "the portal server did not answer";
+  }
+
+  if (reason) {
+    reportSyncFailure(`The identity card for ${card.holderName || card.holderRef} was NOT filed on the school's records: ${reason}.`);
+    return { ok: false, reason, saved: null };
+  }
+  reportSyncSaved(`Identity card for ${card.holderName || card.holderRef} filed on the school's records.`);
+  return { ok: true, reason: null, saved };
+}
+
+export async function removeIdCardsOnServer(
+  refs: { holderType: IdCardHolderType; holderRef: string }[]
+): Promise<{ ok: boolean; reason: string | null; removed: number }> {
+  if (refs.length === 0) return { ok: true, reason: null, removed: 0 };
+  try {
+    const response = await fetch("/api/id-cards", {
+      method: "DELETE",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refs }),
+    });
+    if (!response.ok) {
+      const reason = await serverReason(response);
+      reportSyncFailure(`The identity card was NOT withdrawn from the school's records: ${reason}.`);
+      return { ok: false, reason, removed: 0 };
+    }
+    const payload = (await response.json().catch(() => null)) as { data?: { removed?: number } } | null;
+    // The server counts the rows it actually deleted. A card that was only ever
+    // designed on this machine has no row, and saying it was withdrawn would be
+    // a claim about a record that never existed.
+    const removed = payload?.data?.removed ?? 0;
+    reportSyncSaved(
+      removed === 0
+        ? "No card for that holder was on the school's records, so nothing was withdrawn."
+        : `${removed === 1 ? "Identity card" : `${removed} identity cards`} withdrawn from the school's records.`
+    );
+    return { ok: true, reason: null, removed };
+  } catch (error) {
+    console.warn("API /api/id-cards delete failed", error);
+    const reason = "the portal server did not answer";
+    reportSyncFailure(`The identity card was NOT withdrawn from the school's records: ${reason}.`);
+    return { ok: false, reason, removed: 0 };
+  }
 }

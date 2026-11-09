@@ -65,7 +65,17 @@ import {
   saveReportThemeOnServer,
   fetchNewslettersFromSupabase,
   saveNewsletterOnServer,
+  fetchIdCardIndexFromSupabase,
+  fetchIdCardsFromSupabase,
+  saveIdCardOnServer,
+  removeIdCardsOnServer,
 } from "./supabase/db";
+import {
+  holderKey,
+  type IdCardHolderType,
+  type IdCardInput,
+  type IdCardRecord,
+} from "./id-cards";
 
 // Channel for instant multi-tab & multi-window event synchronization
 const CHANNEL_NAME = "rca_vcs_realtime_channel";
@@ -3234,6 +3244,164 @@ export function useRealtimeActivityTemplates() {
     addActivityTemplate,
     deleteActivityTemplate,
     reloadActivityTemplates: showServerTemplates,
+  };
+}
+
+// -------------------------------------------------------------
+// Hook: Identity Cards
+// -------------------------------------------------------------
+// A card is the photograph plus what the office adds to it; the name, class and
+// designation are read from the register every time it is drawn, so a promoted
+// child's card is never a copy of last year's.
+//
+// There is deliberately no localStorage copy of these. Three hundred photographs
+// would fill a browser's quota in one term and the overflow would throw away the
+// oldest cards silently. A card the school's records refused stays in this tab's
+// memory so it can still be printed, `cardsSource` says that is all it is, and
+// the designer says out loud that leaving the screen loses it.
+function mergeIdCards(existing: IdCardRecord[], incoming: IdCardRecord[]): IdCardRecord[] {
+  const byKey = new Map<string, IdCardRecord>();
+  for (const card of existing) byKey.set(holderKey(card.holderType, card.holderRef), card);
+  for (const card of incoming) {
+    const key = holderKey(card.holderType, card.holderRef);
+    const prior = byKey.get(key);
+    // The index travels without photographs. Keep the one already in memory
+    // while the server says the card has one; drop it when the server says the
+    // photograph was removed, or the old face would print for ever.
+    const photo = card.photo || (card.hasPhoto ? prior?.photo ?? "" : "");
+    byKey.set(key, { ...card, photo, hasPhoto: card.hasPhoto || photo !== "" });
+  }
+  return Array.from(byKey.values());
+}
+
+export function useRealtimeIdCards() {
+  const [cards, setCards] = useState<IdCardRecord[]>([]);
+  const [cardsSource, setCardsSource] = useState<"server" | "none">("none");
+  const [cardsLoading, setCardsLoading] = useState(true);
+  const [cardsReason, setCardsReason] = useState<string | null>(null);
+
+  const showServerCards = async (): Promise<boolean> => {
+    if (!isSupabaseConfigured) {
+      setCardsSource("none");
+      setCardsReason("this browser is not connected to the school database");
+      setCardsLoading(false);
+      return false;
+    }
+    const serverCards = await fetchIdCardIndexFromSupabase();
+    if (serverCards === null) {
+      setCardsSource("none");
+      setCardsReason("the school's card records could not be read");
+      setCardsLoading(false);
+      return false;
+    }
+    setCards((existing) => {
+      const filed = mergeIdCards(existing, serverCards);
+      const filedKeys = new Set(serverCards.map((card) => holderKey(card.holderType, card.holderRef)));
+      // A card designed here but never filed has no row to come back. Keeping it
+      // means a colleague's save in another tab cannot wipe this clerk's work.
+      const unfiled = existing.filter((card) => !card.id && !filedKeys.has(holderKey(card.holderType, card.holderRef)));
+      return [...filed, ...unfiled];
+    });
+    setCardsSource("server");
+    setCardsReason(null);
+    setCardsLoading(false);
+    return true;
+  };
+
+  useEffect(() => {
+    void showServerCards();
+
+    let channel: BroadcastChannel | null = null;
+    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+      channel = new BroadcastChannel(CHANNEL_NAME);
+      channel.onmessage = (event) => {
+        if (event.data?.type === "ID_CARDS_UPDATED") void showServerCards();
+      };
+    }
+    return () => {
+      channel?.close();
+    };
+  }, []);
+
+  /** Reads the named cards whole — photograph included — for a designer or a print run. */
+  const loadCards = async (
+    holderType: IdCardHolderType,
+    refs: string[]
+  ): Promise<{ cards: IdCardRecord[]; reason: string | null }> => {
+    if (refs.length === 0) return { cards: [], reason: null };
+    if (!isSupabaseConfigured) {
+      return { cards: [], reason: "this browser is not connected to the school database" };
+    }
+    const outcome = await fetchIdCardsFromSupabase(holderType, refs);
+    if (outcome.reason) return { cards: [], reason: outcome.reason };
+    setCards((existing) => mergeIdCards(existing, outcome.cards));
+    return outcome;
+  };
+
+  /**
+   * Files a card. When the school's records refuse it, the card is still held in
+   * this tab so the office can print what it designed — and the reason comes
+   * back with `saved: "session"` so the screen cannot claim it was filed.
+   */
+  const fileCard = async (
+    card: IdCardInput
+  ): Promise<{ saved: "server" | "session"; reason: string | null }> => {
+    const keepInTab = () => {
+      const local: IdCardRecord = {
+        ...card,
+        id: "",
+        hasPhoto: card.photo !== "",
+        updatedBy: "",
+        updatedAt: new Date().toISOString(),
+      };
+      setCards((existing) => mergeIdCards(existing, [local]));
+    };
+
+    if (!isSupabaseConfigured) {
+      keepInTab();
+      return { saved: "session", reason: "this browser is not connected to the school database, so the card was not filed" };
+    }
+
+    const outcome = await saveIdCardOnServer(card);
+    if (!outcome.ok || !outcome.saved) {
+      keepInTab();
+      return { saved: "session", reason: outcome.reason };
+    }
+
+    setCards((existing) => mergeIdCards(existing, [outcome.saved as IdCardRecord]));
+    broadcast("ID_CARDS_UPDATED");
+    return { saved: "server", reason: null };
+  };
+
+  /** Withdraws a card. A card that was never filed has no row, and says so. */
+  const withdrawCard = async (
+    holderType: IdCardHolderType,
+    holderRef: string
+  ): Promise<{ ok: boolean; reason: string | null; removed: number }> => {
+    const drop = () =>
+      setCards((existing) => existing.filter((card) => holderKey(card.holderType, card.holderRef) !== holderKey(holderType, holderRef)));
+
+    if (!isSupabaseConfigured) {
+      drop();
+      return { ok: true, reason: null, removed: 0 };
+    }
+    const outcome = await removeIdCardsOnServer([{ holderType, holderRef }]);
+    if (outcome.ok) {
+      drop();
+      broadcast("ID_CARDS_UPDATED");
+    }
+    return outcome;
+  };
+
+  return {
+    cards,
+    cardsSource,
+    cardsLoading,
+    cardsReason,
+    loadCards,
+    fileCard,
+    withdrawCard,
+    reloadIdCards: showServerCards,
   };
 }
 

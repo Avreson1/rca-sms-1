@@ -49,6 +49,7 @@ export const ROLE_ROUTE_ACCESS: Record<UserRole, RoleAccessRule> = {
     deniedPrefixes: [
       "/setup",
       "/operations/staff",
+      "/operations/id-cards",
       "/operations/publish-results",
       "/operations/promotion",
       "/operations/end-term",
@@ -83,6 +84,7 @@ export const ROLE_ROUTE_ACCESS: Record<UserRole, RoleAccessRule> = {
       "/setup/houses",
       "/setup/report-templates",
       "/operations/staff",
+      "/operations/id-cards",
       "/operations/academics",
       "/operations/update-ca",
       "/operations/traits-assessments",
@@ -108,6 +110,7 @@ export const ROLE_ROUTE_ACCESS: Record<UserRole, RoleAccessRule> = {
       "/setup",
       "/operations/students",
       "/operations/staff",
+      "/operations/id-cards",
       "/operations/academics",
       "/operations/update-ca",
       "/operations/traits-assessments",
