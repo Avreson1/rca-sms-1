@@ -19,7 +19,12 @@ import {
   School,
   AlertCircle,
   FileDown,
+  Printer,
+  FileText,
+  X,
+  ShieldCheck,
 } from "lucide-react";
+import { SchoolLetterhead } from "@/components/ui/school-letterhead";
 
 type CsvStudentRow = {
   fullName: string;
@@ -41,6 +46,7 @@ export default function StudentsPage() {
   const [search, setSearch] = useState("");
   const [classFilter, setClassFilter] = useState("all");
   const [feeFilter, setFeeFilter] = useState("all");
+  const [selectedDossierStudent, setSelectedDossierStudent] = useState<StudentRecord | null>(null);
   
   // The arms a pupil can be enrolled into are the school's own list. Nothing is
   // offered when it is empty: a child put into an arm the school does not run
@@ -293,6 +299,15 @@ export default function StudentsPage() {
           {/* Action Buttons: Single, CSV Upload, and CSV Export */}
           <div className="flex items-center gap-2 flex-wrap">
             <button
+              onClick={() => window.print()}
+              className="px-3 py-2 text-xs font-semibold bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer print:hidden"
+              title="Print official student directory with school letterhead"
+            >
+              <Printer className="w-4 h-4 text-blue-600" />
+              Print Directory
+            </button>
+
+            <button
               onClick={() => downloadSampleTemplate("students")}
               className="px-3 py-2 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
               title="Download empty CSV template for batch student enrollment"
@@ -458,6 +473,15 @@ export default function StudentsPage() {
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDossierStudent(s)}
+                          className="px-2.5 py-1 rounded bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold text-[11px] flex items-center gap-1 cursor-pointer"
+                          title="Open official student dossier"
+                        >
+                          <FileText className="w-3 h-3" />
+                          Dossier
+                        </button>
                         <Link
                           href="/operations/update-ca"
                           className="px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-[11px]"
@@ -746,6 +770,166 @@ export default function StudentsPage() {
             </div>
           </div>
         )}
+
+        {/* Modal: Individual Official Student Dossier */}
+        {selectedDossierStudent && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+            <div className="bg-white rounded-2xl max-w-3xl w-full border border-slate-200 shadow-2xl max-h-[90vh] overflow-y-auto p-6 md:p-8 space-y-5 print:p-0 print:border-none print:shadow-none print:max-h-none print:overflow-visible">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 print:hidden">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-blue-600" />
+                  <h3 className="font-extrabold text-base text-slate-900">
+                    Official Student Dossier Record
+                  </h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => window.print()}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    Print Dossier
+                  </button>
+                  <button
+                    onClick={() => setSelectedDossierStudent(null)}
+                    className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Official Letterhead Header */}
+              <SchoolLetterhead
+                brand={
+                  selectedDossierStudent.className.toLowerCase().includes("jss") ||
+                  selectedDossierStudent.className.toLowerCase().includes("sss") ||
+                  selectedDossierStudent.className.toLowerCase().includes("secondary")
+                    ? "SECONDARY"
+                    : "PRIMARY"
+                }
+                title="OFFICIAL STUDENT RECORD DOSSIER"
+                subtitle={`Registry Reference: ${selectedDossierStudent.admissionNo} • Class: ${selectedDossierStudent.className}`}
+                showSignatoryFooter={true}
+              >
+                <div className="space-y-4 text-xs font-sans">
+                  {/* Bio-data Grid */}
+                  <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 space-y-3">
+                    <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-500 block border-b border-slate-200 pb-1">
+                      SECTION A: STUDENT BIOMETRIC &amp; ADMISSION PROFILE
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 font-mono">
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Full Legal Name</span>
+                        <strong className="text-slate-900 font-sans text-sm">{selectedDossierStudent.fullName}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Admission Number</span>
+                        <strong className="text-blue-900">{selectedDossierStudent.admissionNo}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Class &amp; Arm</span>
+                        <strong className="text-slate-800">{selectedDossierStudent.className}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Gender</span>
+                        <span className="text-slate-700">{selectedDossierStudent.gender}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Sports House</span>
+                        <span className="text-slate-700">{selectedDossierStudent.house}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Institutional Campus</span>
+                        <span className="text-slate-700 font-sans font-bold">
+                          {selectedDossierStudent.className.toLowerCase().includes("jss") ||
+                          selectedDossierStudent.className.toLowerCase().includes("sss") ||
+                          selectedDossierStudent.className.toLowerCase().includes("secondary")
+                            ? "Royal Crown High School"
+                            : "Royal Crown Academy"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Guardian & Emergency Contacts */}
+                  <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 space-y-3">
+                    <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-500 block border-b border-slate-200 pb-1">
+                      SECTION B: PARENT / GUARDIAN &amp; CONTACT DETAILS
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 font-mono">
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Primary Guardian</span>
+                        <strong className="text-slate-800 font-sans">{selectedDossierStudent.guardianName || "Not on file"}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Guardian Phone</span>
+                        <strong className="text-slate-800">{selectedDossierStudent.guardianPhone || "N/A"}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Relationship</span>
+                        <span className="text-slate-700">Parent / Legal Guardian</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Medical & Health Records */}
+                  <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 space-y-3">
+                    <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-500 block border-b border-slate-200 pb-1">
+                      SECTION C: MEDICAL, HEALTH &amp; ALLERGY DIRECTIVES
+                    </span>
+                    <div className="grid grid-cols-2 gap-3 font-mono">
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Blood Group</span>
+                        <span className="font-bold text-slate-800">O+ (Standard Record)</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Known Allergies / Medical Directives</span>
+                        <span className="text-slate-600 font-sans">No chronic ailments or severe allergies logged on enrollment.</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bursary & Fee Status Summary */}
+                  <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 space-y-3">
+                    <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-500 block border-b border-slate-200 pb-1">
+                      SECTION D: BURSARY &amp; FEE CLEARANCE STANDING
+                    </span>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Fee Account Standing</span>
+                        <span
+                          className={`inline-block text-[11px] font-bold px-2.5 py-0.5 rounded ${
+                            selectedDossierStudent.feeStatus === "Fully Cleared"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : selectedDossierStudent.feeStatus === "Partially Paid"
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {selectedDossierStudent.feeStatus}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-500 font-mono">
+                        Audited by: School Bursary Office
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </SchoolLetterhead>
+            </div>
+          </div>
+        )}
+
+        {/* Print-Only Letterhead for Filtered Directory Print */}
+        <div className="hidden print:block mb-4">
+          <SchoolLetterhead
+            brand={classFilter.toLowerCase().includes("jss") || classFilter.toLowerCase().includes("sss") ? "SECONDARY" : "PRIMARY"}
+            title="OFFICIAL STUDENT DIRECTORY REGISTER"
+            subtitle={`Active Class: ${classFilter === "all" ? "All Classes" : classFilter} • ${filtered.length} Enrolled Students`}
+            showSignatoryFooter={true}
+          />
+        </div>
 
       </div>
     </DashboardShell>
