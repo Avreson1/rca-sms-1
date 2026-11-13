@@ -27,10 +27,12 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      - name: Run automated unit tests
+        run: npx tsx --test src/lib/promotion-engine.test.ts src/lib/payment-verification.test.ts
+
       - name: Lint
-        # The warning count is pinned to today's 293 so new ones fail the run
-        # instead of drifting in under the radar.
-        run: npm run lint -- --max-warnings=293
+        # Pinned with safety margin against baseline warning count
+        run: npm run lint -- --max-warnings=150
 
       - name: Build
         run: npm run build

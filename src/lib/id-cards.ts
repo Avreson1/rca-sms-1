@@ -9,7 +9,7 @@
 
 export type IdCardHolderType = "student" | "staff";
 export type IdCardLayout = "portrait" | "landscape" | "badge";
-export type IdCardTheme = "royal" | "scarlet" | "midnight" | "paper";
+export type IdCardTheme = "royal" | "scarlet" | "midnight" | "paper" | "primary_gold" | "secondary_crimson";
 
 /** CR80 is the bank-card size every card printer and laminator takes. */
 export const ID_CARD_LAYOUTS: {
@@ -105,6 +105,36 @@ export const ID_CARD_THEMES: IdCardThemeSpec[] = [
     seal: "rgba(48,89,208,0.12)",
     swatch: "linear-gradient(140deg, #ffffff, #c8d7f9)",
     light: true,
+  },
+  {
+    key: "primary_gold",
+    label: "Royal Crown Academy (Primary)",
+    field: "linear-gradient(155deg, #1e3a8a 0%, #2563eb 45%, #b45309 100%)",
+    ink: "#ffffff",
+    muted: "rgba(255,255,255,0.85)",
+    rule: "rgba(255,255,255,0.30)",
+    accent: "#f59e0b",
+    accentInk: "#0f172a",
+    panel: "rgba(255,255,255,0.14)",
+    panelRule: "rgba(255,255,255,0.25)",
+    seal: "rgba(245,158,11,0.22)",
+    swatch: "linear-gradient(140deg, #2563eb, #f59e0b)",
+    light: false,
+  },
+  {
+    key: "secondary_crimson",
+    label: "Royal Crown High School (Secondary)",
+    field: "linear-gradient(155deg, #090e1a 0%, #171c38 48%, #4a0d1e 100%)",
+    ink: "#ffffff",
+    muted: "rgba(255,255,255,0.78)",
+    rule: "rgba(255,255,255,0.24)",
+    accent: "#e11d48",
+    accentInk: "#ffffff",
+    panel: "rgba(255,255,255,0.08)",
+    panelRule: "rgba(255,255,255,0.18)",
+    seal: "rgba(225,29,72,0.20)",
+    swatch: "linear-gradient(140deg, #171c38, #e11d48)",
+    light: false,
   },
 ];
 
@@ -385,7 +415,60 @@ export interface IdCardHolder {
   guardianPhone: string;
   session: string;
   onRegister: boolean;
+  section?: "PRIMARY" | "SECONDARY";
+  dateOfBirth?: string;
+  department?: string;
 }
+
+export function detectCardSection(classOrSection: string): "PRIMARY" | "SECONDARY" {
+  const norm = (classOrSection || "").toLowerCase();
+  if (
+    norm.includes("secondary") ||
+    norm.includes("jss") ||
+    norm.includes("sss") ||
+    norm.includes("high school") ||
+    norm.includes("junior") ||
+    norm.includes("senior")
+  ) {
+    return "SECONDARY";
+  }
+  return "PRIMARY";
+}
+
+/** Exact CR80 standard card dimensions */
+export const CR80_WIDTH_MM = 85.6;
+export const CR80_HEIGHT_MM = 53.98;
+
+export const BATCH_PRINT_STYLES = `
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm 6mm;
+  }
+  body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .print-hidden, nav, header, aside, button {
+    display: none !important;
+  }
+  .id-card-sheet {
+    display: grid !important;
+    grid-template-columns: repeat(2, 85.6mm) !important;
+    gap: 6mm 8mm !important;
+    justify-content: center !important;
+    page-break-inside: auto !important;
+  }
+  .id-card-item {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  .page-break-after-batch {
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+}
+`;
 
 export function holderKey(holderType: IdCardHolderType, holderRef: string): string {
   return `${holderType}:${holderRef}`;

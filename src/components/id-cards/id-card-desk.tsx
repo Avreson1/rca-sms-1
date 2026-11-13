@@ -95,6 +95,7 @@ export function IdCardDesk({ asked }: { asked: { type: IdCardHolderType; ref: st
   const [typeFilter, setTypeFilter] = useState<"all" | IdCardHolderType>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [classFilter, setClassFilter] = useState("all");
+  const [sectionFilter, setSectionFilter] = useState<"all" | "PRIMARY" | "SECONDARY">("all");
   const [sort, setSort] = useState<SortKey>("name");
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -129,6 +130,7 @@ export function IdCardDesk({ asked }: { asked: { type: IdCardHolderType; ref: st
       guardianPhone: pupil.guardianPhone ?? "",
       session: scope.session,
       onRegister: true,
+      section: (pupil.className.toLowerCase().includes("jss") || pupil.className.toLowerCase().includes("sss") || pupil.className.toLowerCase().includes("secondary")) ? "SECONDARY" : "PRIMARY",
     }));
     const members: IdCardHolder[] = staff.map((member) => ({
       holderType: "staff",
@@ -168,6 +170,7 @@ export function IdCardDesk({ asked }: { asked: { type: IdCardHolderType; ref: st
     const needle = search.trim().toLowerCase();
     const rows = holders.filter((holder) => {
       if (typeFilter !== "all" && holder.holderType !== typeFilter) return false;
+      if (sectionFilter !== "all" && holder.section !== sectionFilter) return false;
       if (classFilter !== "all" && (holder.holderType !== "student" || holder.firstValue !== classFilter)) return false;
       const card = cardByKey.get(holderKey(holder.holderType, holder.holderRef));
       if (statusFilter === "filed" && !card) return false;
@@ -193,7 +196,7 @@ export function IdCardDesk({ asked }: { asked: { type: IdCardHolderType; ref: st
       }
       return nameOf(a).localeCompare(nameOf(b));
     });
-  }, [holders, search, typeFilter, classFilter, statusFilter, sort, cardByKey]);
+  }, [holders, search, typeFilter, classFilter, statusFilter, sectionFilter, sort, cardByKey]);
 
   const stats = useMemo(() => {
     const filed = holders.filter((holder) => cardByKey.has(holderKey(holder.holderType, holder.holderRef)));
@@ -424,7 +427,7 @@ export function IdCardDesk({ asked }: { asked: { type: IdCardHolderType; ref: st
                   className="w-full rounded-xl border border-hairline bg-canvas pl-9 pr-3 py-2.5 text-sm font-semibold text-ink outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/25"
                 />
               </div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
                 <label className="block">
                   <span className="block text-[10px] font-bold uppercase tracking-wider text-muted mb-1">Whose</span>
                   <select
@@ -435,6 +438,18 @@ export function IdCardDesk({ asked }: { asked: { type: IdCardHolderType; ref: st
                     <option value="all">Everyone</option>
                     <option value="student">Pupils</option>
                     <option value="staff">Staff</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-muted mb-1">Section</span>
+                  <select
+                    value={sectionFilter}
+                    onChange={(event) => setSectionFilter(event.target.value as "all" | "PRIMARY" | "SECONDARY")}
+                    className="w-full rounded-lg border border-hairline bg-white px-2 py-1.5 text-xs font-bold text-ink outline-none focus:border-brand-500"
+                  >
+                    <option value="all">All Levels</option>
+                    <option value="PRIMARY">Primary (Academy)</option>
+                    <option value="SECONDARY">Secondary (High School)</option>
                   </select>
                 </label>
                 <label className="block">
@@ -767,9 +782,9 @@ export function IdCardDesk({ asked }: { asked: { type: IdCardHolderType; ref: st
           <div className={`id-card-sheet ${cutGuides ? "id-card-cut" : ""}`}>
             {(printJob ?? []).map((item) => (
               <div className="id-card-pair" key={holderKey(item.holder.holderType, item.holder.holderRef)}>
-                <IdCardArtwork holder={item.holder} card={item.card} school={school} side="front" />
+                <IdCardArtwork holder={item.holder} card={item.card} school={school} side="front" section={item.holder.section} />
                 {printBacks && item.card.showBack && (
-                  <IdCardArtwork holder={item.holder} card={item.card} school={school} side="back" />
+                  <IdCardArtwork holder={item.holder} card={item.card} school={school} side="back" section={item.holder.section} />
                 )}
               </div>
             ))}

@@ -238,6 +238,7 @@ export interface IdCardArtworkProps {
   side: "front" | "back";
   layout?: IdCardLayout;
   theme?: IdCardTheme;
+  section?: "PRIMARY" | "SECONDARY";
 }
 
 /**
@@ -251,9 +252,30 @@ export interface IdCardArtworkProps {
  * clips. A long name or a four-line address therefore takes space from the
  * photograph rather than pushing the barcode off the edge of the stock.
  */
-export function IdCardArtwork({ holder, card, school, side, layout, theme }: IdCardArtworkProps) {
+export function IdCardArtwork({ holder, card, school, side, layout, theme, section }: IdCardArtworkProps) {
+  const detectedSection: "PRIMARY" | "SECONDARY" =
+    section ??
+    holder.section ??
+    (holder.firstValue?.toLowerCase().includes("jss") ||
+    holder.firstValue?.toLowerCase().includes("sss") ||
+    holder.firstValue?.toLowerCase().includes("secondary") ||
+    holder.tag?.toLowerCase().includes("secondary")
+      ? "SECONDARY"
+      : "PRIMARY");
+
+  const defaultThemeForSection: IdCardTheme =
+    detectedSection === "SECONDARY" ? "secondary_crimson" : "primary_gold";
+
+  const institutionName =
+    detectedSection === "SECONDARY" ? "ROYAL CROWN HIGH SCHOOL" : (school.name || "ROYAL CROWN ACADEMY");
+
+  const institutionMotto =
+    detectedSection === "SECONDARY"
+      ? "Excellence, Integrity & Leadership"
+      : school.motto || "Excellence and Integrity";
+
   const spec = layoutSpec(layout ?? card.layout);
-  const colours = themeSpec(theme ?? card.theme);
+  const colours = themeSpec(theme ?? (card.theme === "royal" ? defaultThemeForSection : card.theme));
   const words = HOLDER_WORDS[holder.holderType];
   const landscape = spec.key === "landscape";
   const badge = spec.key === "badge";
@@ -353,7 +375,7 @@ export function IdCardArtwork({ holder, card, school, side, layout, theme }: IdC
             whiteSpace: "nowrap",
           }}
         >
-          {school.name}
+          {institutionName}
         </div>
         <div
           style={{
@@ -367,7 +389,7 @@ export function IdCardArtwork({ holder, card, school, side, layout, theme }: IdC
             whiteSpace: "nowrap",
           }}
         >
-          {school.motto}
+          {institutionMotto}
         </div>
       </div>
     </div>
@@ -507,9 +529,18 @@ export function IdCardArtwork({ holder, card, school, side, layout, theme }: IdC
       }}
     >
       <Field label={holder.firstLabel} value={holder.firstValue} colours={colours} size={sizePt} />
-      <Field label={holder.secondLabel} value={holder.secondValue} colours={colours} size={sizePt} />
       <Field label={words.number} value={holder.holderRef} colours={colours} mono size={sizePt} />
-      <Field label="Blood group" value={card.bloodGroup} colours={colours} size={sizePt} />
+      {detectedSection === "PRIMARY" ? (
+        <>
+          <Field label="Blood Group" value={card.bloodGroup || "O+"} colours={colours} size={sizePt} />
+          <Field label="Emergency Phone" value={card.emergencyPhone || holder.guardianPhone || "School Office"} colours={colours} size={sizePt} />
+        </>
+      ) : (
+        <>
+          <Field label={holder.secondLabel || "House"} value={holder.secondValue || "Senior"} colours={colours} size={sizePt} />
+          <Field label="Expiry Date" value={expires || "End of Session"} colours={colours} size={sizePt} />
+        </>
+      )}
     </div>
   );
 

@@ -21,6 +21,7 @@ import {
 } from "@/lib/realtime-store";
 import { fetchPublicationsFromSupabase } from "@/lib/supabase/db";
 import { useSchoolConfig, sessionOptions, REPORT_TERMS, type ReportTerm } from "@/lib/school-config";
+import { computeClassPositions, formatOrdinalRank } from "@/lib/promotion-engine";
 import {
   GraduationCap,
   Printer,
@@ -33,6 +34,7 @@ import {
   Users,
   Palette,
   CreditCard,
+  Trophy,
   ShieldCheck,
   Lock,
   UserCheck,
@@ -281,7 +283,20 @@ export default function ScoreCardPage() {
   const [showPsychomotor, setShowPsychomotor] = useState(true);
   const [showAttendanceRemarks, setShowAttendanceRemarks] = useState(true);
   const [showNewsletter, setShowNewsletter] = useState(true);
+  const [includeClassPosition, setIncludeClassPosition] = useState(true);
   const [isBatchPrintMode, setIsBatchPrintMode] = useState(false);
+
+  // Fetch configured default for class position visibility
+  useEffect(() => {
+    fetch("/api/promotion/settings")
+      .then((res) => res.json())
+      .then((res) => {
+        if (res.success && typeof res.data?.showClassPosition === "boolean") {
+          setIncludeClassPosition(res.data.showClassPosition);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // The card is coloured with the scheme on the school's records. Choosing
   // differently here is a decision about the sheets going into this printer, not
@@ -498,11 +513,16 @@ export default function ScoreCardPage() {
     const total = filed.reduce((sum, r) => sum + r.total, 0);
     const avg = results.length > 0 && filed.length === results.length ? (total / results.length).toFixed(1) : null;
 
-    const classMeans = classStudents.map((s) => ({ id: s.id, mean: rankableMean(s) }));
-    const ranked = classMeans.filter((c) => c.mean >= 0).sort((a, b) => b.mean - a.mean);
+    const classMeans = classStudents.map((s) => ({
+      studentId: s.id,
+      average: rankableMean(s) >= 0 ? Number(rankableMean(s).toFixed(1)) : -1,
+    }));
+    const rankedCandidates = classMeans.filter((c) => c.average >= 0);
+    const positionMap = computeClassPositions(rankedCandidates);
+    const studentRank = positionMap.get(student.id);
     const pos =
-      classMeans.length > 1 && ranked.length === classMeans.length
-        ? `${formatOrdinal(ranked.findIndex((c) => c.id === student.id) + 1)} of ${classMeans.length}`
+      studentRank !== undefined && rankedCandidates.length === classMeans.length
+        ? `${formatOrdinalRank(studentRank)} of ${classMeans.length}`
         : "—";
 
     const psy =
@@ -582,15 +602,27 @@ export default function ScoreCardPage() {
             <span className="text-[10px] uppercase font-bold text-slate-400 block">Terminal Average</span>
             <strong className="text-emerald-700 font-bold text-sm">{avg === null ? "Incomplete" : `${avg}%`}</strong>
           </div>
-          <div>
-            <span className="text-[10px] uppercase font-bold text-slate-400 block">Class Position</span>
-            <strong className="text-purple-800 font-bold">{pos}</strong>
-          </div>
+          {includeClassPosition && (
+            <div>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">Class Position</span>
+              <strong className="text-purple-800 font-bold">{pos}</strong>
+            </div>
+          )}
           <div>
             <span className="text-[10px] uppercase font-bold text-slate-400 block">Promotional Standing</span>
-            {/* Promotion is a decision the school records at end of term; until that decision exists
-                for this class there is nothing honest to print here. */}
-            <strong className="text-slate-600 font-bold">Not decided</strong>
+            {selectedTerm === "Third Term" ? (
+              avg !== null && Number(avg) >= (student.className.toLowerCase().includes("jss") || student.className.toLowerCase().includes("sss") || student.className.toLowerCase().includes("secondary") ? 60 : 50) ? (
+                <strong className="text-emerald-800 font-bold bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded text-[10px] inline-block">
+                  PROMOTED ✓
+                </strong>
+              ) : (
+                <strong className="text-amber-800 font-bold bg-amber-100 border border-amber-300 px-2 py-0.5 rounded text-[10px] inline-block">
+                  REPEAT ⚠️
+                </strong>
+              )
+            ) : (
+              <strong className="text-slate-500 font-medium">Decided in 3rd Term</strong>
+            )}
           </div>
         </div>
 
@@ -718,9 +750,15 @@ export default function ScoreCardPage() {
                     <td className="py-2.5 px-2 text-center font-mono font-extrabold text-blue-950 bg-blue-200">
                       {avg}%
                     </td>
-                    <td colSpan={2} className="py-2.5 px-3 text-purple-900 font-bold">
-                      Class Rank: {pos}
-                    </td>
+                    {includeClassPosition ? (
+                      <td colSpan={2} className="py-2.5 px-3 text-purple-900 font-bold">
+                        Class Rank: {pos}
+                      </td>
+                    ) : (
+                      <td colSpan={2} className="py-2.5 px-3 text-slate-600 font-bold text-center">
+                        Total Subjects: {results.length}
+                      </td>
+                    )}
                   </>
                 )}
               </tr>
@@ -1201,6 +1239,21 @@ export default function ScoreCardPage() {
                   3-Term Cumulative Annual
                 </button>
               </div>
+
+              {/* Class Position Toggle Option */}
+              <button
+                type="button"
+                onClick={() => setIncludeClassPosition(!includeClassPosition)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 ${
+                  includeClassPosition
+                    ? "bg-purple-50 border-purple-200 text-purple-800 shadow-xs"
+                    : "bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-800"
+                }`}
+                title="Toggle whether Class Rank and Position are displayed and printed on scorecards"
+              >
+                <Trophy className={`w-3.5 h-3.5 ${includeClassPosition ? "text-purple-600" : "text-slate-400"}`} />
+                <span>Class Position: <strong>{includeClassPosition ? "ON" : "OFF"}</strong></span>
+              </button>
             </div>
 
             {/* Print-run theme override (Restricted to Super Admin & Exam Officer) */}
