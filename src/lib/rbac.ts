@@ -32,7 +32,7 @@ export const ROLE_ROUTE_ACCESS: Record<UserRole, RoleAccessRule> = {
       "/video-guides",
     ],
     exactRoutes: ["/", "/login"],
-    deniedPrefixes: ["/setup/fees", "/accounts", "/settings"],
+    deniedPrefixes: ["/setup/fees", "/setup/records-dossier", "/accounts", "/settings"],
   },
   TEACHER: {
     allowedPrefixes: [

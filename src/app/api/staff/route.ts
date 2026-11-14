@@ -114,6 +114,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 502 });
   }
 
+  // If appointed as Form Master, sync to the corresponding class arm in public.class_arms
+  if (row.is_form_master && row.assigned_class) {
+    await supabase
+      .from("class_arms")
+      .update({
+        form_teacher: row.full_name,
+        form_teacher_id: row.staff_id,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("name", row.assigned_class);
+  }
+
   // Registering a person and giving them a way to sign in is one act of
   // onboarding, not two. Before this the form invented a passcode in the
   // browser and printed it on a memo, so the office handed out a password that

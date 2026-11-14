@@ -7,6 +7,7 @@ import {
   isAssignableRole,
   resetAppAccountPassword,
 } from "@/lib/auth/app-accounts";
+import { replaceGuardianLinks } from "@/lib/auth/guardian-links";
 import type { UserRole } from "@/lib/rbac";
 import { databaseUnavailable, getSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -94,29 +95,83 @@ export async function POST(request: Request) {
   if (staffError) {
     return NextResponse.json({ success: false, error: staffError.message }, { status: 502 });
   }
-  if (!staffRow) {
-    return NextResponse.json(
-      { success: false, error: `No staff member on the register with the username ${username}, so there is nothing to issue a login for.` },
-      { status: 404 }
-    );
+
+  if (staffRow) {
+    const role = isAssignableRole(staffRow.role) ? (staffRow.role as UserRole) : "TEACHER";
+    const { account, error } = await createAppAccount({
+      username: staffRow.username,
+      displayName: staffRow.full_name,
+      role,
+      staffId: staffRow.staff_id,
+      email: staffRow.email ?? "",
+      createdBy: session.username,
+    });
+
+    if (!account) {
+      return NextResponse.json({ success: false, error: error ?? "The login could not be created." }, { status: 502 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      login: { username: account.username, password: account.password, action: "created" as const },
+      holder: { fullName: staffRow.full_name, staffId: staffRow.staff_id, role: staffRow.role },
+    });
   }
 
-  const role = isAssignableRole(staffRow.role) ? (staffRow.role as UserRole) : "TEACHER";
-  const { account, error } = await createAppAccount({
-    username: staffRow.username,
-    displayName: staffRow.full_name,
-    role,
-    staffId: staffRow.staff_id,
-    email: staffRow.email ?? "",
-    createdBy: session.username,
-  });
+  // Fallback: Check if username or ref corresponds to a pupil admission number
+  const { data: pupil, error: pupilError } = await supabase
+    .from("students")
+    .select("admission_no, full_name")
+    .or(`admission_no.eq.${username},admission_no.ilike.${username}`)
+    .limit(1)
+    .maybeSingle();
 
-  if (!account) {
-    return NextResponse.json({ success: false, error: error ?? "The login could not be created." }, { status: 502 });
+  if (pupilError) {
+    return NextResponse.json({ success: false, error: pupilError.message }, { status: 502 });
   }
 
-  return NextResponse.json({
-    success: true,
-    login: { username: account.username, password: account.password, action: "created" as const },
-  });
+  if (pupil) {
+    const studentUsername = `pupil.${pupil.admission_no.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+    const studentExisting = await getAppAccountByUsername(studentUsername);
+
+    if (studentExisting.account) {
+      const { account, error } = await resetAppAccountPassword(studentExisting.account.id);
+      if (!account) {
+        return NextResponse.json(
+          { success: false, error: error ?? "The existing student/parent login could not be reset." },
+          { status: error === "Account not found" ? 404 : 502 }
+        );
+      }
+      return NextResponse.json({
+        success: true,
+        login: { username: account.username, password: account.password, action: "reset" as const },
+        holder: { fullName: pupil.full_name, admissionNo: pupil.admission_no, role: "STUDENT_PARENT" },
+      });
+    }
+
+    const { account, error } = await createAppAccount({
+      username: studentUsername,
+      displayName: `${pupil.full_name} (Parent/Pupil)`,
+      role: "STUDENT_PARENT",
+      email: "",
+      createdBy: session.username,
+    });
+
+    if (!account) {
+      return NextResponse.json({ success: false, error: error ?? "The student/parent login could not be created." }, { status: 502 });
+    }
+
+    await replaceGuardianLinks(studentUsername, [pupil.admission_no], session.username);
+
+    return NextResponse.json({
+      success: true,
+      login: { username: account.username, password: account.password, action: "created" as const },
+      holder: { fullName: pupil.full_name, admissionNo: pupil.admission_no, role: "STUDENT_PARENT" },
+    });
+  }
+
+  return NextResponse.json(
+    { success: false, error: `No registered staff member or enrolled pupil found matching identifier "${username}".` },
+    { status: 404 }
+  );
 }

@@ -38,6 +38,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { SchoolLetterhead } from "@/components/ui/school-letterhead";
+import { RowActionsDropdown } from "@/components/ui/row-actions-dropdown";
 
 const DEFAULT_TEACHER_PERMISSIONS: StaffPermissions = {
   canCreateStudents: false,
@@ -111,7 +112,7 @@ function splitDutyList(value: string): string[] {
 
 export default function StaffManagementPage() {
   const { staff, addStaff, bulkAddStaff, deleteStaff, updateStaff } = useRealtimeStaff();
-  const { classes } = useRealtimeClasses();
+  const { classes, updateClass } = useRealtimeClasses();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [selectedDossierStaff, setSelectedDossierStaff] = useState<StaffRecord | null>(null);
@@ -358,6 +359,22 @@ export default function StaffManagementPage() {
       return;
     }
 
+    // Immediately sync Form Teacher assignment to class setup store
+    if (inlineStaffForm.isFormMaster && inlineStaffForm.assignedClass) {
+      const targetClass = classes.find((c) => c.name === inlineStaffForm.assignedClass);
+      if (targetClass) {
+        updateClass(targetClass.id, {
+          formTeacher: inlineStaffForm.fullName || name,
+          formTeacherId: inlineStaffForm.staffId || staffId,
+        });
+      }
+    } else if (inlineStaffForm.isFormMaster === false) {
+      const prevClass = classes.find((c) => c.formTeacherId === (inlineStaffForm.staffId || staffId));
+      if (prevClass) {
+        updateClass(prevClass.id, { formTeacher: "Unassigned", formTeacherId: "" });
+      }
+    }
+
     setEditingStaffId(null);
     setInlineStaffForm({});
     setNotificationMsg(`Staff record for ${name} (${staffId}) updated successfully.`);
@@ -416,6 +433,22 @@ export default function StaffManagementPage() {
     if (!result.ok) {
       setFullEditStaffError(result.reason || "Failed to save profile changes.");
       return;
+    }
+
+    // Immediately sync Form Teacher assignment to class setup store
+    if (fullEditStaffForm.isFormMaster && fullEditStaffForm.assignedClass) {
+      const targetClass = classes.find((c) => c.name === fullEditStaffForm.assignedClass);
+      if (targetClass) {
+        updateClass(targetClass.id, {
+          formTeacher: fullEditStaffForm.fullName || name,
+          formTeacherId: fullEditStaffForm.staffId || staffId,
+        });
+      }
+    } else if (fullEditStaffForm.isFormMaster === false) {
+      const prevClass = classes.find((c) => c.formTeacherId === (fullEditStaffForm.staffId || staffId));
+      if (prevClass) {
+        updateClass(prevClass.id, { formTeacher: "Unassigned", formTeacherId: "" });
+      }
     }
 
     setFullEditStaff(null);
@@ -962,58 +995,64 @@ export default function StaffManagementPage() {
                           </div>
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => startInlineStaffEdit(s)}
-                              className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 text-[10px] font-bold rounded flex items-center gap-1 whitespace-nowrap cursor-pointer border border-amber-200 shadow-2xs"
-                              title="Quick edit staff record"
-                            >
-                              <Pencil className="w-3 h-3 text-amber-700" />
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedDossierStaff(s)}
-                              className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 text-[10px] font-bold rounded flex items-center gap-1 whitespace-nowrap cursor-pointer border border-purple-200 shadow-2xs"
-                              title="View official staff dossier"
-                            >
-                              <FileText className="w-3 h-3 text-purple-600" />
-                              Dossier
-                            </button>
-                            <button
-                              onClick={() => void issueAccessSlip(s)}
-                              disabled={slipBusy === s.staffId}
-                              className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-brand-600 text-[10px] font-bold rounded flex items-center gap-1 whitespace-nowrap cursor-pointer border border-blue-200 shadow-2xs disabled:opacity-60 disabled:cursor-wait"
-                              title="Issue Private Access Slip"
-                            >
-                              <KeyRound className="w-3 h-3 text-brand-600" />
-                              {slipBusy === s.staffId ? "Issuing…" : "Access Slip"}
-                            </button>
-                            <Link
-                              href={`/operations/id-cards?holder=staff&ref=${encodeURIComponent(s.staffId)}`}
-                              className="px-2 py-1 bg-brand-600 hover:bg-brand-700 text-white text-[10px] font-bold rounded flex items-center gap-1 whitespace-nowrap cursor-pointer shadow-2xs"
-                              title={`Design and print the identity card for ${s.fullName}`}
-                            >
-                              <CreditCard className="w-3 h-3" />
-                              ID Card
-                            </Link>
-                            <button
-                              onClick={() => setEditingStaff(s)}
-                              className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded flex items-center gap-1 cursor-pointer"
-                              title="Edit Granular Permissions"
-                            >
-                              <KeyRound className="w-3 h-3 text-slate-600" />
-                              Permissions
-                            </button>
-                            <button
-                              onClick={() => void removeStaff(s)}
-                              disabled={removingId === s.staffId}
-                              className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer disabled:cursor-wait disabled:opacity-50"
-                              title="Remove from the school's register"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                          <div className="flex items-center justify-end">
+                            <RowActionsDropdown
+                              items={[
+                                {
+                                  id: "edit",
+                                  label: "Edit Record",
+                                  icon: <Pencil className="w-3.5 h-3.5" />,
+                                  onClick: () => startInlineStaffEdit(s),
+                                  title: "Quick edit staff record inline",
+                                },
+                                {
+                                  id: "full-edit",
+                                  label: "Full Profile Editor",
+                                  icon: <FileText className="w-3.5 h-3.5" />,
+                                  onClick: () => openFullEditStaff(s),
+                                  title: "Open complete 5-section staff profile drawer",
+                                },
+                                {
+                                  id: "dossier",
+                                  label: "Print Dossier",
+                                  icon: <FileText className="w-3.5 h-3.5" />,
+                                  onClick: () => setSelectedDossierStaff(s),
+                                  title: "View official staff dossier record",
+                                },
+                                {
+                                  id: "slip",
+                                  label: slipBusy === s.staffId ? "Issuing Slip…" : "Access Slip",
+                                  icon: <KeyRound className="w-3.5 h-3.5" />,
+                                  onClick: () => void issueAccessSlip(s),
+                                  disabled: slipBusy === s.staffId,
+                                  variant: "brand",
+                                  title: "Issue Private Access Slip credentials",
+                                },
+                                {
+                                  id: "id-card",
+                                  label: "ID Card",
+                                  icon: <CreditCard className="w-3.5 h-3.5" />,
+                                  href: `/operations/id-cards?holder=staff&ref=${encodeURIComponent(s.staffId)}`,
+                                  title: `Design and print the identity card for ${s.fullName}`,
+                                },
+                                {
+                                  id: "permissions",
+                                  label: "Permissions",
+                                  icon: <Lock className="w-3.5 h-3.5" />,
+                                  onClick: () => setEditingStaff(s),
+                                  title: "Edit Granular CRUD & Portal Permissions",
+                                },
+                                {
+                                  id: "delete",
+                                  label: "Remove Staff",
+                                  icon: <Trash2 className="w-3.5 h-3.5" />,
+                                  onClick: () => void removeStaff(s),
+                                  disabled: removingId === s.staffId,
+                                  variant: "danger",
+                                  title: "Remove from the school's register",
+                                },
+                              ]}
+                            />
                           </div>
                         </td>
                       </tr>
@@ -1189,7 +1228,7 @@ export default function StaffManagementPage() {
                     >
                       {classes.map((c) => (
                         <option key={c.id} value={c.name}>
-                          {c.name} ({c.section})
+                          {c.name} — {c.section}{c.formTeacher && c.formTeacher !== "Unassigned" ? ` (Current Form Master: ${c.formTeacher})` : ""}
                         </option>
                       ))}
                     </select>
@@ -2028,7 +2067,7 @@ export default function StaffManagementPage() {
                       >
                         {classes.map((c) => (
                           <option key={c.id} value={c.name}>
-                            {c.name} ({c.section})
+                            {c.name} — {c.section}{c.formTeacher && c.formTeacher !== "Unassigned" ? ` (Current Form Master: ${c.formTeacher})` : ""}
                           </option>
                         ))}
                       </select>

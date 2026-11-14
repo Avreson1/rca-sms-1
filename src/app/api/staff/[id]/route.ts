@@ -180,10 +180,24 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
   }
 
-  if (body.assignedClass !== undefined || body.assigned_class !== undefined) {
-    const rawClass = (body.assignedClass ?? body.assigned_class) as unknown;
+  if (body.assignedClass !== undefined || body.assigned_class !== undefined || body.classId !== undefined || body.class_id !== undefined) {
+    const rawClass = (body.assignedClass ?? body.assigned_class ?? body.classId ?? body.class_id) as unknown;
     if (typeof rawClass === "string" && rawClass.trim()) {
-      updateData.assigned_class = rawClass.trim();
+      const classIdentifier = rawClass.trim();
+      updateData.assigned_class = classIdentifier;
+
+      // Dynamic lookup against canonical class_arms catalog
+      const { data: matchedArm } = await supabase
+        .from("class_arms")
+        .select("id, name, section")
+        .or(`name.eq."${classIdentifier}",id.eq."${classIdentifier}"`)
+        .maybeSingle();
+
+      if (matchedArm) {
+        updateData.assigned_class = matchedArm.name;
+        updateData.class_id = matchedArm.id;
+        updateData.section_id = matchedArm.section;
+      }
     }
   }
 
@@ -257,12 +271,27 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   // 3. Database Write
-  const { data: updated, error: updateErr } = await supabase
+  let { data: updated, error: updateErr } = await supabase
     .from("staff")
     .update(updateData)
     .eq("id", existing.id)
     .select()
     .single();
+
+  // Graceful fallback if class_id or section_id columns are not yet present in remote DB
+  if (updateErr && /class_id|section_id/i.test(updateErr.message)) {
+    const fallbackData = { ...updateData };
+    delete fallbackData.class_id;
+    delete fallbackData.section_id;
+    const retry = await supabase
+      .from("staff")
+      .update(fallbackData)
+      .eq("id", existing.id)
+      .select()
+      .single();
+    updated = retry.data;
+    updateErr = retry.error;
+  }
 
   if (updateErr) {
     if (updateErr.code === "23505" || /duplicate key|unique constraint/i.test(updateErr.message)) {
@@ -322,6 +351,43 @@ export async function PATCH(request: Request, context: RouteContext) {
       updated_at: new Date().toISOString(),
     })
     .eq("staff_id", oldStaffId);
+
+  // D. Form Teacher & Class Arm Synchronization
+  const willBeFormMaster = updateData.is_form_master !== undefined ? Boolean(updateData.is_form_master) : Boolean(existing.is_form_master);
+  const targetClassName = (updateData.assigned_class as string) || existing.assigned_class;
+
+  if (willBeFormMaster && targetClassName) {
+    // Appoint this staff member as form teacher on the target class arm
+    await supabase
+      .from("class_arms")
+      .update({
+        form_teacher: newFullName,
+        form_teacher_id: newStaffId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("name", targetClassName);
+
+    // If they were form teacher of another class arm previously, unassign them from that other arm
+    await supabase
+      .from("class_arms")
+      .update({
+        form_teacher: "Unassigned",
+        form_teacher_id: "",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("form_teacher_id", oldStaffId)
+      .neq("name", targetClassName);
+  } else if (!willBeFormMaster) {
+    // If no longer form master, clear any class arm currently assigned to this staff member
+    await supabase
+      .from("class_arms")
+      .update({
+        form_teacher: "Unassigned",
+        form_teacher_id: "",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("form_teacher_id", oldStaffId);
+  }
 
   return NextResponse.json({ success: true, data: updated });
 }

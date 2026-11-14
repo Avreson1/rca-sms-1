@@ -278,7 +278,7 @@ export function IdCardDesigner({ holder, initial, school, canFile, onClose, onFi
             <div className="flex flex-wrap items-start justify-center gap-5 sm:gap-8">
               <figure className="m-0">
                 <ScaledCard scale={scale} widthMm={spec.widthMm} heightMm={spec.heightMm}>
-                  <IdCardArtwork holder={holder} card={draft} school={school} side={side} />
+                  <IdCardArtwork holder={holder} card={draft} school={school} side={side} section={holder.section} />
                 </ScaledCard>
                 <figcaption className="mt-2 text-center text-[10px] font-bold uppercase tracking-[0.14em] text-muted">
                   {side === "front" ? "Front" : "Reverse"} · actual size × {scale.toFixed(2)}
@@ -294,7 +294,7 @@ export function IdCardDesigner({ holder, initial, school, canFile, onClose, onFi
                     className="block cursor-pointer rounded-[3mm] ring-1 ring-brand-600/20 hover:ring-4 hover:ring-brand-500/35 transition-all"
                   >
                     <ScaledCard scale={scale * 0.5} widthMm={spec.widthMm} heightMm={spec.heightMm}>
-                      <IdCardArtwork holder={holder} card={draft} school={school} side={otherSide} />
+                      <IdCardArtwork holder={holder} card={draft} school={school} side={otherSide} section={holder.section} />
                     </ScaledCard>
                   </button>
                   <figcaption className="mt-2 text-center text-[10px] font-bold uppercase tracking-[0.14em] text-muted">
@@ -658,8 +658,8 @@ export function IdCardDesigner({ holder, initial, school, canFile, onClose, onFi
       <IdCardPrintPortal>
         <div className="id-card-sheet">
           <div className="id-card-pair">
-            <IdCardArtwork holder={holder} card={draft} school={school} side="front" />
-            {draft.showBack && <IdCardArtwork holder={holder} card={draft} school={school} side="back" />}
+            <IdCardArtwork holder={holder} card={draft} school={school} side="front" section={holder.section} />
+            {draft.showBack && <IdCardArtwork holder={holder} card={draft} school={school} side="back" section={holder.section} />}
           </div>
         </div>
       </IdCardPrintPortal>

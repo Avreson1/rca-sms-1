@@ -132,20 +132,37 @@ export function IdCardDesk({ asked }: { asked: { type: IdCardHolderType; ref: st
       onRegister: true,
       section: (pupil.className.toLowerCase().includes("jss") || pupil.className.toLowerCase().includes("sss") || pupil.className.toLowerCase().includes("secondary")) ? "SECONDARY" : "PRIMARY",
     }));
-    const members: IdCardHolder[] = staff.map((member) => ({
-      holderType: "staff",
-      holderRef: member.staffId,
-      holderName: member.fullName,
-      firstLabel: "Designation",
-      firstValue: member.designation?.trim() || STAFF_ROLE_WORDS[member.role] || member.role,
-      secondLabel: "Assigned class",
-      secondValue: member.assignedClass,
-      tag: member.isFormMaster && member.assignedClass ? `Form Master · ${member.assignedClass}` : "",
-      guardianName: "",
-      guardianPhone: "",
-      session: scope.session,
-      onRegister: true,
-    }));
+    const members: IdCardHolder[] = staff.map((member) => {
+      const assignedLower = (member.assignedClass || "").toLowerCase();
+      const isSec =
+        assignedLower.includes("jss") ||
+        assignedLower.includes("sss") ||
+        assignedLower.includes("secondary") ||
+        assignedLower.includes("high school");
+      const isPri =
+        assignedLower.includes("primary") ||
+        assignedLower.includes("nursery") ||
+        assignedLower.includes("creche") ||
+        assignedLower.includes("play");
+      const section: "PRIMARY" | "SECONDARY" | undefined =
+        isSec && !isPri ? "SECONDARY" : isPri && !isSec ? "PRIMARY" : undefined;
+
+      return {
+        holderType: "staff",
+        holderRef: member.staffId,
+        holderName: member.fullName,
+        firstLabel: "Designation",
+        firstValue: member.designation?.trim() || STAFF_ROLE_WORDS[member.role] || member.role,
+        secondLabel: "Assigned class",
+        secondValue: member.assignedClass,
+        tag: member.isFormMaster && member.assignedClass ? `Form Master · ${member.assignedClass}` : "",
+        guardianName: "",
+        guardianPhone: "",
+        session: scope.session,
+        onRegister: true,
+        section,
+      };
+    });
     return [...pupils, ...members].filter((holder) => holder.holderRef.trim() !== "");
   }, [students, staff, scope.session]);
 
@@ -680,7 +697,7 @@ export function IdCardDesk({ asked }: { asked: { type: IdCardHolderType; ref: st
                     return (
                       <div key={holderKey(holder.holderType, holder.holderRef)} style={{ width: `${spec.widthMm * scale}px`, height: `${spec.heightMm * scale}px`, position: "relative" }}>
                         <div style={{ position: "absolute", top: 0, left: 0, transform: `scale(${scale / 3.7795})`, transformOrigin: "top left" }}>
-                          <IdCardArtwork holder={holder} card={card} school={school} side="front" />
+                          <IdCardArtwork holder={holder} card={card} school={school} side="front" section={holder.section} />
                         </div>
                       </div>
                     );

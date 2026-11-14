@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { fetchSchoolConfigFromSupabase, type SchoolConfigRow } from "./supabase/db";
+import { fetchSchoolConfigFromSupabase, saveSchoolConfigToSupabase, type SchoolConfigRow } from "./supabase/db";
+
+export { saveSchoolConfigToSupabase, type SchoolConfigRow };
 
 // One read for the whole browser session, shared by every screen that needs to
 // know what school this is and which term it is in. Each page fetching on its

@@ -13,6 +13,8 @@ export interface SchoolLetterheadProps {
   showSignatoryFooter?: boolean;
   signatoryLabel?: string;
   signatoryName?: string;
+  signatureUrl?: string;
+  authFooterNote?: string;
   className?: string;
   children?: React.ReactNode;
 }
@@ -22,12 +24,56 @@ export function SchoolLetterhead({
   title,
   subtitle,
   showSignatoryFooter = false,
-  signatoryLabel = "Principal / Head of School",
-  signatoryName = "Dr. Mrs. P. O. Awoniyi",
+  signatoryLabel,
+  signatoryName,
+  signatureUrl,
+  authFooterNote,
   className = "",
   children,
 }: SchoolLetterheadProps) {
   const { config } = useSchoolConfig();
+
+  const currentDate = new Date().toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  // Dynamic Signatory Resolution based on brand context & config
+  let defaultSignatoryName = "Dr. Mrs. P. O. Awoniyi";
+  let defaultSignatoryLabel = "Principal / Head of School";
+  let defaultSignatureUrl = "";
+
+  if (brand === "PRIMARY") {
+    defaultSignatoryName = config?.primary_signatory_name?.trim() || "Head Teacher";
+    defaultSignatoryLabel = config?.primary_signatory_title?.trim() || "Head of Primary School";
+    defaultSignatureUrl = config?.primary_signature_url?.trim() || "";
+  } else if (brand === "SECONDARY") {
+    defaultSignatoryName = config?.secondary_signatory_name?.trim() || "Dr. Mrs. P. O. Awoniyi";
+    defaultSignatoryLabel = config?.secondary_signatory_title?.trim() || "Principal / Head of School";
+    defaultSignatureUrl = config?.secondary_signature_url?.trim() || "";
+  } else {
+    // GROUP
+    defaultSignatoryName =
+      config?.secondary_signatory_name?.trim() ||
+      config?.primary_signatory_name?.trim() ||
+      "Dr. Mrs. P. O. Awoniyi";
+    defaultSignatoryLabel =
+      config?.secondary_signatory_title?.trim() ||
+      "Principal / Head of School";
+    defaultSignatureUrl =
+      config?.secondary_signature_url?.trim() ||
+      config?.primary_signature_url?.trim() ||
+      "";
+  }
+
+  const effectiveSignatoryName = signatoryName ?? defaultSignatoryName;
+  const effectiveSignatoryLabel = signatoryLabel ?? defaultSignatoryLabel;
+  const effectiveSignatureUrl = signatureUrl ?? defaultSignatureUrl;
+  const effectiveFooterNote =
+    authFooterNote ??
+    config?.auth_footer_note?.trim() ??
+    `*** This is an official institutional document generated from the Royal Crown Academy portal on ${currentDate}. Alteration renders it invalid. ***`;
 
   // Institution brand resolution
   let institutionName = "ROYAL CROWN GROUP OF SCHOOLS";
@@ -51,11 +97,6 @@ export function SchoolLetterhead({
   const phone = config?.phone?.trim() || SCHOOL_INFO.phone;
   const email = config?.email?.trim() || SCHOOL_INFO.email;
   const website = config?.website?.trim() || SCHOOL_INFO.website;
-  const currentDate = new Date().toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
 
   return (
     <div className={`letterhead-container font-sans text-slate-800 ${className}`}>
@@ -169,16 +210,27 @@ export function SchoolLetterhead({
             </div>
 
             <div className="text-right flex flex-col items-end">
-              <span className="text-[10px] font-bold text-slate-400 uppercase block mb-6">
+              <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
                 Authorized Official Signature:
               </span>
+              {effectiveSignatureUrl ? (
+                <div className="h-8 mb-1 flex items-end">
+                  <img
+                    src={effectiveSignatureUrl}
+                    alt="Authorized Signature"
+                    className="max-h-7 max-w-[130px] object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="h-5"></div>
+              )}
               <div className="border-b border-slate-400 w-48 mb-1"></div>
-              <strong className="text-slate-900 text-xs block">{signatoryName}</strong>
-              <span className="text-[10px] text-slate-500">{signatoryLabel}</span>
+              <strong className="text-slate-900 text-xs block">{effectiveSignatoryName}</strong>
+              <span className="text-[10px] text-slate-500">{effectiveSignatoryLabel}</span>
             </div>
           </div>
           <div className="text-center text-[9px] text-slate-400 mt-4">
-            *** This is an official institutional document generated from the Royal Crown Academy portal on {currentDate}. Alteration renders it invalid. ***
+            {effectiveFooterNote}
           </div>
         </div>
       )}

@@ -82,6 +82,22 @@ export async function PUT(request: Request) {
   }
   const sent = body as Record<string, unknown>;
 
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return databaseUnavailable();
+
+  // Load existing row so partial updates (e.g. from /setup/records-dossier) keep current values
+  const { data: existingRow, error: fetchErr } = await supabase
+    .from("school_config")
+    .select("*")
+    .eq("id", 1)
+    .maybeSingle();
+
+  if (fetchErr) {
+    const setup = databaseSetupRequired(fetchErr, "supabase/operations_state.sql");
+    if (setup) return setup;
+    return NextResponse.json({ success: false, error: fetchErr.message }, { status: 502 });
+  }
+
   const textFields: Array<[string, string, number]> = [
     ["school_name", "school name", 255],
     ["short_name", "short name", 50],
@@ -94,9 +110,9 @@ export async function PUT(request: Request) {
     ["current_term", "current term", 50],
   ];
 
-  const update: Record<string, string> = {};
+  const update: Record<string, unknown> = {};
   for (const [column, label, max] of textFields) {
-    const raw = sent[column];
+    const raw = sent[column] ?? existingRow?.[column];
     if (typeof raw !== "string" || !raw.trim()) {
       return NextResponse.json({ success: false, error: `The ${label} cannot be empty.` }, { status: 400 });
     }
@@ -107,29 +123,58 @@ export async function PUT(request: Request) {
     update[column] = value;
   }
 
-  if (!(TERMS as readonly string[]).includes(update.current_term)) {
+  // Optional Additive Signatory & Authorization Fields (/setup/records-dossier)
+  const optionalSignatoryFields: Array<[string, number]> = [
+    ["primary_signatory_name", 255],
+    ["primary_signatory_title", 255],
+    ["primary_signature_url", 200000],
+    ["secondary_signatory_name", 255],
+    ["secondary_signatory_title", 255],
+    ["secondary_signature_url", 200000],
+    ["auth_footer_note", 1000],
+  ];
+
+  for (const [col, maxLen] of optionalSignatoryFields) {
+    if (sent[col] !== undefined) {
+      const val = typeof sent[col] === "string" ? (sent[col] as string).trim() : "";
+      update[col] = val.slice(0, maxLen);
+    }
+  }
+
+  const currentTerm = update.current_term as string;
+  if (!(TERMS as readonly string[]).includes(currentTerm)) {
     return NextResponse.json(
       { success: false, error: `The current term must be one of: ${TERMS.join(", ")}.` },
       { status: 400 }
     );
   }
-  // "2025/2026", or the local habit "2025 - 2026". A session typed as free text
-  // would never match the session on any filed mark, and every screen would show
-  // an empty result book.
-  if (!/^\d{4}[\/\s-]+\d{4}$/.test(update.current_session)) {
+
+  const currentSession = update.current_session as string;
+  if (!/^\d{4}[\/\s-]+\d{4}$/.test(currentSession)) {
     return NextResponse.json(
-      { success: false, error: `The academic session must look like 2025/2026, not "${update.current_session}".` },
+      { success: false, error: `The academic session must look like 2025/2026, not "${currentSession}".` },
       { status: 400 }
     );
   }
 
-  const supabase = getSupabaseServerClient();
-  if (!supabase) return databaseUnavailable();
-
-  const { error } = await supabase
+  let { error } = await supabase
     .from("school_config")
     .update({ ...update, updated_by: session.username, updated_at: new Date().toISOString() })
     .eq("id", 1);
+
+  // If new columns are not yet in remote DB, fallback safely
+  if (error && /primary_signatory|secondary_signatory|auth_footer/i.test(error.message)) {
+    const fallbackUpdate = { ...update };
+    for (const [col] of optionalSignatoryFields) {
+      delete fallbackUpdate[col];
+    }
+    const retry = await supabase
+      .from("school_config")
+      .update({ ...fallbackUpdate, updated_by: session.username, updated_at: new Date().toISOString() })
+      .eq("id", 1);
+    error = retry.error;
+  }
+
   if (error) {
     const setup = databaseSetupRequired(error, "supabase/operations_state.sql");
     if (setup) return setup;

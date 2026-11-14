@@ -1168,6 +1168,13 @@ export interface SchoolConfigRow {
   website: string;
   current_session: string;
   current_term: string;
+  primary_signatory_name?: string;
+  primary_signatory_title?: string;
+  primary_signature_url?: string;
+  secondary_signatory_name?: string;
+  secondary_signatory_title?: string;
+  secondary_signature_url?: string;
+  auth_footer_note?: string;
   updated_by?: string;
   updated_at?: string;
 }

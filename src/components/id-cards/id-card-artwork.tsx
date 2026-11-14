@@ -253,26 +253,72 @@ export interface IdCardArtworkProps {
  * photograph rather than pushing the barcode off the edge of the stock.
  */
 export function IdCardArtwork({ holder, card, school, side, layout, theme, section }: IdCardArtworkProps) {
-  const detectedSection: "PRIMARY" | "SECONDARY" =
-    section ??
-    holder.section ??
-    (holder.firstValue?.toLowerCase().includes("jss") ||
-    holder.firstValue?.toLowerCase().includes("sss") ||
-    holder.firstValue?.toLowerCase().includes("secondary") ||
-    holder.tag?.toLowerCase().includes("secondary")
-      ? "SECONDARY"
-      : "PRIMARY");
+  let detectedSection: "PRIMARY" | "SECONDARY" = "PRIMARY";
+  let institutionName = "ROYAL CROWN ACADEMY";
+  let institutionShortName = "RCA";
+  let institutionMotto = school.motto || "Excellence and Integrity";
+
+  if (holder.holderType === "student") {
+    const classVal = (holder.firstValue || "").toLowerCase();
+    const tagVal = (holder.tag || "").toLowerCase();
+    const isSec =
+      section === "SECONDARY" ||
+      holder.section === "SECONDARY" ||
+      classVal.includes("jss") ||
+      classVal.includes("sss") ||
+      classVal.includes("secondary") ||
+      tagVal.includes("secondary");
+
+    if (isSec) {
+      detectedSection = "SECONDARY";
+      institutionName = "ROYAL CROWN HIGH SCHOOL";
+      institutionShortName = "RCHS";
+      institutionMotto = "Leadership, Academic Rigour & High Moral Standards";
+    } else {
+      detectedSection = "PRIMARY";
+      institutionName = "ROYAL CROWN ACADEMY";
+      institutionShortName = "RCA";
+      institutionMotto = "Excellence and Integrity in Early & Basic Education";
+    }
+  } else {
+    // Staff holder
+    const assignedLower = (holder.secondValue || holder.tag || "").toLowerCase();
+    const isSec =
+      section === "SECONDARY" ||
+      holder.section === "SECONDARY" ||
+      assignedLower.includes("jss") ||
+      assignedLower.includes("sss") ||
+      assignedLower.includes("secondary") ||
+      assignedLower.includes("high school");
+    const isPri =
+      section === "PRIMARY" ||
+      holder.section === "PRIMARY" ||
+      assignedLower.includes("primary") ||
+      assignedLower.includes("nursery") ||
+      assignedLower.includes("creche") ||
+      assignedLower.includes("play");
+
+    if (isSec && !isPri) {
+      detectedSection = "SECONDARY";
+      institutionName = "ROYAL CROWN HIGH SCHOOL";
+      institutionShortName = "RCHS";
+      institutionMotto = "Leadership, Academic Rigour & High Moral Standards";
+    } else if (isPri && !isSec) {
+      detectedSection = "PRIMARY";
+      institutionName = "ROYAL CROWN ACADEMY";
+      institutionShortName = "RCA";
+      institutionMotto = "Excellence and Integrity in Early & Basic Education";
+    } else {
+      // Assigned across both or general staff
+      detectedSection = "PRIMARY";
+      institutionName = "ROYAL CROWN SCHOOLS";
+      institutionShortName = "RCS";
+      institutionMotto = "Excellence, Integrity & Academic Prowess";
+    }
+  }
 
   const defaultThemeForSection: IdCardTheme =
     detectedSection === "SECONDARY" ? "secondary_crimson" : "primary_gold";
-
-  const institutionName =
-    detectedSection === "SECONDARY" ? "ROYAL CROWN HIGH SCHOOL" : (school.name || "ROYAL CROWN ACADEMY");
-
-  const institutionMotto =
-    detectedSection === "SECONDARY"
-      ? "Excellence, Integrity & Leadership"
-      : school.motto || "Excellence and Integrity";
 
   const spec = layoutSpec(layout ?? card.layout);
   const colours = themeSpec(theme ?? (card.theme === "royal" ? defaultThemeForSection : card.theme));
@@ -358,16 +404,16 @@ export function IdCardArtwork({ holder, card, school, side, layout, theme, secti
       {/* The session ribbon cuts diagonally across this corner; at the name's
           height it reaches ~11.6mm in from the right edge, so the name stops
           short of it rather than being struck through. */}
-      <div style={{ minWidth: 0, flex: 1, paddingRight: badge ? "10mm" : "10.5mm" }}>
+      <div style={{ minWidth: 0, flex: 1, paddingRight: badge ? "10mm" : landscape ? "0mm" : "9.8mm" }}>
         <div
           style={{
             fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif",
-            // The 54mm portrait stock leaves the name only ~25mm clear of the
-            // ribbon; 6.4pt fits "Royal Crown Academy" whole where 7.2pt would
-            // ellipsize it. The wider horizontal and gate stocks keep 7.2/9pt.
-            fontSize: badge ? "9pt" : landscape ? "7.2pt" : "6.4pt",
+            // The 54mm portrait stock leaves the name ~26mm clear of the diagonal ribbon;
+            // 5.6pt fits "ROYAL CROWN HIGH SCHOOL" (23 chars) whole where 6.4pt would ellipsize it.
+            // The wider horizontal and gate stocks keep 7pt/8.8pt.
+            fontSize: badge ? "8.8pt" : landscape ? "7pt" : institutionName.length > 20 ? "5.6pt" : "6.2pt",
             fontWeight: 800,
-            letterSpacing: "0.01em",
+            letterSpacing: landscape || badge ? "0.01em" : "-0.015em",
             lineHeight: 1.06,
             textTransform: "uppercase",
             overflow: "hidden",
@@ -663,7 +709,7 @@ export function IdCardArtwork({ holder, card, school, side, layout, theme, secti
   const schoolBlock = (
     <div style={{ display: "grid", gap: "0.7mm", alignContent: "start", overflow: "hidden" }}>
       <div style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontSize: "6.4pt", fontWeight: 800, lineHeight: 1.15 }}>
-        {school.name}
+        {institutionName}
       </div>
       {contactRow("Address", school.address)}
       {contactRow("Telephone", school.phone)}
@@ -724,7 +770,7 @@ export function IdCardArtwork({ holder, card, school, side, layout, theme, secti
           Authorised signature
         </div>
       </div>
-      <Seal mm={landscape ? 6 : 7} ink={colours.seal} label={school.shortName} />
+      <Seal mm={landscape ? 6 : 7} ink={colours.seal} label={institutionShortName} />
     </div>
   );
 
