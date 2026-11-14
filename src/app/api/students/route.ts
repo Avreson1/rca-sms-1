@@ -146,6 +146,77 @@ export async function POST(request: Request) {
   return NextResponse.json({ success: true });
 }
 
+export async function PATCH(request: Request) {
+  const denied = await requireRole(WRITE_STUDENTS);
+  if (denied) return denied;
+
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return databaseUnavailable();
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const targetIdentifier = (body.id || body.admissionNo || body.admission_no) as string | undefined;
+  if (!targetIdentifier || typeof targetIdentifier !== "string") {
+    return NextResponse.json({ success: false, error: "Provide the student id or admission number to update." }, { status: 400 });
+  }
+
+  const isUuid = UUID_PATTERN.test(targetIdentifier.trim());
+  let lookupQuery = supabase.from("students").select("*");
+  if (isUuid) lookupQuery = lookupQuery.eq("id", targetIdentifier.trim());
+  else lookupQuery = lookupQuery.eq("admission_no", targetIdentifier.trim());
+
+  const { data: existing, error: lookupErr } = await lookupQuery.maybeSingle();
+  if (lookupErr) return NextResponse.json({ success: false, error: lookupErr.message }, { status: 502 });
+  if (!existing) return NextResponse.json({ success: false, error: "Student not found" }, { status: 404 });
+
+  const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (typeof body.fullName === "string" && body.fullName.trim()) updateData.full_name = body.fullName.trim();
+  if (typeof body.full_name === "string" && body.full_name.trim()) updateData.full_name = body.full_name.trim();
+  if (typeof body.admissionNo === "string" && body.admissionNo.trim()) updateData.admission_no = body.admissionNo.trim();
+  if (typeof body.admission_no === "string" && body.admission_no.trim()) updateData.admission_no = body.admission_no.trim();
+  if (typeof body.className === "string" && body.className.trim()) updateData.class_name = body.className.trim();
+  if (typeof body.class_name === "string" && body.class_name.trim()) updateData.class_name = body.class_name.trim();
+  if (body.gender === "Female" || body.gender === "Male") updateData.gender = body.gender;
+  if (typeof body.house === "string" && body.house.trim()) updateData.house = body.house.trim();
+  if (body.guardianName !== undefined) updateData.guardian_name = typeof body.guardianName === "string" && body.guardianName.trim() ? body.guardianName.trim() : null;
+  if (body.guardianPhone !== undefined) updateData.guardian_phone = typeof body.guardianPhone === "string" && body.guardianPhone.trim() ? body.guardianPhone.trim() : null;
+  if (typeof body.feeStatus === "string" && body.feeStatus.trim()) updateData.fee_status = body.feeStatus.trim();
+
+  // Check unique duplicate
+  if (updateData.admission_no && (updateData.admission_no as string).toLowerCase() !== existing.admission_no.toLowerCase()) {
+    const { data: dup } = await supabase.from("students").select("id").ilike("admission_no", updateData.admission_no as string).neq("id", existing.id).maybeSingle();
+    if (dup) return NextResponse.json({ success: false, error: "Admission number already assigned to another pupil" }, { status: 409 });
+  }
+
+  const { data: updated, error: updateErr } = await supabase.from("students").update(updateData).eq("id", existing.id).select().single();
+  if (updateErr) {
+    if (updateErr.code === "23505") return NextResponse.json({ success: false, error: "Admission number already assigned to another pupil" }, { status: 409 });
+    return NextResponse.json({ success: false, error: updateErr.message }, { status: 502 });
+  }
+
+  const oldAdmissionNo = existing.admission_no;
+  const newAdmissionNo = (updateData.admission_no as string) || oldAdmissionNo;
+  const newFullName = (updateData.full_name as string) || existing.full_name;
+
+  if (oldAdmissionNo.toUpperCase() !== newAdmissionNo.toUpperCase()) {
+    await supabase.from("id_cards").update({ holder_ref: newAdmissionNo, holder_name: newFullName, updated_at: new Date().toISOString() }).eq("holder_type", "student").eq("holder_ref", oldAdmissionNo);
+    await supabase.from("guardian_students").update({ admission_no: newAdmissionNo }).eq("admission_no", oldAdmissionNo);
+    await supabase.from("payment_records").update({ admission_no: newAdmissionNo, student_name: newFullName }).eq("admission_no", oldAdmissionNo);
+    await supabase.from("invoices").update({ admission_no: newAdmissionNo, student_name: newFullName }).eq("admission_no", oldAdmissionNo);
+  } else if (newFullName !== existing.full_name) {
+    await supabase.from("id_cards").update({ holder_name: newFullName, updated_at: new Date().toISOString() }).eq("holder_type", "student").eq("holder_ref", oldAdmissionNo);
+    await supabase.from("payment_records").update({ student_name: newFullName }).eq("student_id", existing.id);
+    await supabase.from("invoices").update({ student_name: newFullName }).eq("student_id", existing.id);
+  }
+
+  return NextResponse.json({ success: true, data: updated });
+}
+
 /**
  * Removes one student, addressed by admission number. Their CA scores and
  * invoices go with them: both tables reference students(id) ON DELETE CASCADE,

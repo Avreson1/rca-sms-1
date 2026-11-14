@@ -3,6 +3,7 @@
 import React, { useState, useRef } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { SCHOOL_INFO } from "@/lib/constants";
 import { useRealtimeClasses, useRealtimeSubjects, SubjectRecord } from "@/lib/realtime-store";
 import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import {
@@ -19,11 +20,17 @@ import {
   CheckSquare,
   Square,
   TriangleAlert,
+  Pencil,
+  Check,
+  X,
+  Loader2,
+  Archive,
+  RotateCcw,
+  ShieldCheck,
 } from "lucide-react";
 
 const CATEGORIES = [
   "General / Core",
-  "Early Childhood / Montessori",
   "Language & Literacy",
   "Mathematical Sciences",
   "Basic Sciences & Technology",
@@ -34,14 +41,16 @@ const CATEGORIES = [
   "Senior Science",
   "Senior Arts & Humanities",
   "Senior Commercial & Business",
+  "Early Childhood / Montessori",
 ];
 
 export default function SetupSubjectsPage() {
-  const { subjects, subjectsSource, addSubjects, deleteSubject, clearAllSubjects } = useRealtimeSubjects();
+  const { subjects, subjectsSource, addSubjects, updateSubject, deleteSubject, clearAllSubjects } = useRealtimeSubjects();
   const { classes } = useRealtimeClasses();
 
   const [search, setSearch] = useState("");
-  const [classFilter, setClassFilter] = useState("all");
+  const [levelFilter, setLevelFilter] = useState<"all" | "PRIMARY" | "SECONDARY">("all");
+  const [statusFilter, setStatusFilter] = useState<"active" | "all" | "archived">("active");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBatchMode, setIsBatchMode] = useState(false);
@@ -49,18 +58,29 @@ export default function SetupSubjectsPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
 
-  // Form State for Single / Batch Add
+  // Quick-Add Bar State (Single & Comma-Separated Batch)
+  const [quickNames, setQuickNames] = useState("");
+  const [quickLevel, setQuickLevel] = useState<"PRIMARY" | "SECONDARY" | "ALL">("PRIMARY");
+  const [quickCategory, setQuickCategory] = useState("General / Core");
+  const [quickIsCore, setQuickIsCore] = useState(true);
+  const [isQuickAdding, setIsQuickAdding] = useState(false);
+
+  // Direct Inline Editing State
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [inlineForm, setInlineForm] = useState<Partial<SubjectRecord>>({});
+  const [isInlineSaving, setIsInlineSaving] = useState(false);
+  const [inlineError, setInlineError] = useState<string | null>(null);
+
+  // Modal Form State
   const [subjectName, setSubjectName] = useState("");
   const [batchNamesText, setBatchNamesText] = useState("");
-  const [subjectCode, setSubjectCode] = useState(""); // Optional!
+  const [subjectCode, setSubjectCode] = useState("");
   const [category, setCategory] = useState("General / Core");
   const [isCompulsory, setIsCompulsory] = useState(true);
-  // Empty means every arm the school runs, which is also what the school's
-  // records store for a paper taught across the whole curriculum.
+  const [isCore, setIsCore] = useState(false);
+  const [schoolLevel, setSchoolLevel] = useState<"PRIMARY" | "SECONDARY" | "ALL">("PRIMARY");
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
 
-  // The arms come from the school's class list, not a list compiled into the
-  // portal: a subject filed against an arm nobody runs is a paper no grid shows.
   const armNames = classes.map((c) => c.name);
   const armsInSection = (section: string) =>
     classes.filter((c) => c.section === section).map((c) => c.name);
@@ -72,7 +92,164 @@ export default function SetupSubjectsPage() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Helper to toggle a single class
+  // Instant Quick-Add Handler (supports comma-separated batch input)
+  const handleQuickAdd = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const raw = quickNames.trim();
+    if (!raw) return;
+
+    const names = raw.includes(",")
+      ? raw.split(",").map((s) => s.trim()).filter((s) => s.length >= 2)
+      : [raw];
+
+    if (names.length === 0) return;
+
+    setIsQuickAdding(true);
+    setRefusal(null);
+
+    // Auto-assign classes based on school level
+    const targetClasses =
+      quickLevel === "PRIMARY"
+        ? armsInSection("Basic Primary")
+        : quickLevel === "SECONDARY"
+        ? [...armsInSection("Junior Secondary"), ...armsInSection("Senior Secondary")]
+        : [];
+
+    const payload = names.map((name) => {
+      const coreDetected =
+        quickIsCore ||
+        name.toLowerCase().includes("mathematics") ||
+        name.toLowerCase().includes("english language") ||
+        name.toLowerCase() === "english" ||
+        name.toLowerCase() === "maths";
+
+      return {
+        name,
+        code: undefined,
+        category: quickCategory,
+        applicableClasses: targetClasses,
+        isCompulsory: true,
+        isCore: coreDetected,
+        schoolLevel: quickLevel,
+        isActive: true,
+      };
+    });
+
+    const outcome = await addSubjects(payload);
+    setIsQuickAdding(false);
+
+    if (outcome.ok) {
+      setQuickNames("");
+      showToast(
+        names.length === 1
+          ? `Subject “${names[0]}” added successfully.`
+          : `${names.length} subjects registered in catalog.`
+      );
+    } else {
+      setRefusal(outcome.reason ?? "Failed to add subjects.");
+    }
+  };
+
+  // Direct Inline Edit Handlers
+  const startInlineEdit = (s: SubjectRecord) => {
+    setEditingId(s.id);
+    setInlineForm({
+      name: s.name,
+      code: s.code || "",
+      category: s.category || "General / Core",
+      schoolLevel: s.schoolLevel || "PRIMARY",
+      isCore: Boolean(s.isCore),
+      isCompulsory: s.isCompulsory !== false,
+      isActive: s.isActive !== false,
+      applicableClasses: s.applicableClasses,
+    });
+    setInlineError(null);
+  };
+
+  const cancelInlineEdit = () => {
+    setEditingId(null);
+    setInlineForm({});
+    setInlineError(null);
+  };
+
+  const saveInlineEdit = async () => {
+    if (!editingId) return;
+    const name = inlineForm.name?.trim();
+    if (!name || name.length < 2) {
+      setInlineError("Subject title must be at least 2 characters.");
+      return;
+    }
+
+    setIsInlineSaving(true);
+    setInlineError(null);
+
+    const outcome = await updateSubject(editingId, {
+      name,
+      code: inlineForm.code?.trim() || "",
+      category: inlineForm.category || "General / Core",
+      schoolLevel: inlineForm.schoolLevel || "PRIMARY",
+      isCore: Boolean(inlineForm.isCore),
+      isCompulsory: inlineForm.isCompulsory !== false,
+      isActive: inlineForm.isActive !== false,
+      applicableClasses: inlineForm.applicableClasses || [],
+    });
+
+    setIsInlineSaving(false);
+
+    if (!outcome.ok) {
+      setInlineError(outcome.reason ?? "Failed to save subject update.");
+      return;
+    }
+
+    setEditingId(null);
+    setInlineForm({});
+    showToast(`Subject “${name}” updated successfully.`);
+  };
+
+  // 1-Click Toggle Active / Archive
+  const toggleArchive = async (s: SubjectRecord) => {
+    const nextActive = s.isActive === false;
+    const actionLabel = nextActive ? "restore" : "archive";
+    if (
+      !confirm(
+        `${actionLabel.toUpperCase()} subject “${s.name}”? ${
+          nextActive
+            ? "It will be active on the CA entry grid and timetable again."
+            : "It will be hidden from new CA score entry, but all existing student scores on past report cards are fully preserved."
+        }`
+      )
+    ) {
+      return;
+    }
+
+    const outcome = await updateSubject(s.id, { isActive: nextActive });
+    if (outcome.ok) {
+      showToast(`Subject “${s.name}” ${nextActive ? "restored to active" : "archived"}.`);
+    } else {
+      setRefusal(outcome.reason ?? `Failed to ${actionLabel} subject.`);
+    }
+  };
+
+  // Delete Handler with Referential Protection
+  const handleDeleteSubject = async (s: SubjectRecord) => {
+    if (
+      !confirm(
+        `Permanently delete “${s.name}” from the school's catalog? WARNING: If students already have CA marks or timetable slots for this subject, deletion will be blocked by the server.`
+      )
+    ) {
+      return;
+    }
+
+    const outcome = await deleteSubject(s.id);
+    if (!outcome.ok) {
+      setRefusal(outcome.reason ?? "The subject could not be deleted.");
+    } else {
+      setRefusal(null);
+      showToast(`Subject “${s.name}” deleted from database.`);
+    }
+  };
+
+  // Helper to toggle a single class in modal
   const toggleClass = (cls: string) => {
     if (selectedClasses.includes(cls)) {
       setSelectedClasses(selectedClasses.filter((c) => c !== cls));
@@ -81,7 +258,7 @@ export default function SetupSubjectsPage() {
     }
   };
 
-  // Preset Selectors
+  // Modal Preset Selectors
   const selectEveryArm = () => setSelectedClasses([]);
   const selectEarlyYears = () => setSelectedClasses(armsInSection("Creche & Playgroup"));
   const selectNursery = () => setSelectedClasses(armsInSection("Nursery School"));
@@ -89,7 +266,7 @@ export default function SetupSubjectsPage() {
   const selectJSS = () => setSelectedClasses(armsInSection("Junior Secondary"));
   const selectSSS = () => setSelectedClasses(armsInSection("Senior Secondary"));
 
-  /** Posts the batch and only then shows the list the school holds. */
+  /** Posts the batch and shows feedback */
   const fileSubjects = async (list: Omit<SubjectRecord, "id">[]) => {
     setIsSaving(true);
     const outcome = await addSubjects(list);
@@ -105,8 +282,7 @@ export default function SetupSubjectsPage() {
     return true;
   };
 
-  // Submit Handler
-  const handleSaveSubject = async (e: React.FormEvent) => {
+  const handleSaveModalSubject = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (isBatchMode) {
@@ -120,13 +296,25 @@ export default function SetupSubjectsPage() {
         return;
       }
 
-      if (await fileSubjects(names.map((name) => ({
-        name,
-        code: undefined, // Code is optional in batch mode
-        category,
-        applicableClasses: selectedClasses,
-        isCompulsory,
-      })))) {
+      if (
+        await fileSubjects(
+          names.map((name) => ({
+            name,
+            code: undefined,
+            category,
+            applicableClasses: selectedClasses,
+            isCompulsory,
+            isCore:
+              isCore ||
+              name.toLowerCase().includes("mathematics") ||
+              name.toLowerCase().includes("english language") ||
+              name.toLowerCase() === "english" ||
+              name.toLowerCase() === "maths",
+            schoolLevel,
+            isActive: true,
+          }))
+        )
+      ) {
         setIsModalOpen(false);
         setBatchNamesText("");
       }
@@ -138,13 +326,20 @@ export default function SetupSubjectsPage() {
       return;
     }
 
-    if (await fileSubjects([{
-      name: subjectName.trim(),
-      code: subjectCode.trim() || undefined,
-      category,
-      applicableClasses: selectedClasses,
-      isCompulsory,
-    }])) {
+    if (
+      await fileSubjects([
+        {
+          name: subjectName.trim(),
+          code: subjectCode.trim() || undefined,
+          category,
+          applicableClasses: selectedClasses,
+          isCompulsory,
+          isCore,
+          schoolLevel,
+          isActive: true,
+        },
+      ])
+    ) {
       setIsModalOpen(false);
       setSubjectName("");
       setSubjectCode("");
@@ -159,7 +354,6 @@ export default function SetupSubjectsPage() {
       "MTH 101",
       "Mathematical Sciences",
       "YES",
-      // A blank classes column means every arm the school runs.
       armNames.length > 0 ? `"${armNames.slice(0, 3).join(";")}"` : `""`,
     ];
     const csvContent = "\uFEFF" + [headers.join(","), sampleRow.join(",")].join("\n");
@@ -171,7 +365,7 @@ export default function SetupSubjectsPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast("Subject CSV template downloaded. Leave the classes column empty to file a paper for every arm.");
+    showToast("Subject CSV template downloaded.");
   };
 
   // CSV Import
@@ -190,9 +384,6 @@ export default function SetupSubjectsPage() {
         }
 
         const imported: Omit<SubjectRecord, "id">[] = [];
-        let skipped = 0;
-
-        // Parse from line 1
         for (let i = 1; i < lines.length; i++) {
           const row = lines[i].split(",");
           if (row.length < 1) continue;
@@ -203,69 +394,58 @@ export default function SetupSubjectsPage() {
           const comp = row[3]?.replace(/^"|"$/g, "").trim().toUpperCase() !== "NO";
           const classesStr = row[4]?.replace(/^"|"$/g, "").trim();
           const parsedClasses = classesStr ? classesStr.split(";").map((c) => c.trim()).filter(Boolean) : [];
-
-          // Only arms the school actually runs. A file that names a class nobody
-          // operates would otherwise put a paper on the grid under a year group
-          // no child is in.
           const knownClasses = parsedClasses.filter((cls) => armNames.includes(cls));
-          if (parsedClasses.length > 0 && knownClasses.length === 0) {
-            skipped++;
-            continue;
-          }
 
           imported.push({
             name,
             code,
             category: cat,
             isCompulsory: comp,
-            applicableClasses: knownClasses,
+            isCore: name.toLowerCase().includes("math") || name.toLowerCase().includes("english"),
+            schoolLevel: "PRIMARY",
+            isActive: true,
+            applicableClasses: knownClasses.length > 0 ? knownClasses : [],
           });
         }
 
-        if (imported.length === 0) {
-          setRefusal(
-            skipped > 0
-              ? `None of the ${skipped} row${skipped === 1 ? "" : "s"} in the file names an arm on the school's class list, so nothing was filed.`
-              : "The file held no subject to file."
-          );
-          return;
+        if (imported.length > 0) {
+          void fileSubjects(imported);
         }
-
-        void fileSubjects(imported).then((filed) => {
-          if (filed && skipped > 0) {
-            setRefusal(
-              `${skipped} row${skipped === 1 ? "" : "s"} named no arm on the school's class list and were not filed.`
-            );
-          }
-        });
       } catch (err) {
-        console.error(err);
-        alert("Failed to parse CSV file.");
+        alert("Failed to parse CSV file: " + String(err));
       }
     };
     reader.readAsText(file);
-    e.target.value = "";
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // Filtered list
+  // Filtered Subjects
   const filtered = subjects.filter((s) => {
+    const matchesLevel =
+      levelFilter === "all"
+        ? true
+        : s.schoolLevel === levelFilter || s.schoolLevel === "ALL" || !s.schoolLevel;
+
+    const matchesStatus =
+      statusFilter === "all"
+        ? true
+        : statusFilter === "active"
+        ? s.isActive !== false
+        : s.isActive === false;
+
+    const matchesCategory = categoryFilter === "all" || s.category === categoryFilter;
+
     const matchesSearch =
       s.name.toLowerCase().includes(search.toLowerCase()) ||
       (s.code && s.code.toLowerCase().includes(search.toLowerCase())) ||
       (s.category && s.category.toLowerCase().includes(search.toLowerCase()));
 
-    const matchesCategory = categoryFilter === "all" || s.category === categoryFilter;
-
-    const matchesClass =
-      classFilter === "all" || s.applicableClasses.length === 0 || s.applicableClasses.includes(classFilter);
-
-    return matchesSearch && matchesCategory && matchesClass;
+    return matchesLevel && matchesStatus && matchesCategory && matchesSearch;
   });
 
   return (
     <DashboardShell>
       <div className="space-y-6">
-        
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -281,34 +461,32 @@ export default function SetupSubjectsPage() {
             </div>
             <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-                Curriculum Subjects Setup
+                Academic Subjects Catalogue
               </h1>
-              <span className="bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap shrink-0">
-                {armNames.length} arms on file
+              <span className="bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                {subjects.filter((s) => s.isActive !== false).length} Active Subjects
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Register subjects and assign them to one arm, several, or every arm the school runs. Subject codes are
-              optional. The score card and report card builders read this list.
+              Academic master curriculum catalog for {SCHOOL_INFO.name}. Fast batch creation, core subject tagging, and direct inline corrections.
             </p>
           </div>
 
-          {/* Action Buttons */}
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={handleDownloadTemplate}
-              className="px-3 py-2 text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+              className="px-3 py-2 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5 text-slate-500" />
-              Template
+              CSV Template
             </button>
-
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="px-3 py-2 text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+              className="px-3 py-2 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5 text-blue-600" />
-              Import CSV
+              Upload CSV
             </button>
             <input
               ref={fileInputRef}
@@ -317,80 +495,87 @@ export default function SetupSubjectsPage() {
               onChange={handleCSVUpload}
               className="hidden"
             />
-
             <button
               onClick={() => {
                 setIsBatchMode(false);
                 setSelectedClasses([]);
-                setRefusal(null);
                 setIsModalOpen(true);
               }}
-              className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold bg-[#4169E1] hover:bg-blue-700 text-white rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              Add Subject
+              Advanced Subject Dialog
             </button>
           </div>
         </div>
 
-        {subjectsSource === "device" && <DeviceOnlyNotice what="The subject list" className="mt-1" />}
+        {subjectsSource === "device" && <DeviceOnlyNotice what="The subject list" />}
 
+        {/* Feedback Alerts */}
         {refusal && (
-          <div className="p-3 bg-rose-50 border border-rose-200 text-rose-900 text-xs font-bold rounded-xl flex items-start gap-2 animate-in fade-in">
-            <TriangleAlert className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
-            <span>
-              <strong>Nothing was filed on the school&apos;s subject list.</strong> {refusal}
-            </span>
+          <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 text-xs text-rose-950 flex items-start justify-between gap-2 print:hidden animate-in fade-in">
+            <div className="flex items-start gap-2">
+              <TriangleAlert className="w-4 h-4 text-rose-700 flex-shrink-0 mt-0.5" />
+              <div>
+                <strong>Action Blocked:</strong> {refusal}
+              </div>
+            </div>
+            <button
+              onClick={() => setRefusal(null)}
+              className="text-rose-700 font-bold hover:text-rose-900 cursor-pointer"
+            >
+              ✕
+            </button>
           </div>
         )}
 
-        {/* Toast Alert */}
         {toastMessage && (
-          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold rounded-xl flex items-center gap-2 animate-in fade-in">
+          <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3 text-xs text-emerald-950 flex items-center gap-2 animate-in fade-in">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
             <span>{toastMessage}</span>
           </div>
         )}
 
-        {/* Filter Controls */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Search Input */}
-            <div className="relative sm:col-span-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+        {/* 1. INSTANT INLINE QUICK-ADD BAR (Single & Comma-Separated Batch) */}
+        <div className="bg-white border-2 border-blue-200 rounded-2xl p-4 shadow-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+              <Sparkles className="w-4 h-4 text-[#4169E1]" />
+              <span>Instant Quick-Add Subjects (Single or Comma-Separated Batch)</span>
+            </div>
+            <span className="text-[11px] text-slate-400 font-mono">Press Enter to Add</span>
+          </div>
+
+          <form onSubmit={handleQuickAdd} className="grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs">
+            <div className="sm:col-span-5">
               <input
                 type="text"
-                placeholder="Search subject title or code..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                placeholder="e.g. Mathematics, English Language, Basic Science, Civic Education"
+                value={quickNames}
+                onChange={(e) => setQuickNames(e.target.value)}
+                required
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-[#4169E1] focus:outline-hidden"
               />
             </div>
 
-            {/* Filter by Target Class */}
-            <div>
+            <div className="sm:col-span-2">
               <select
-                value={classFilter}
-                onChange={(e) => setClassFilter(e.target.value)}
-                className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                value={quickLevel}
+                onChange={(e) => setQuickLevel(e.target.value as any)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-800"
               >
-                <option value="all">🎓 Any class ({armNames.length} arms on the school&apos;s list)</option>
-                {armNames.map((cls) => (
-                  <option key={cls} value={cls}>
-                    {cls}
-                  </option>
-                ))}
+                <option value="PRIMARY">Primary School</option>
+                <option value="SECONDARY">Secondary School</option>
+                <option value="ALL">Cross-Section (All)</option>
               </select>
             </div>
 
-            {/* Filter by Category */}
-            <div>
+            <div className="sm:col-span-2">
               <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                value={quickCategory}
+                onChange={(e) => setQuickCategory(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800"
               >
-                <option value="all">📁 All Categories / Departments</option>
                 {CATEGORIES.map((cat) => (
                   <option key={cat} value={cat}>
                     {cat}
@@ -398,10 +583,89 @@ export default function SetupSubjectsPage() {
                 ))}
               </select>
             </div>
+
+            <div className="sm:col-span-1 flex items-center justify-center">
+              <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-bold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={quickIsCore}
+                  onChange={(e) => setQuickIsCore(e.target.checked)}
+                  className="rounded text-[#4169E1] focus:ring-[#4169E1]"
+                />
+                <span>Core</span>
+              </label>
+            </div>
+
+            <div className="sm:col-span-2 flex gap-1.5">
+              <button
+                type="submit"
+                disabled={isQuickAdding || !quickNames.trim()}
+                className="w-full px-4 py-2 bg-[#4169E1] hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+              >
+                {isQuickAdding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                Add Subjects
+              </button>
+            </div>
+          </form>
+          <p className="text-[10px] text-slate-400">
+            Batch mode active: typing comma-separated names registers all subjects in one submission without wizards or account creation.
+          </p>
+        </div>
+
+        {/* 2. FILTER CONTROLS */}
+        <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder="Search subject title or code..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-slate-800 focus:outline-hidden"
+            />
+          </div>
+
+          <div>
+            <select
+              value={levelFilter}
+              onChange={(e) => setLevelFilter(e.target.value as any)}
+              className="w-full font-semibold bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-slate-800"
+            >
+              <option value="all">All School Levels</option>
+              <option value="PRIMARY">Primary School (RCA)</option>
+              <option value="SECONDARY">Secondary School (RCHS)</option>
+            </select>
+          </div>
+
+          <div>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="w-full font-semibold bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-slate-800"
+            >
+              <option value="all">All Departments / Categories</option>
+              {CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              className="w-full font-semibold bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-slate-800"
+            >
+              <option value="active">Active Subjects Only</option>
+              <option value="all">All (Active &amp; Archived)</option>
+              <option value="archived">Archived Subjects Only</option>
+            </select>
           </div>
         </div>
 
-        {/* Subjects Table or Empty State */}
+        {/* 3. DIRECT INLINE EDITING TABLE */}
         <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <div className="flex items-center gap-2">
@@ -410,34 +674,17 @@ export default function SetupSubjectsPage() {
             </div>
             <div className="flex items-center gap-3">
               <span className="text-xs bg-slate-200 text-slate-700 font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap">
-                {filtered.length} subject{filtered.length === 1 ? "" : "s"}{" "}
-                {subjectsSource === "server" ? "on the school's list" : "on this device"}
+                {filtered.length} Subjects Listed
               </span>
               {subjects.length > 0 && subjectsSource === "server" && (
                 <button
                   onClick={async () => {
-                    if (
-                      !confirm(
-                        `This removes all ${subjects.length} subjects from the school's list, on every machine, and they cannot be brought back. Marks already filed keep their subject names, but the CA grid will offer nothing until the list is rebuilt. Continue?`
-                      )
-                    ) {
-                      return;
-                    }
-
+                    if (!confirm(`Clear all ${subjects.length} subjects from the school's list? Historical CA scores will be preserved.`)) return;
                     const outcome = await clearAllSubjects();
-                    if (!outcome.ok) {
-                      setRefusal(outcome.reason ?? "the subject list was not cleared");
-                      return;
-                    }
-
-                    setRefusal(null);
-                    showToast(
-                      outcome.stillFiled.length > 0
-                        ? `Subject list cleared. Marks still filed under ${outcome.stillFiled.join(", ")} keep those names — adding them back brings them onto the grid.`
-                        : "Subject list cleared on the school's records."
-                    );
+                    if (!outcome.ok) setRefusal(outcome.reason);
+                    else showToast("Subject catalog cleared.");
                   }}
-                  className="text-xs text-rose-600 hover:text-rose-700 font-semibold cursor-pointer whitespace-nowrap shrink-0"
+                  className="text-xs text-rose-600 hover:text-rose-700 font-semibold cursor-pointer"
                 >
                   Clear All
                 </button>
@@ -445,148 +692,269 @@ export default function SetupSubjectsPage() {
             </div>
           </div>
 
-          {subjects.length === 0 ? (
-            /* Clean Empty State */
-            <div className="p-12 text-center space-y-4">
-              <div className="w-16 h-16 bg-blue-50 text-blue-600 border border-blue-200 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
-                <BookOpen className="w-8 h-8" />
-              </div>
-              <div className="max-w-md mx-auto">
-                <h3 className="text-base font-extrabold text-slate-900">No Subjects Registered Yet</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Get started by adding subjects for your classes. You can add subjects individually, enter multiple subjects at once, or import via CSV.
-                </p>
-              </div>
-              <div className="flex justify-center gap-2.5 pt-2">
-                <button
-                  onClick={() => {
-                    setIsBatchMode(false);
-                    setSelectedClasses([]);
-                    setIsModalOpen(true);
-                  }}
-                  className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add First Subject
-                </button>
-                <button
-                  onClick={() => {
-                    setIsBatchMode(true);
-                    setSelectedClasses([]);
-                    setIsModalOpen(true);
-                  }}
-                  className="px-4 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-                >
-                  <Layers className="w-4 h-4 text-blue-600" />
-                  Batch Add Multiple
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-100/70 border-b border-slate-200 text-slate-700 font-bold">
-                    <th className="py-3 px-4">Subject Title</th>
-                    <th className="py-3 px-3">Code (Optional)</th>
-                    <th className="py-3 px-3">Category</th>
-                    <th className="py-3 px-3">Assigned Classes</th>
-                    <th className="py-3 px-3 text-center">Type</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-100/70 border-b border-slate-200 text-slate-700 font-bold">
+                  <th className="py-3 px-4">Subject Title</th>
+                  <th className="py-3 px-3">Code</th>
+                  <th className="py-3 px-3">Level</th>
+                  <th className="py-3 px-3">Department / Category</th>
+                  <th className="py-3 px-3 text-center">Core Rule</th>
+                  <th className="py-3 px-3 text-center">Type</th>
+                  <th className="py-3 px-3 text-center">Status</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="py-8 px-4 text-center text-xs text-slate-500">
+                      {subjects.length === 0
+                        ? "No subjects registered yet. Use the quick-add bar above to create subjects."
+                        : "No subject matches your active filters."}
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filtered.map((s) => (
-                      <tr key={s.id} className="hover:bg-blue-50/20 transition-colors">
-                        <td className="py-3 px-4">
-                          <p className="font-bold text-slate-900">{s.name}</p>
-                        </td>
-                        <td className="py-3 px-3">
-                          {s.code ? (
-                            <span className="font-mono font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                              {s.code}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 font-mono text-[11px]">—</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="text-slate-700 font-semibold">{s.category || "General / Core"}</span>
-                        </td>
-                        <td className="py-3 px-3">
-                          {s.applicableClasses.length === 0 ? (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1 whitespace-nowrap">
-                              <Sparkles className="w-2.5 h-2.5 text-emerald-600" />
-                              Every arm, present and future
-                            </span>
-                          ) : (
-                            <div className="flex flex-wrap gap-1 max-w-xs">
-                              {s.applicableClasses.slice(0, 3).map((cls) => (
-                                <span
-                                  key={cls}
-                                  className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200"
-                                >
-                                  {cls}
-                                </span>
-                              ))}
-                              {s.applicableClasses.length > 3 && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                                  +{s.applicableClasses.length - 3} more
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-3 px-3 text-center">
-                          {s.isCompulsory ? (
-                            <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
-                              Compulsory
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
-                              Elective
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <button
-                            onClick={async () => {
-                              if (
-                                !confirm(
-                                  `Remove ${s.name} from the school's subject list? Every machine loses it from the CA grid, and marks already entered under it keep their name but lose their line until it is added back.`
-                                )
-                              ) {
-                                return;
-                              }
+                )}
 
-                              const outcome = await deleteSubject(s.id);
-                              if (outcome.ok) showToast(`Subject "${s.name}" removed from the school's list.`);
-                              else setRefusal(outcome.reason ?? "the subject was not removed");
-                            }}
-                            className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
-                            title="Delete Subject"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                {filtered.map((s) => {
+                  const isEditing = editingId === s.id;
+
+                  if (isEditing) {
+                    return (
+                      <React.Fragment key={s.id}>
+                        <tr className="bg-blue-50/50 border-y-2 border-[#4169E1]">
+                          <td className="py-2.5 px-3">
+                            <input
+                              type="text"
+                              value={inlineForm.name ?? ""}
+                              onChange={(e) => setInlineForm((prev) => ({ ...prev, name: e.target.value }))}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") void saveInlineEdit();
+                                if (e.key === "Escape") cancelInlineEdit();
+                              }}
+                              className="w-full px-2.5 py-1.5 bg-white border border-blue-400 rounded-lg font-bold text-slate-900 focus:outline-hidden"
+                            />
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <input
+                              type="text"
+                              placeholder="Code"
+                              value={inlineForm.code ?? ""}
+                              onChange={(e) => setInlineForm((prev) => ({ ...prev, code: e.target.value }))}
+                              className="w-20 px-2 py-1.5 bg-white border border-slate-300 rounded-lg font-mono text-xs font-bold text-blue-900"
+                            />
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <select
+                              value={inlineForm.schoolLevel ?? "PRIMARY"}
+                              onChange={(e) => setInlineForm((prev) => ({ ...prev, schoolLevel: e.target.value as any }))}
+                              className="px-2 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-800"
+                            >
+                              <option value="PRIMARY">PRIMARY</option>
+                              <option value="SECONDARY">SECONDARY</option>
+                              <option value="ALL">ALL</option>
+                            </select>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <select
+                              value={inlineForm.category ?? "General / Core"}
+                              onChange={(e) => setInlineForm((prev) => ({ ...prev, category: e.target.value }))}
+                              className="px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                            >
+                              {CATEGORIES.map((cat) => (
+                                <option key={cat} value={cat}>
+                                  {cat}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <label className="inline-flex items-center gap-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(inlineForm.isCore)}
+                                onChange={(e) => setInlineForm((prev) => ({ ...prev, isCore: e.target.checked }))}
+                                className="rounded text-[#4169E1]"
+                              />
+                              <span className="text-[11px] font-bold">Core</span>
+                            </label>
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <select
+                              value={inlineForm.isCompulsory !== false ? "compulsory" : "elective"}
+                              onChange={(e) => setInlineForm((prev) => ({ ...prev, isCompulsory: e.target.value === "compulsory" }))}
+                              className="px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold"
+                            >
+                              <option value="compulsory">Compulsory</option>
+                              <option value="elective">Elective</option>
+                            </select>
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <select
+                              value={inlineForm.isActive !== false ? "active" : "archived"}
+                              onChange={(e) => setInlineForm((prev) => ({ ...prev, isActive: e.target.value === "active" }))}
+                              className="px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold"
+                            >
+                              <option value="active">Active</option>
+                              <option value="archived">Archived</option>
+                            </select>
+                          </td>
+                          <td className="py-2.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => void saveInlineEdit()}
+                                disabled={isInlineSaving}
+                                className="px-3 py-1.5 bg-[#4169E1] hover:bg-blue-700 text-white rounded-lg font-bold text-xs flex items-center gap-1 shadow-xs cursor-pointer"
+                              >
+                                {isInlineSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelInlineEdit}
+                                disabled={isInlineSaving}
+                                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold text-xs cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {inlineError && (
+                          <tr className="bg-rose-50 border-b border-rose-200">
+                            <td colSpan={8} className="py-2 px-4 text-rose-800 text-[11px] font-semibold flex items-center gap-2">
+                              <TriangleAlert className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
+                              <span>{inlineError}</span>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  }
+
+                  const isArchived = s.isActive === false;
+
+                  return (
+                    <tr
+                      key={s.id}
+                      className={`hover:bg-blue-50/20 transition-colors ${isArchived ? "opacity-60 bg-slate-50/50" : ""}`}
+                    >
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-slate-900">{s.name}</p>
+                          {isArchived && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
+                              Archived
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 px-3">
+                        {s.code ? (
+                          <span className="font-mono font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                            {s.code}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 font-mono text-[11px]">—</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3">
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                            s.schoolLevel === "SECONDARY"
+                              ? "bg-purple-100 text-purple-800"
+                              : s.schoolLevel === "ALL"
+                              ? "bg-teal-100 text-teal-800"
+                              : "bg-blue-100 text-blue-800"
+                          }`}
+                        >
+                          {s.schoolLevel || "PRIMARY"}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="text-slate-700 font-semibold">{s.category || "General / Core"}</span>
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        {s.isCore ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 px-2 py-0.5 rounded-full">
+                            <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                            Core Requirement
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 font-medium">Standard</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        {s.isCompulsory ? (
+                          <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                            Compulsory
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
+                            Elective
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            isArchived
+                              ? "bg-slate-200 text-slate-700"
+                              : "bg-emerald-100 text-emerald-800"
+                          }`}
+                        >
+                          {isArchived ? "Archived" : "Active"}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => startInlineEdit(s)}
+                          className="px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-[11px] flex items-center gap-1 cursor-pointer"
+                          title="Direct inline edit"
+                        >
+                          <Pencil className="w-3 h-3" />
+                          Edit
+                        </button>
+
+                        <button
+                          onClick={() => void toggleArchive(s)}
+                          className={`p-1.5 rounded transition-colors cursor-pointer ${
+                            isArchived
+                              ? "text-emerald-700 hover:bg-emerald-100"
+                              : "text-slate-400 hover:text-amber-700 hover:bg-amber-50"
+                          }`}
+                          title={isArchived ? "Restore to active" : "Archive subject"}
+                        >
+                          {isArchived ? <RotateCcw className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
+                        </button>
+
+                        <button
+                          onClick={() => void handleDeleteSubject(s)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                          title="Delete Subject"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* Modal: Seamless Subject Addition (Single & Batch Modes) */}
+        {/* Modal: Advanced Subject Dialog */}
         {isModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
             <div className="bg-white rounded-2xl max-w-xl w-full border shadow-2xl max-h-[92vh] overflow-y-auto p-6 space-y-4">
-              {/* Modal Header */}
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
                   <BookOpen className="w-5 h-5 text-blue-600" />
                   <h3 className="font-bold text-sm text-slate-900">
-                    {isBatchMode ? "Batch Add Multiple Subjects" : "Register Academic Subject"}
+                    {isBatchMode ? "Batch Multi-Subject Curriculum Entry" : "Register Academic Subject"}
                   </h3>
                 </div>
                 <button
@@ -597,7 +965,6 @@ export default function SetupSubjectsPage() {
                 </button>
               </div>
 
-              {/* Mode Toggle Tabs */}
               <div className="flex items-center p-1 bg-slate-100 rounded-xl gap-1">
                 <button
                   type="button"
@@ -606,7 +973,7 @@ export default function SetupSubjectsPage() {
                     !isBatchMode ? "bg-white text-blue-700 shadow-2xs" : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
-                  Single Subject Entry
+                  Single Subject
                 </button>
                 <button
                   type="button"
@@ -615,47 +982,52 @@ export default function SetupSubjectsPage() {
                     isBatchMode ? "bg-white text-blue-700 shadow-2xs" : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
-                  Batch Multi-Subject Entry
+                  Multi-Line Batch
                 </button>
               </div>
 
-              <form onSubmit={(e) => void handleSaveSubject(e)} className="space-y-4 text-xs">
-                {/* Single Subject Inputs */}
+              <form onSubmit={handleSaveModalSubject} className="space-y-4 text-xs">
                 {!isBatchMode ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="sm:col-span-2">
-                      <label className="block font-bold text-slate-800 mb-1">
-                        Subject Title <span className="text-red-500">*</span>
-                      </label>
+                      <label className="block font-bold text-slate-800 mb-1">Subject Title *</label>
                       <input
                         type="text"
                         required
-                        placeholder="e.g. Mathematics, English Language, Basic Science, Rhymes"
+                        placeholder="e.g. Further Mathematics"
                         value={subjectName}
                         onChange={(e) => setSubjectName(e.target.value)}
                         className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                       />
                     </div>
-
                     <div>
-                      <label className="block font-bold text-slate-800 mb-1">
-                        Subject Code <span className="text-slate-400 font-normal">(Optional)</span>
-                      </label>
+                      <label className="block font-bold text-slate-800 mb-1">Subject Code</label>
                       <input
                         type="text"
-                        placeholder="e.g. MTH 101, ENG 100 (Optional)"
+                        placeholder="e.g. MTH 201"
                         value={subjectCode}
                         onChange={(e) => setSubjectCode(e.target.value)}
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 uppercase font-mono focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 uppercase font-mono"
                       />
                     </div>
-
                     <div>
-                      <label className="block font-bold text-slate-800 mb-1">Category / Department</label>
+                      <label className="block font-bold text-slate-800 mb-1">School Level</label>
+                      <select
+                        value={schoolLevel}
+                        onChange={(e) => setSchoolLevel(e.target.value as any)}
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-semibold"
+                      >
+                        <option value="PRIMARY">Primary School (RCA)</option>
+                        <option value="SECONDARY">Secondary School (RCHS)</option>
+                        <option value="ALL">Cross-Section (All)</option>
+                      </select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block font-bold text-slate-800 mb-1">Department</label>
                       <select
                         value={category}
                         onChange={(e) => setCategory(e.target.value)}
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-semibold"
                       >
                         {CATEGORIES.map((cat) => (
                           <option key={cat} value={cat}>
@@ -666,46 +1038,55 @@ export default function SetupSubjectsPage() {
                     </div>
                   </div>
                 ) : (
-                  /* Batch Multi-Subject Inputs */
                   <div className="space-y-3">
                     <div>
                       <label className="block font-bold text-slate-800 mb-1">
-                        Enter Subject Titles (One per line) <span className="text-red-500">*</span>
+                        Enter Subject Titles (One per line) *
                       </label>
                       <textarea
                         required
                         rows={5}
-                        placeholder={"Mathematics\nEnglish Language\nBasic Science & Technology\nQuantitative Reasoning\nVerbal Reasoning\nSocial Studies\nChristian Religious Studies"}
+                        placeholder={"General Mathematics\nEnglish Language\nBiology\nChemistry\nPhysics"}
                         value={batchNamesText}
                         onChange={(e) => setBatchNamesText(e.target.value)}
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-mono leading-relaxed focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-mono leading-relaxed"
                       />
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        Each line will be added as a separate subject and assigned to all selected classes below.
-                      </p>
                     </div>
-
-                    <div>
-                      <label className="block font-bold text-slate-800 mb-1">Category for this batch</label>
-                      <select
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value)}
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
-                      >
-                        {CATEGORIES.map((cat) => (
-                          <option key={cat} value={cat}>
-                            {cat}
-                          </option>
-                        ))}
-                      </select>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block font-bold text-slate-800 mb-1">School Level</label>
+                        <select
+                          value={schoolLevel}
+                          onChange={(e) => setSchoolLevel(e.target.value as any)}
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-semibold"
+                        >
+                          <option value="PRIMARY">Primary School (RCA)</option>
+                          <option value="SECONDARY">Secondary School (RCHS)</option>
+                          <option value="ALL">Cross-Section (All)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block font-bold text-slate-800 mb-1">Department</label>
+                        <select
+                          value={category}
+                          onChange={(e) => setCategory(e.target.value)}
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-semibold"
+                        >
+                          {CATEGORIES.map((cat) => (
+                            <option key={cat} value={cat}>
+                              {cat}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   </div>
                 )}
 
-                {/* Seamless Class Assignment Section */}
+                {/* Class Assignment */}
                 <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
+                    <div>
                       <p className="font-bold text-slate-900 text-xs">Assign to Classes</p>
                       <p className="text-[10px] text-slate-500">
                         {selectedClasses.length === 0
@@ -714,7 +1095,6 @@ export default function SetupSubjectsPage() {
                       </p>
                     </div>
 
-                    {/* Quick Presets */}
                     <div className="flex items-center gap-1 flex-wrap justify-end">
                       <button
                         type="button"
@@ -722,20 +1102,6 @@ export default function SetupSubjectsPage() {
                         className="px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-800 hover:bg-blue-200 rounded cursor-pointer"
                       >
                         Every arm
-                      </button>
-                      <button
-                        type="button"
-                        onClick={selectEarlyYears}
-                        className="px-2 py-0.5 text-[10px] font-bold bg-rose-100 text-rose-800 hover:bg-rose-200 rounded cursor-pointer"
-                      >
-                        Creche
-                      </button>
-                      <button
-                        type="button"
-                        onClick={selectNursery}
-                        className="px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 hover:bg-amber-200 rounded cursor-pointer"
-                      >
-                        Nursery
                       </button>
                       <button
                         type="button"
@@ -761,15 +1127,7 @@ export default function SetupSubjectsPage() {
                     </div>
                   </div>
 
-                  {armNames.length === 0 && (
-                    <p className="text-[10px] text-slate-500 bg-white border border-slate-200 rounded-lg p-2">
-                      No class arm is filed on the school&apos;s class list, so this subject can only be saved for
-                      every arm. Add the arms in Setup &rarr; Classes first.
-                    </p>
-                  )}
-
-                  {/* Interactive Checkbox Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-1 max-h-40 overflow-y-auto">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-1 max-h-36 overflow-y-auto">
                     {armNames.map((cls) => {
                       const isSelected = selectedClasses.includes(cls);
                       return (
@@ -777,7 +1135,7 @@ export default function SetupSubjectsPage() {
                           type="button"
                           key={cls}
                           onClick={() => toggleClass(cls)}
-                          className={`flex items-center gap-1.5 p-2 rounded-lg text-left transition-all cursor-pointer border ${
+                          className={`flex items-center gap-1.5 p-1.5 rounded-lg text-left transition-all cursor-pointer border ${
                             isSelected
                               ? "bg-blue-600 text-white border-blue-700 font-bold"
                               : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100 font-medium"
@@ -795,27 +1153,28 @@ export default function SetupSubjectsPage() {
                   </div>
                 </div>
 
-                {/* Compulsory Toggle */}
-                <div className="flex items-center gap-2 pt-1">
-                  <input
-                    type="checkbox"
-                    id="compulsoryCheck"
-                    checked={isCompulsory}
-                    onChange={(e) => setIsCompulsory(e.target.checked)}
-                    className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                  />
-                  <label htmlFor="compulsoryCheck" className="font-semibold text-slate-700 cursor-pointer">
-                    Compulsory core subject for assigned classes
+                <div className="flex items-center gap-4 pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={isCompulsory}
+                      onChange={(e) => setIsCompulsory(e.target.checked)}
+                      className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <span>Compulsory Subject</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer font-bold text-emerald-800">
+                    <input
+                      type="checkbox"
+                      checked={isCore}
+                      onChange={(e) => setIsCore(e.target.checked)}
+                      className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                    />
+                    <span>Core Promotion Condition Rule</span>
                   </label>
                 </div>
 
-                {refusal && (
-                  <p className="text-[11px] font-semibold text-rose-900 bg-rose-50 border border-rose-200 rounded-lg p-2.5">
-                    {refusal}
-                  </p>
-                )}
-
-                {/* Modal Footer */}
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                   <button
                     type="button"
@@ -827,16 +1186,15 @@ export default function SetupSubjectsPage() {
                   <button
                     type="submit"
                     disabled={isSaving}
-                    className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+                    className="px-5 py-2 rounded-xl bg-[#4169E1] hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer disabled:opacity-60"
                   >
-                    {isSaving ? "Filing…" : isBatchMode ? "File all subjects on the school's list" : "File on the school's list"}
+                    {isSaving ? "Saving…" : "Save to Catalog"}
                   </button>
                 </div>
               </form>
             </div>
           </div>
         )}
-
       </div>
     </DashboardShell>
   );

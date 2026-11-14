@@ -14,9 +14,11 @@ import {
   removeFeeComponentOnServer,
   fetchGradingTiersFromSupabase,
   insertStudentToSupabase,
+  updateStudentOnServer,
   bulkInsertStudentsToSupabase,
   deleteStudentFromSupabase,
   insertStaffToSupabase,
+  updateStaffOnServer,
   deleteStaffFromSupabase,
   bulkInsertStaffOnServer,
   type BulkStaffResult,
@@ -32,14 +34,17 @@ import {
   saveTraitsConfigOnServer,
   fetchClassArmsFromSupabase,
   saveClassArmOnServer,
+  updateClassArmOnServer,
   removeClassArmOnServer,
   type ClassArmInput,
   fetchSubjectsFromSupabase,
   saveSubjectsOnServer,
+  updateSubjectOnServer,
   removeSubjectsOnServer,
   type SubjectInput,
   fetchSubjectTemplatesFromSupabase,
   saveSubjectTemplatesOnServer,
+  applySubjectTemplateOnServer,
   removeSubjectTemplatesOnServer,
   type SubjectTemplateInput,
   fetchCBTQuestionsFromSupabase,
@@ -138,6 +143,19 @@ export interface StudentRecord {
     midTerm: number; // Max 10
     exam: number; // Max 60
   };
+  // Extended profile fields
+  dateOfBirth?: string;
+  bloodGroup?: string;
+  medicalNotes?: string;
+  allergies?: string;
+  guardianEmail?: string;
+  guardianAddress?: string;
+  guardianRelationship?: string;
+  admissionDate?: string;
+  nationality?: string;
+  stateOfOrigin?: string;
+  lga?: string;
+  religion?: string;
 }
 
 export interface SubjectScoreRecord {
@@ -196,6 +214,8 @@ export interface ClassArmRecord {
   formTeacherId: string;
   studentsCount: number;
   capacity: number; // Default 0 (Dynamic relative to onboarding)
+  isActive?: boolean;
+  sortOrder?: number;
 }
 
 export interface StaffPermissions {
@@ -238,6 +258,20 @@ export interface StaffRecord {
    */
   standingDuties?: string[];
   permissions?: StaffPermissions;
+  // Extended profile fields
+  staffType?: string;
+  dateOfBirth?: string;
+  employmentDate?: string;
+  qualifications?: string;
+  bankName?: string;
+  accountNumber?: string;
+  accountName?: string;
+  salaryGrade?: string;
+  address?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  nationality?: string;
+  stateOfOrigin?: string;
 }
 
 export interface GradeBracket {
@@ -1285,6 +1319,23 @@ export function useRealtimeStudents() {
     }
   };
 
+  const updateStudent = async (
+    studentId: string,
+    updates: Partial<StudentRecord>
+  ): Promise<{ ok: boolean; reason: string | null }> => {
+    if (isSupabaseConfigured) {
+      const outcome = await updateStudentOnServer(studentId, updates);
+      if (!outcome.ok) {
+        return { ok: false, reason: outcome.reason };
+      }
+    }
+    const updated = students.map((s) => (s.id === studentId || s.admissionNo === studentId ? { ...s, ...updates } : s));
+    setStudents(updated);
+    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updated));
+    broadcast("STUDENTS_UPDATED");
+    return { ok: true, reason: null };
+  };
+
   const clearAllStudents = () => {
     setStudents([]);
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify([]));
@@ -1298,7 +1349,7 @@ export function useRealtimeStudents() {
   const saveCaScores = (subject: string, roster?: StudentRecord[]) =>
     fileCaScoresOnServer(roster ?? students, subject);
 
-  return { students, updateStudentScore, overlayFiledScores, moveStudentsToClass, addStudent, bulkAddStudents, bulkUpdateScores, deleteStudent, clearAllStudents, saveCaScores };
+  return { students, updateStudent, updateStudentScore, overlayFiledScores, moveStudentsToClass, addStudent, bulkAddStudents, bulkUpdateScores, deleteStudent, clearAllStudents, saveCaScores };
 }
 
 // -------------------------------------------------------------
@@ -1791,7 +1842,20 @@ export function useRealtimeClasses() {
     return outcome;
   };
 
-  return { classes, classesSource, addClass, deleteClass, reloadClasses: showServerArms };
+  const updateClass = async (
+    id: string,
+    updates: Partial<ClassArmInput>
+  ): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database" };
+    }
+
+    const outcome = await updateClassArmOnServer(id, updates);
+    if (outcome.ok) await showServerArms();
+    return outcome;
+  };
+
+  return { classes, classesSource, addClass, updateClass, deleteClass, reloadClasses: showServerArms };
 }
 
 // -------------------------------------------------------------
@@ -1910,11 +1974,21 @@ export function useRealtimeStaff() {
     });
   };
 
-  const updateStaff = (staffId: string, updates: Partial<StaffRecord>) => {
-    const updated = staff.map((s) => (s.id === staffId ? { ...s, ...updates } : s));
+  const updateStaff = async (
+    staffId: string,
+    updates: Partial<StaffRecord>
+  ): Promise<{ ok: boolean; reason: string | null }> => {
+    if (isSupabaseConfigured) {
+      const outcome = await updateStaffOnServer(staffId, updates);
+      if (!outcome.ok) {
+        return { ok: false, reason: outcome.reason };
+      }
+    }
+    const updated = staff.map((s) => (s.id === staffId || s.staffId === staffId ? { ...s, ...updates } : s));
     setStaff(updated);
     localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(updated));
     broadcast("STAFF_UPDATED");
+    return { ok: true, reason: null };
   };
 
   return { staff, addStaff, bulkAddStaff, deleteStaff, updateStaff };
@@ -2290,6 +2364,9 @@ export interface SubjectRecord {
   category?: string;
   applicableClasses: string[];
   isCompulsory?: boolean;
+  isCore?: boolean;
+  schoolLevel?: "PRIMARY" | "SECONDARY" | "ALL";
+  isActive?: boolean;
 }
 
 export const INITIAL_SUBJECTS: SubjectRecord[] = [];
@@ -2390,6 +2467,19 @@ export function useRealtimeSubjects() {
     return { ok: outcome.ok, reason: outcome.reason };
   };
 
+  const updateSubject = async (
+    id: string,
+    updates: Partial<SubjectInput>
+  ): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database" };
+    }
+
+    const outcome = await updateSubjectOnServer(id, updates);
+    if (outcome.ok) await showServerSubjects();
+    return outcome;
+  };
+
   /**
    * Removes every subject the school holds.
    *
@@ -2413,6 +2503,7 @@ export function useRealtimeSubjects() {
     subjects,
     subjectsSource,
     addSubjects,
+    updateSubject,
     deleteSubject,
     clearAllSubjects,
     reloadSubjects: showServerSubjects,
@@ -2769,10 +2860,23 @@ export function useRealtimeSubjectTemplates() {
     return { ok: outcome.ok, reason: outcome.reason };
   };
 
+  const applyTemplateToClass = async (
+    templateId: string,
+    targetClass: string
+  ): Promise<{ ok: boolean; reason: string | null; message?: string }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database" };
+    }
+
+    const outcome = await applySubjectTemplateOnServer(templateId, targetClass);
+    return outcome;
+  };
+
   return {
     templates,
     templatesSource,
     addTemplates,
+    applyTemplateToClass,
     deleteTemplate,
     reloadTemplates: showServerTemplates,
   };

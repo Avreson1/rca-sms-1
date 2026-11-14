@@ -34,6 +34,8 @@ type ArmPayload = {
   form_teacher?: string;
   form_teacher_id?: string;
   capacity?: number;
+  is_active?: boolean;
+  sort_order?: number;
 };
 
 type ArmRow = {
@@ -43,15 +45,12 @@ type ArmRow = {
   form_teacher: string;
   form_teacher_id: string;
   capacity: number;
+  is_active: boolean;
+  sort_order: number;
 };
 
 /**
  * The arms the school runs, with the number of pupils actually filed in each.
- *
- * The count is counted here rather than read from a stored figure, because the
- * stored one is whatever somebody typed when the arm was created. The screen
- * above this route prints the number as a fact about the class, so it has to be
- * true of the roll as it stands.
  */
 export async function GET() {
   const denied = await requireRole(READ_ARMS);
@@ -60,26 +59,37 @@ export async function GET() {
   const supabase = getSupabaseServerClient();
   if (!supabase) return databaseUnavailable();
 
-  const { data, error } = await supabase.from("class_arms").select("*").order("name");
+  const { data, error } = await supabase
+    .from("class_arms")
+    .select("*")
+    .order("name");
   if (error) {
     const setup = databaseSetupRequired(error, SQL_FILE);
     if (setup) return setup;
     return NextResponse.json({ success: false, error: error.message }, { status: 502 });
   }
 
-  const arms = (data ?? []) as ArmRow[];
-  if (arms.length === 0) {
+  const rawArms = (data ?? []) as any[];
+  if (rawArms.length === 0) {
     return NextResponse.json({ success: true, data: [] });
   }
+
+  const arms: ArmRow[] = rawArms.map((row) => ({
+    id: row.id,
+    name: row.name,
+    section: row.section,
+    form_teacher: row.form_teacher || "",
+    form_teacher_id: row.form_teacher_id || "",
+    capacity: typeof row.capacity === "number" ? row.capacity : 0,
+    is_active: row.is_active !== false,
+    sort_order: typeof row.sort_order === "number" ? row.sort_order : 0,
+  }));
 
   const { data: pupils, error: pupilError } = await supabase
     .from("students")
     .select("class_name")
     .in("class_name", arms.map((arm) => arm.name));
   if (pupilError) {
-    // The roll is a different table from the arm list, and it can fail on its
-    // own. Answering with zeroes would tell the office that nobody is enrolled
-    // in any class, which is the opposite of what is known.
     return NextResponse.json({ success: false, error: pupilError.message }, { status: 502 });
   }
 
@@ -95,13 +105,8 @@ export async function GET() {
 }
 
 /**
- * Files one arm, or the whole list a screen is holding.
- *
- * Sending an arm whose name is already on file updates that row instead of
- * creating a second JSS 1A, which is what lets the Classes screen keep a single
- * Save button. A row sent with a real database id is updated by id, so renaming
- * an arm corrects the row it came from rather than leaving the old spelling
- * behind as a second class.
+ * Files one arm, or the batch of arms.
+ * Strict RBAC: SUPER_ADMIN and EXAM_OFFICER only. Never creates portal user accounts or ID cards.
  */
 export async function POST(request: Request) {
   const access = await requireRoleSession(WRITE_ARMS);
@@ -122,7 +127,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: "Too many class arms in one submission (max 200)." }, { status: 400 });
   }
 
-  const rows: ArmRow[] = [];
+  const rows: Omit<ArmRow, "id">[] = [];
   const ids: string[] = [];
   for (const item of list as ArmPayload[]) {
     const name = typeof item?.name === "string" ? item.name.trim() : "";
@@ -137,7 +142,7 @@ export async function POST(request: Request) {
     }
 
     const section = typeof item?.section === "string" ? item.section : "";
-    if (!(SECTIONS as readonly string[]).includes(section)) {
+    if (!(SECTIONS as readonly string[]).includes(section as any)) {
       return NextResponse.json(
         { success: false, error: `“${name}” has a section the school does not run: ${section || "(none)"}. Use one of: ${SECTIONS.join(", ")}.` },
         { status: 400 }
@@ -152,14 +157,13 @@ export async function POST(request: Request) {
 
     const id = typeof item?.id === "string" && UUID_PATTERN.test(item.id.trim()) ? item.id.trim() : "";
     rows.push({
-      // A browser id (`c-1730…`) is not a row id, so it is dropped and the name
-      // decides which row this arm belongs to.
-      id,
       name,
       section,
       form_teacher: typeof item?.form_teacher === "string" ? item.form_teacher.trim().slice(0, 255) : "",
       form_teacher_id: typeof item?.form_teacher_id === "string" ? item.form_teacher_id.trim().slice(0, 50) : "",
       capacity,
+      is_active: item?.is_active !== false,
+      sort_order: typeof item?.sort_order === "number" ? Math.round(item.sort_order) : 0,
     });
     ids.push(id);
   }
@@ -168,8 +172,8 @@ export async function POST(request: Request) {
   if (!supabase) return databaseUnavailable();
 
   const saved: ArmRow[] = [];
-  for (const row of rows) {
-    const { id, ...columns } = row;
+  for (const [index, columns] of rows.entries()) {
+    const id = ids[index];
     const stamped = { ...columns, updated_at: new Date().toISOString() };
     const query = id
       ? supabase.from("class_arms").update(stamped).eq("id", id)
@@ -177,23 +181,96 @@ export async function POST(request: Request) {
 
     const { data, error } = await query.select("*");
     if (error) {
+      if (error.code === "23505") {
+        return NextResponse.json(
+          { success: false, error: `A class arm with name “${columns.name}” already exists on the register.` },
+          { status: 409 }
+        );
+      }
       const setup = databaseSetupRequired(error, SQL_FILE);
       if (setup) return setup;
       return NextResponse.json({ success: false, error: error.message }, { status: 502 });
     }
-    if (data) saved.push(...(data as ArmRow[]));
+    if (data) saved.push(...(data as any[]));
   }
 
   return NextResponse.json({ success: true, data: saved });
 }
 
 /**
- * Removes arms from the list — and refuses to remove one that still has pupils.
- *
- * A child is filed in a class by its written name. Deleting the arm that names
- * it leaves the child in a class the school no longer runs, and every screen
- * that groups by arm drops them. Moving the children is the office's decision,
- * so this asks for it instead of making it.
+ * Fast direct inline editing for class arms (renaming, changing teacher, capacity, active state).
+ * Catches 409 Conflict on duplicate names without crashing.
+ */
+export async function PATCH(request: Request) {
+  const access = await requireRoleSession(WRITE_ARMS);
+  if (access.denied) return access.denied;
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { id, name, section, form_teacher, form_teacher_id, capacity, is_active, sort_order } = (body ?? {}) as Record<string, any>;
+  if (!id && !name) {
+    return NextResponse.json({ success: false, error: "Provide a class arm ID or unique name to update." }, { status: 400 });
+  }
+
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return databaseUnavailable();
+
+  // If renaming, ensure name uniqueness
+  if (name && id) {
+    const { data: duplicate } = await supabase
+      .from("class_arms")
+      .select("id")
+      .eq("name", String(name).trim())
+      .neq("id", id)
+      .maybeSingle();
+
+    if (duplicate) {
+      return NextResponse.json(
+        { success: false, error: `A class arm named “${String(name).trim()}” already exists on the school records.` },
+        { status: 409 }
+      );
+    }
+  }
+
+  const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+  if (typeof name === "string" && name.trim().length >= 2) updates.name = name.trim().slice(0, 60);
+  if (typeof section === "string" && (SECTIONS as readonly string[]).includes(section as any)) updates.section = section;
+  if (typeof form_teacher === "string") updates.form_teacher = form_teacher.trim().slice(0, 255);
+  if (typeof form_teacher_id === "string") updates.form_teacher_id = form_teacher_id.trim().slice(0, 50);
+  if (typeof capacity === "number" && Number.isFinite(capacity) && capacity >= 0 && capacity <= 500) updates.capacity = Math.round(capacity);
+  if (typeof is_active === "boolean") updates.is_active = is_active;
+  if (typeof sort_order === "number") updates.sort_order = Math.round(sort_order);
+
+  let query = supabase.from("class_arms").update(updates);
+  if (id && UUID_PATTERN.test(String(id).trim())) {
+    query = query.eq("id", String(id).trim());
+  } else if (name) {
+    query = query.eq("name", String(name).trim());
+  }
+
+  const { data, error } = await query.select("*").maybeSingle();
+  if (error) {
+    if (error.code === "23505") {
+      return NextResponse.json({ success: false, error: `A class arm named “${name}” already exists.` }, { status: 409 });
+    }
+    return NextResponse.json({ success: false, error: error.message }, { status: 502 });
+  }
+  if (!data) {
+    return NextResponse.json({ success: false, error: "Class arm record not found." }, { status: 404 });
+  }
+
+  return NextResponse.json({ success: true, data });
+}
+
+/**
+ * Removes arms from the list with strict Referential Integrity Protection.
+ * Blocks hard deletion if enrolled pupils or timetable lessons reference this class arm.
+ * Suggests deactivating / archiving instead.
  */
 export async function DELETE(request: Request) {
   const access = await requireRoleSession(WRITE_ARMS);
@@ -231,6 +308,7 @@ export async function DELETE(request: Request) {
 
   const names = (arms ?? []).map((arm) => arm.name as string);
   if (names.length > 0) {
+    // 1. Check enrolled pupils
     const { data: pupils, error: pupilError } = await supabase
       .from("students")
       .select("id, class_name")
@@ -238,16 +316,42 @@ export async function DELETE(request: Request) {
     if (pupilError) {
       return NextResponse.json({ success: false, error: pupilError.message }, { status: 502 });
     }
+
     const holding = new Map<string, number>();
     for (const pupil of (pupils ?? []) as { class_name: string }[]) {
       holding.set(pupil.class_name, (holding.get(pupil.class_name) ?? 0) + 1);
     }
-    if (holding.size > 0) {
-      const listed = [...holding.entries()].map(([name, count]) => `${name} (${count} pupil${count === 1 ? "" : "s"})`);
+
+    // 2. Check timetable slots
+    const { data: timetableSlots } = await supabase
+      .from("timetable_entries")
+      .select("id, class_name")
+      .in("class_name", names);
+
+    const timetableMap = new Map<string, number>();
+    for (const slot of (timetableSlots ?? []) as { class_name: string }[]) {
+      timetableMap.set(slot.class_name, (timetableMap.get(slot.class_name) ?? 0) + 1);
+    }
+
+    const conflicts: string[] = [];
+    for (const name of names) {
+      const pCount = holding.get(name) ?? 0;
+      const tCount = timetableMap.get(name) ?? 0;
+      if (pCount > 0 || tCount > 0) {
+        conflicts.push(
+          `${name}: ${pCount > 0 ? `${pCount} enrolled pupil${pCount === 1 ? "" : "s"}` : ""}${
+            pCount > 0 && tCount > 0 ? ", " : ""
+          }${tCount > 0 ? `${tCount} timetable lesson${tCount === 1 ? "" : "s"}` : ""}`
+        );
+      }
+    }
+
+    if (conflicts.length > 0) {
       return NextResponse.json(
         {
           success: false,
-          error: `These arms still have pupils filed in them: ${listed.join(", ")}. Move or withdraw the children first, then the arm can go.`,
+          error: `Cannot delete class arms with active academic data: ${conflicts.join("; ")}. Deactivate or archive the class arm instead of deleting to preserve historical records.`,
+          canArchive: true,
           data: { blocked: [...holding.keys()] },
         },
         { status: 409 }

@@ -34,6 +34,8 @@ import {
   CreditCard,
   FileText,
   X,
+  Pencil,
+  Loader2,
 } from "lucide-react";
 import { SchoolLetterhead } from "@/components/ui/school-letterhead";
 
@@ -113,6 +115,18 @@ export default function StaffManagementPage() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [selectedDossierStaff, setSelectedDossierStaff] = useState<StaffRecord | null>(null);
+
+  // Direct Inline Row Editing State
+  const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
+  const [inlineStaffForm, setInlineStaffForm] = useState<Partial<StaffRecord>>({});
+  const [inlineStaffSaving, setInlineStaffSaving] = useState(false);
+  const [inlineStaffError, setInlineStaffError] = useState<string | null>(null);
+
+  // Full Profile Edit Modal State
+  const [fullEditStaff, setFullEditStaff] = useState<StaffRecord | null>(null);
+  const [fullEditStaffForm, setFullEditStaffForm] = useState<Partial<StaffRecord>>({});
+  const [fullEditStaffSaving, setFullEditStaffSaving] = useState(false);
+  const [fullEditStaffError, setFullEditStaffError] = useState<string | null>(null);
 
   // Single Staff Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -297,6 +311,116 @@ export default function StaffManagementPage() {
     setDesignation("");
     setStandingDuties("");
     setPermissions(DEFAULT_TEACHER_PERMISSIONS);
+  };
+
+  // Direct Inline Edit Handlers
+  const startInlineStaffEdit = (s: StaffRecord) => {
+    setEditingStaffId(s.id);
+    setInlineStaffForm({
+      staffId: s.staffId,
+      fullName: s.fullName,
+      role: s.role,
+      assignedSubjects: s.assignedSubjects || [],
+      assignedClass: s.assignedClass || "Primary 1",
+      phone: s.phone || "",
+      designation: s.designation || "",
+      status: s.status || "Active",
+    });
+    setInlineStaffError(null);
+  };
+
+  const cancelInlineStaffEdit = () => {
+    setEditingStaffId(null);
+    setInlineStaffForm({});
+    setInlineStaffError(null);
+  };
+
+  const saveInlineStaffEdit = async () => {
+    if (!editingStaffId) return;
+    const name = inlineStaffForm.fullName?.trim();
+    if (!name) {
+      setInlineStaffError("Full name cannot be blank.");
+      return;
+    }
+    const staffId = inlineStaffForm.staffId?.trim();
+    if (!staffId) {
+      setInlineStaffError("Staff ID cannot be blank.");
+      return;
+    }
+
+    setInlineStaffSaving(true);
+    setInlineStaffError(null);
+    const result = await updateStaff(editingStaffId, inlineStaffForm);
+    setInlineStaffSaving(false);
+
+    if (!result.ok) {
+      setInlineStaffError(result.reason || "Failed to update staff record.");
+      return;
+    }
+
+    setEditingStaffId(null);
+    setInlineStaffForm({});
+    setNotificationMsg(`Staff record for ${name} (${staffId}) updated successfully.`);
+    setTimeout(() => setNotificationMsg(null), 4000);
+  };
+
+  // Full Profile Edit Handlers
+  const openFullEditStaff = (s: StaffRecord) => {
+    setFullEditStaff(s);
+    setFullEditStaffForm({
+      staffId: s.staffId,
+      fullName: s.fullName,
+      username: s.username,
+      email: s.email,
+      phone: s.phone || "",
+      role: s.role,
+      assignedSubjects: s.assignedSubjects || [],
+      assignedClass: s.assignedClass || "Primary 1",
+      isFormMaster: Boolean(s.isFormMaster),
+      designation: s.designation || "",
+      status: s.status || "Active",
+      standingDuties: s.standingDuties || [],
+      staffType: s.staffType || "Teaching",
+      qualifications: s.qualifications || "B.Ed / B.Sc",
+      bankName: s.bankName || "",
+      accountNumber: s.accountNumber || "",
+      accountName: s.accountName || "",
+      salaryGrade: s.salaryGrade || "Level 1",
+      address: s.address || "",
+      emergencyContactName: s.emergencyContactName || "",
+      emergencyContactPhone: s.emergencyContactPhone || "",
+      dateOfBirth: s.dateOfBirth || "",
+      employmentDate: s.employmentDate || "",
+    });
+    setFullEditStaffError(null);
+  };
+
+  const saveFullEditStaff = async () => {
+    if (!fullEditStaff) return;
+    const name = fullEditStaffForm.fullName?.trim();
+    if (!name) {
+      setFullEditStaffError("Full name cannot be blank.");
+      return;
+    }
+    const staffId = fullEditStaffForm.staffId?.trim();
+    if (!staffId) {
+      setFullEditStaffError("Staff ID cannot be blank.");
+      return;
+    }
+
+    setFullEditStaffSaving(true);
+    setFullEditStaffError(null);
+    const result = await updateStaff(fullEditStaff.id, fullEditStaffForm);
+    setFullEditStaffSaving(false);
+
+    if (!result.ok) {
+      setFullEditStaffError(result.reason || "Failed to save profile changes.");
+      return;
+    }
+
+    setFullEditStaff(null);
+    setNotificationMsg(`Full faculty record for ${name} saved successfully.`);
+    setTimeout(() => setNotificationMsg(null), 4000);
   };
 
   // Handle CSV File
@@ -610,7 +734,151 @@ export default function StaffManagementPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filtered.map((s) => {
+                    const isEditing = editingStaffId === s.id;
                     const perms = s.permissions || DEFAULT_TEACHER_PERMISSIONS;
+
+                    if (isEditing) {
+                      return (
+                        <React.Fragment key={s.id}>
+                          <tr className="bg-blue-50/50 border-y-2 border-[#4169E1]">
+                            <td className="py-2.5 px-3">
+                              <input
+                                type="text"
+                                value={inlineStaffForm.staffId ?? ""}
+                                onChange={(e) => setInlineStaffForm((prev) => ({ ...prev, staffId: e.target.value }))}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") void saveInlineStaffEdit();
+                                  if (e.key === "Escape") cancelInlineStaffEdit();
+                                }}
+                                disabled={inlineStaffSaving}
+                                className="w-28 px-2 py-1 text-xs font-mono font-bold text-blue-900 bg-white border border-blue-400 rounded focus:ring-2 focus:ring-[#4169E1] focus:outline-hidden"
+                                title="Staff ID (e.g. RCA/PERS/001)"
+                              />
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <input
+                                type="text"
+                                placeholder="Full Name"
+                                value={inlineStaffForm.fullName ?? ""}
+                                onChange={(e) => setInlineStaffForm((prev) => ({ ...prev, fullName: e.target.value }))}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") void saveInlineStaffEdit();
+                                  if (e.key === "Escape") cancelInlineStaffEdit();
+                                }}
+                                disabled={inlineStaffSaving}
+                                className="w-full min-w-[140px] px-2 py-0.5 text-xs font-bold text-slate-900 bg-white border border-blue-400 rounded focus:ring-2 focus:ring-[#4169E1] focus:outline-hidden mb-1"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Designation (e.g. Bursar)"
+                                value={inlineStaffForm.designation ?? ""}
+                                onChange={(e) => setInlineStaffForm((prev) => ({ ...prev, designation: e.target.value }))}
+                                disabled={inlineStaffSaving}
+                                className="w-full px-2 py-0.5 text-[11px] text-slate-700 bg-white border border-blue-400 rounded"
+                              />
+                            </td>
+                            <td className="py-2.5 px-2">
+                              <select
+                                value={inlineStaffForm.role ?? "TEACHER"}
+                                onChange={(e) => setInlineStaffForm((prev) => ({ ...prev, role: e.target.value as StaffRecord["role"] }))}
+                                disabled={inlineStaffSaving}
+                                className="px-2 py-1 text-[11px] font-bold bg-white border border-blue-400 rounded text-slate-800"
+                              >
+                                <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                                <option value="EXAM_OFFICER">EXAM_OFFICER</option>
+                                <option value="TEACHER">TEACHER</option>
+                                <option value="ACCOUNTANT">ACCOUNTANT</option>
+                              </select>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <input
+                                type="text"
+                                placeholder="Subjects (comma-separated)"
+                                value={Array.isArray(inlineStaffForm.assignedSubjects) ? inlineStaffForm.assignedSubjects.join(", ") : ""}
+                                onChange={(e) =>
+                                  setInlineStaffForm((prev) => ({
+                                    ...prev,
+                                    assignedSubjects: e.target.value.split(",").map((x) => x.trim()).filter(Boolean),
+                                  }))
+                                }
+                                disabled={inlineStaffSaving}
+                                className="w-full min-w-[120px] px-2 py-1 text-[11px] bg-white border border-blue-400 rounded"
+                              />
+                            </td>
+                            <td className="py-2.5 px-2">
+                              <select
+                                value={inlineStaffForm.assignedClass ?? "Primary 1"}
+                                onChange={(e) => setInlineStaffForm((prev) => ({ ...prev, assignedClass: e.target.value }))}
+                                disabled={inlineStaffSaving}
+                                className="w-full px-1.5 py-1 text-[11px] font-bold bg-white border border-blue-400 rounded text-slate-800"
+                              >
+                                {classes.map((cls) => (
+                                  <option key={cls.id} value={cls.name}>
+                                    {cls.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="py-2.5 px-2">
+                              <select
+                                value={inlineStaffForm.status ?? "Active"}
+                                onChange={(e) => setInlineStaffForm((prev) => ({ ...prev, status: e.target.value as StaffRecord["status"] }))}
+                                disabled={inlineStaffSaving}
+                                className="px-1.5 py-1 text-[10px] font-bold bg-white border border-blue-400 rounded text-slate-800"
+                              >
+                                <option value="Active">Active</option>
+                                <option value="On Leave">On Leave</option>
+                                <option value="Suspended">Suspended</option>
+                              </select>
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => void saveInlineStaffEdit()}
+                                  disabled={inlineStaffSaving}
+                                  className="px-2 py-1 rounded bg-[#4169E1] hover:bg-blue-700 text-white font-bold text-[10px] flex items-center gap-1 cursor-pointer disabled:opacity-60 shadow-xs"
+                                  title="Save changes (Enter)"
+                                >
+                                  {inlineStaffSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                                  Save
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelInlineStaffEdit}
+                                  disabled={inlineStaffSaving}
+                                  className="px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 text-[#E01B00] border border-rose-200 font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+                                  title="Cancel (Esc)"
+                                >
+                                  <X className="w-3 h-3" />
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openFullEditStaff(s)}
+                                  disabled={inlineStaffSaving}
+                                  className="text-[10px] font-bold text-blue-700 hover:underline cursor-pointer whitespace-nowrap ml-1"
+                                  title="Edit full profile"
+                                >
+                                  More...
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          {inlineStaffError && (
+                            <tr className="bg-rose-50 border-b-2 border-rose-300">
+                              <td colSpan={7} className="px-4 py-2 text-xs font-semibold text-rose-800">
+                                <div className="flex items-center gap-2">
+                                  <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                                  <span>{inlineStaffError}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    }
+
                     return (
                       <tr key={s.id} className="hover:bg-blue-50/20 transition-colors">
                         <td className="py-3 px-4 font-mono font-bold text-blue-900">{s.staffId}</td>
@@ -695,6 +963,15 @@ export default function StaffManagementPage() {
                         </td>
                         <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => startInlineStaffEdit(s)}
+                              className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 text-[10px] font-bold rounded flex items-center gap-1 whitespace-nowrap cursor-pointer border border-amber-200 shadow-2xs"
+                              title="Quick edit staff record"
+                            >
+                              <Pencil className="w-3 h-3 text-amber-700" />
+                              Edit
+                            </button>
                             <button
                               type="button"
                               onClick={() => setSelectedDossierStaff(s)}
@@ -1574,6 +1851,364 @@ export default function StaffManagementPage() {
                   </div>
                 </div>
               </SchoolLetterhead>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Full Staff Profile Editor */}
+        {fullEditStaff && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+            <div className="bg-white rounded-2xl max-w-2xl w-full border border-slate-200 shadow-2xl max-h-[92vh] overflow-y-auto p-6 md:p-8 space-y-5">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-200">
+                    <Pencil className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-base text-slate-900">
+                      Edit Staff Profile Dossier
+                    </h3>
+                    <p className="text-xs text-slate-500 font-mono">
+                      Ref ID: {fullEditStaff.staffId} • {fullEditStaff.fullName}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFullEditStaff(null)}
+                  disabled={fullEditStaffSaving}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {fullEditStaffError && (
+                <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-rose-900 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                  <span>{fullEditStaffError}</span>
+                </div>
+              )}
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void saveFullEditStaff();
+                }}
+                className="space-y-4 text-xs"
+              >
+                {/* SECTION A: Core Employment & Identity */}
+                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/70 space-y-3">
+                  <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-600 block border-b border-slate-200 pb-1">
+                    SECTION A: EMPLOYMENT &amp; IDENTITY DETAILS
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Full Legal Name *</label>
+                      <input
+                        type="text"
+                        value={fullEditStaffForm.fullName ?? ""}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, fullName: e.target.value })}
+                        required
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-semibold text-slate-900 focus:ring-2 focus:ring-purple-600 focus:outline-hidden"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Staff ID Reference *</label>
+                      <input
+                        type="text"
+                        value={fullEditStaffForm.staffId ?? ""}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, staffId: e.target.value })}
+                        required
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-mono font-bold text-purple-900 focus:ring-2 focus:ring-purple-600 focus:outline-hidden"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Username (Portal Sign-in)</label>
+                      <input
+                        type="text"
+                        value={fullEditStaffForm.username ?? ""}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, username: e.target.value })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-mono text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Institutional Email</label>
+                      <input
+                        type="email"
+                        value={fullEditStaffForm.email ?? ""}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, email: e.target.value })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-mono text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Phone Number</label>
+                      <input
+                        type="text"
+                        value={fullEditStaffForm.phone ?? ""}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, phone: e.target.value })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-mono text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Portal Role Tier *</label>
+                      <select
+                        value={fullEditStaffForm.role ?? "TEACHER"}
+                        onChange={(e) =>
+                          setFullEditStaffForm({
+                            ...fullEditStaffForm,
+                            role: e.target.value as StaffRecord["role"],
+                          })
+                        }
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-800"
+                      >
+                        <option value="TEACHER">Tier 3: Teacher</option>
+                        <option value="EXAM_OFFICER">Tier 2: Exam Officer</option>
+                        <option value="SUPER_ADMIN">Tier 1: Super Admin</option>
+                        <option value="ACCOUNTANT">Bursary Accountant</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Designation (Job Title)</label>
+                      <input
+                        type="text"
+                        value={fullEditStaffForm.designation ?? ""}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, designation: e.target.value })}
+                        placeholder="e.g. Dean of Science, Vice Principal"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Employment Status</label>
+                      <select
+                        value={fullEditStaffForm.status ?? "Active"}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, status: e.target.value as StaffRecord["status"] })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-800"
+                      >
+                        <option value="Active">Active &amp; Confirmed</option>
+                        <option value="On Leave">On Leave</option>
+                        <option value="Suspended">Suspended</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION B: Academic & Form Duties */}
+                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/70 space-y-3">
+                  <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-600 block border-b border-slate-200 pb-1">
+                    SECTION B: ACADEMIC &amp; FORM DUTIES
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Assigned Subject(s) (comma-separated)
+                      </label>
+                      <input
+                        type="text"
+                        value={(fullEditStaffForm.assignedSubjects || []).join(", ")}
+                        onChange={(e) =>
+                          setFullEditStaffForm({
+                            ...fullEditStaffForm,
+                            assignedSubjects: e.target.value
+                              .split(",")
+                              .map((item) => item.trim())
+                              .filter(Boolean),
+                          })
+                        }
+                        placeholder="e.g. General Mathematics, Further Mathematics"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Assigned Form Class</label>
+                      <select
+                        value={fullEditStaffForm.assignedClass ?? "Primary 1"}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, assignedClass: e.target.value })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-semibold text-slate-800"
+                      >
+                        {classes.map((c) => (
+                          <option key={c.id} value={c.name}>
+                            {c.name} ({c.section})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2 pt-5">
+                      <input
+                        type="checkbox"
+                        id="fullEditFormMaster"
+                        checked={Boolean(fullEditStaffForm.isFormMaster)}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, isFormMaster: e.target.checked })}
+                        className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 cursor-pointer"
+                      />
+                      <label htmlFor="fullEditFormMaster" className="font-semibold text-slate-700 text-xs cursor-pointer">
+                        Appoint as Designated Form Master
+                      </label>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Standing Administrative Duties (comma-separated)
+                      </label>
+                      <input
+                        type="text"
+                        value={(fullEditStaffForm.standingDuties || []).join(", ")}
+                        onChange={(e) =>
+                          setFullEditStaffForm({
+                            ...fullEditStaffForm,
+                            standingDuties: splitDutyList(e.target.value),
+                          })
+                        }
+                        placeholder="e.g. Morning Assembly, Examination Officer, Gate Duty"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION C: Qualifications & Demographics */}
+                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/70 space-y-3">
+                  <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-600 block border-b border-slate-200 pb-1">
+                    SECTION C: QUALIFICATIONS &amp; DEMOGRAPHICS
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Date of Birth</label>
+                      <input
+                        type="date"
+                        value={fullEditStaffForm.dateOfBirth ?? ""}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, dateOfBirth: e.target.value })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Employment Date</label>
+                      <input
+                        type="date"
+                        value={fullEditStaffForm.employmentDate ?? ""}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, employmentDate: e.target.value })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Academic Qualifications</label>
+                      <input
+                        type="text"
+                        value={fullEditStaffForm.qualifications ?? ""}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, qualifications: e.target.value })}
+                        placeholder="e.g. B.Ed, B.Sc (Hons), TRCN"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800 font-semibold"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION D: Remuneration & Banking */}
+                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/70 space-y-3">
+                  <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-600 block border-b border-slate-200 pb-1">
+                    SECTION D: REMUNERATION &amp; PAYROLL ACCOUNT
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Bank Name</label>
+                      <input
+                        type="text"
+                        value={fullEditStaffForm.bankName ?? ""}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, bankName: e.target.value })}
+                        placeholder="e.g. First Bank, GTBank, Zenith Bank"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Account Number</label>
+                      <input
+                        type="text"
+                        value={fullEditStaffForm.accountNumber ?? ""}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, accountNumber: e.target.value })}
+                        placeholder="10-digit NUBAN"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-mono text-slate-800 font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Account Beneficiary Name</label>
+                      <input
+                        type="text"
+                        value={fullEditStaffForm.accountName ?? ""}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, accountName: e.target.value })}
+                        placeholder="Account holder name"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Salary Grade / Level</label>
+                      <input
+                        type="text"
+                        value={fullEditStaffForm.salaryGrade ?? ""}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, salaryGrade: e.target.value })}
+                        placeholder="e.g. Level 8 / Step 2"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION E: Emergency Contacts & Address */}
+                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/70 space-y-3">
+                  <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-600 block border-b border-slate-200 pb-1">
+                    SECTION E: EMERGENCY CONTACTS &amp; RESIDENTIAL ADDRESS
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Emergency Contact Name</label>
+                      <input
+                        type="text"
+                        value={fullEditStaffForm.emergencyContactName ?? ""}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, emergencyContactName: e.target.value })}
+                        placeholder="Next of Kin / Contact Name"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Emergency Contact Phone</label>
+                      <input
+                        type="text"
+                        value={fullEditStaffForm.emergencyContactPhone ?? ""}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, emergencyContactPhone: e.target.value })}
+                        placeholder="080..."
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-mono text-slate-800"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Residential Address</label>
+                      <input
+                        type="text"
+                        value={fullEditStaffForm.address ?? ""}
+                        onChange={(e) => setFullEditStaffForm({ ...fullEditStaffForm, address: e.target.value })}
+                        placeholder="Street address, City, State"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setFullEditStaff(null)}
+                    disabled={fullEditStaffSaving}
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={fullEditStaffSaving}
+                    className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold flex items-center gap-2 shadow-xs cursor-pointer disabled:opacity-60"
+                  >
+                    {fullEditStaffSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    Save Full Staff Profile
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

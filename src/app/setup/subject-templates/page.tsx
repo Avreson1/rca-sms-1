@@ -5,6 +5,7 @@ import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import {
   useRealtimeSubjectTemplates,
+  useRealtimeClasses,
   SubjectTemplateRecord,
 } from "@/lib/realtime-store";
 import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
@@ -16,16 +17,27 @@ import {
   Sparkles,
   Trash2,
   TriangleAlert,
+  CheckCircle2,
+  Check,
+  Send,
+  Loader2,
 } from "lucide-react";
 
 export default function SubjectTemplatesPage() {
-  const { templates, templatesSource, addTemplates, deleteTemplate } = useRealtimeSubjectTemplates();
+  const { templates, templatesSource, addTemplates, applyTemplateToClass, deleteTemplate } = useRealtimeSubjectTemplates();
+  const { classes } = useRealtimeClasses();
 
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  // 1-Click Package Assignment State
+  const [activeAssignId, setActiveAssignId] = useState<string | null>(null);
+  const [targetArm, setTargetArm] = useState("");
+  const [isApplying, setIsApplying] = useState(false);
 
   // Form State
   const [name, setName] = useState("");
@@ -33,6 +45,32 @@ export default function SubjectTemplatesPage() {
     useState<SubjectTemplateRecord["department"]>("Primary");
   const [targetClass, setTargetClass] = useState("Primary 1 - Primary 5");
   const [subjectListText, setSubjectListText] = useState("");
+
+  const showToast = (msg: string) => {
+    setSuccessToast(msg);
+    setTimeout(() => setSuccessToast(null), 4000);
+  };
+
+  const handleApplyPackage = async (tpl: SubjectTemplateRecord) => {
+    const chosenClass = targetArm || classes[0]?.name;
+    if (!chosenClass) {
+      setRefusal("No class arms are registered in the school. Register classes in Setup > Classes first.");
+      return;
+    }
+
+    setIsApplying(true);
+    setRefusal(null);
+
+    const outcome = await applyTemplateToClass(tpl.id, chosenClass);
+    setIsApplying(false);
+
+    if (outcome.ok) {
+      setActiveAssignId(null);
+      showToast(outcome.message || `Successfully assigned ${tpl.subjects.length} subjects from “${tpl.name}” to ${chosenClass}.`);
+    } else {
+      setRefusal(outcome.reason ?? "Failed to assign package to class.");
+    }
+  };
 
   const handleCreateTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,6 +96,7 @@ export default function SubjectTemplatesPage() {
     setIsModalOpen(false);
     setName("");
     setSubjectListText("");
+    showToast(`Subject package “${name}” created.`);
   };
 
   const handleSeedStandardPackages = async () => {
@@ -177,21 +216,21 @@ export default function SubjectTemplatesPage() {
     }
 
     setRefusal(null);
+    showToast("7 Nigerian Standard Curriculum packages populated.");
   };
 
   const handleDeleteTemplate = async (tpl: SubjectTemplateRecord) => {
-    const where =
-      templatesSource === "server"
-        ? "It comes off the school's package list, so the CA grid stops offering it on every machine."
-        : "This device is not reading the school's package list, so the package cannot be taken off it.";
-
-    if (!confirm(`Delete "${tpl.name}"? ${where} It cannot be brought back.`)) return;
+    if (!confirm(`Delete package "${tpl.name}"? This removes the bundle shortcut. Existing subject rows remain intact.`)) return;
 
     setIsSaving(true);
     const outcome = await deleteTemplate(tpl.id);
     setIsSaving(false);
 
-    setRefusal(outcome.ok ? null : outcome.reason ?? "the package was not removed");
+    if (outcome.ok) {
+      showToast(`Package “${tpl.name}” deleted.`);
+    } else {
+      setRefusal(outcome.reason ?? "Failed to delete package.");
+    }
   };
 
   const filtered = templates.filter((t) => {
@@ -228,8 +267,7 @@ export default function SubjectTemplatesPage() {
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              A package is the set of subjects one year group sits, saved once so the office does not retype it for
-              every new arm. The CA grid offers it as a shortcut to whoever opens it, on any machine.
+              Subject packages bundle complete class curricula (e.g. Primary 1-5 Standard, Junior Secondary Core) for 1-click assignment to any class arm.
             </p>
           </div>
 
@@ -238,8 +276,7 @@ export default function SubjectTemplatesPage() {
               <button
                 onClick={() => void handleSeedStandardPackages()}
                 disabled={isSaving}
-                className="px-3.5 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-wait whitespace-nowrap shrink-0"
-                title="Files the seven standard packages on the school's records. A package already filed under the same name is left as it stands."
+                className="px-3.5 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-60 whitespace-nowrap shrink-0"
               >
                 <Sparkles className="w-3.5 h-3.5 text-blue-600" />
                 Populate Nigerian Standard Packages
@@ -250,7 +287,7 @@ export default function SubjectTemplatesPage() {
                 setRefusal(null);
                 setIsModalOpen(true);
               }}
-              className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 self-start md:self-auto whitespace-nowrap shrink-0 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold bg-[#4169E1] hover:bg-blue-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               Create Custom Package
@@ -261,16 +298,28 @@ export default function SubjectTemplatesPage() {
         {templatesSource === "device" && <DeviceOnlyNotice what="The subject packages" />}
 
         {refusal && (
-          <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 text-[11px] leading-snug text-rose-950 flex items-start gap-2 print:hidden">
-            <TriangleAlert className="w-4 h-4 text-rose-700 flex-shrink-0 mt-0.5" />
-            <p>
-              <strong>The package was not filed on the school&apos;s records.</strong> {refusal}
-            </p>
+          <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 text-xs text-rose-950 flex items-start justify-between gap-2 print:hidden animate-in fade-in">
+            <div className="flex items-start gap-2">
+              <TriangleAlert className="w-4 h-4 text-rose-700 flex-shrink-0 mt-0.5" />
+              <div>
+                <strong>Action Blocked:</strong> {refusal}
+              </div>
+            </div>
+            <button onClick={() => setRefusal(null)} className="text-rose-700 font-bold hover:text-rose-900 cursor-pointer">
+              ✕
+            </button>
+          </div>
+        )}
+
+        {successToast && (
+          <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3 text-xs text-emerald-950 flex items-center gap-2 animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span>{successToast}</span>
           </div>
         )}
 
         {/* Filter Controls */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-1.5 flex-wrap">
             {[
               { id: "all", label: "All Tiers" },
@@ -285,7 +334,7 @@ export default function SubjectTemplatesPage() {
               <button
                 key={tab.id}
                 onClick={() => setDeptFilter(tab.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
                   deptFilter === tab.id
                     ? "bg-slate-900 text-white shadow-xs"
                     : "bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -303,7 +352,7 @@ export default function SubjectTemplatesPage() {
               placeholder="Search packages or subjects..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-3 py-2 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-3 py-2 text-slate-800 focus:outline-hidden"
             />
           </div>
         </div>
@@ -316,72 +365,126 @@ export default function SubjectTemplatesPage() {
               {templates.length === 0 ? "No Subject Package on File" : "No Subject Packages Match"}
             </div>
             <p className="text-xs text-slate-400 max-w-sm mx-auto">
-              {templates.length === 0
-                ? templatesSource === "server"
-                  ? "No package is filed on the school's records yet, so the CA grid has no shortcut to offer. Create one, or populate the standard Nigerian packages."
-                  : "The school's package list could not be read, so this screen is showing the packages held on this device, and they are empty. Create a package to file one on the school's records."
-                : "No package matches your search or filter. Widen the tier or clear the search."}
+              Populate the standard packages above or create a new custom package.
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filtered.map((tpl) => (
-              <div
-                key={tpl.id}
-                className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-4 hover:border-blue-300 transition-colors"
-              >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-                        tpl.department === "Early Years"
-                          ? "bg-rose-50 text-rose-800 border-rose-200"
-                          : tpl.department === "Nursery"
-                          ? "bg-amber-50 text-amber-800 border-amber-200"
-                          : tpl.department === "Primary"
-                          ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                          : tpl.department === "Science"
-                          ? "bg-blue-50 text-blue-800 border-blue-200"
-                          : tpl.department === "Arts"
-                          ? "bg-purple-50 text-purple-800 border-purple-200"
-                          : "bg-indigo-50 text-indigo-800 border-indigo-200"
-                      }`}
-                    >
-                      {tpl.department}
-                    </span>
-                    <span className="text-[11px] font-mono text-slate-500 font-bold">{tpl.targetClass}</span>
-                  </div>
+            {filtered.map((tpl) => {
+              const isAssigning = activeAssignId === tpl.id;
 
-                  <div>
-                    <h3 className="font-bold text-sm text-slate-900 leading-tight">{tpl.name}</h3>
-                    <p className="text-[11px] text-slate-500 mt-0.5">{tpl.subjects.length} Bundled Subjects</p>
-                  </div>
-
-                  {/* Subject Badges */}
-                  <div className="flex flex-wrap gap-1 pt-1 max-h-36 overflow-y-auto">
-                    {tpl.subjects.map((sub, i) => (
+              return (
+                <div
+                  key={tpl.id}
+                  className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-4 hover:border-blue-300 transition-colors"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
                       <span
-                        key={i}
-                        className="text-[10px] bg-slate-50 border border-slate-200 text-slate-700 px-2 py-0.5 rounded-md font-medium"
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                          tpl.department === "Early Years"
+                            ? "bg-rose-50 text-rose-800 border-rose-200"
+                            : tpl.department === "Nursery"
+                            ? "bg-amber-50 text-amber-800 border-amber-200"
+                            : tpl.department === "Primary"
+                            ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                            : tpl.department === "Science"
+                            ? "bg-blue-50 text-blue-800 border-blue-200"
+                            : tpl.department === "Arts"
+                            ? "bg-purple-50 text-purple-800 border-purple-200"
+                            : "bg-indigo-50 text-indigo-800 border-indigo-200"
+                        }`}
                       >
-                        {sub}
+                        {tpl.department}
                       </span>
-                    ))}
+                      <span className="text-[11px] font-mono text-slate-500 font-bold">{tpl.targetClass}</span>
+                    </div>
+
+                    <div>
+                      <h3 className="font-bold text-sm text-slate-900 leading-tight">{tpl.name}</h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5">{tpl.subjects.length} Bundled Subjects</p>
+                    </div>
+
+                    {/* Subject Badges */}
+                    <div className="flex flex-wrap gap-1 pt-1 max-h-36 overflow-y-auto">
+                      {tpl.subjects.map((sub, i) => (
+                        <span
+                          key={i}
+                          className="text-[10px] bg-slate-50 border border-slate-200 text-slate-700 px-2 py-0.5 rounded-md font-medium"
+                        >
+                          {sub}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 1-Click Class Assignment Section */}
+                  <div className="pt-3 border-t border-slate-100 space-y-2 text-xs">
+                    {isAssigning ? (
+                      <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2 animate-in fade-in">
+                        <label className="block text-[11px] font-bold text-blue-900">
+                          Select Class Arm to Assign Package:
+                        </label>
+                        <select
+                          value={targetArm}
+                          onChange={(e) => setTargetArm(e.target.value)}
+                          className="w-full px-2.5 py-1.5 bg-white border border-blue-300 rounded-lg font-bold text-slate-800 text-xs"
+                        >
+                          <option value="">-- Choose Class Arm --</option>
+                          {classes.map((c) => (
+                            <option key={c.id} value={c.name}>
+                              {c.name} ({c.section})
+                            </option>
+                          ))}
+                        </select>
+
+                        <div className="flex items-center justify-end gap-1.5 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setActiveAssignId(null)}
+                            disabled={isApplying}
+                            className="px-2.5 py-1 text-slate-600 hover:text-slate-800 text-xs font-semibold cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleApplyPackage(tpl)}
+                            disabled={isApplying || !targetArm}
+                            className="px-3 py-1 bg-[#4169E1] hover:bg-blue-700 text-white font-bold rounded-lg flex items-center gap-1 shadow-xs cursor-pointer disabled:opacity-50"
+                          >
+                            {isApplying ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                            Apply Now
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveAssignId(tpl.id);
+                            setTargetArm(classes[0]?.name || "");
+                          }}
+                          className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#4169E1] font-bold rounded-lg text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                        >
+                          <Send className="w-3 h-3" />
+                          Apply to Class Arm
+                        </button>
+
+                        <button
+                          onClick={() => void handleDeleteTemplate(tpl)}
+                          className="text-slate-400 hover:text-rose-600 p-1.5 rounded transition-colors cursor-pointer"
+                          title="Delete package"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
-
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                  <span className="text-[11px] text-slate-400 font-medium">Ready for Class Assignment</span>
-                  <button
-                    onClick={() => void handleDeleteTemplate(tpl)}
-                    className="text-slate-400 hover:text-red-600 p-1 cursor-pointer"
-                    title="Delete package"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -399,9 +502,9 @@ export default function SubjectTemplatesPage() {
                 </button>
               </div>
 
-              <form onSubmit={(e) => void handleCreateTemplate(e)} className="space-y-3 text-xs">
+              <form onSubmit={handleCreateTemplate} className="space-y-3 text-xs">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Package Name</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Package Name *</label>
                   <input
                     type="text"
                     required
@@ -455,7 +558,7 @@ export default function SubjectTemplatesPage() {
 
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    Subject List (One per line)
+                    Subject List (One per line) *
                   </label>
                   <textarea
                     required
@@ -468,12 +571,6 @@ export default function SubjectTemplatesPage() {
                   <p className="text-[10px] text-slate-400 mt-1">Enter each subject on a separate line.</p>
                 </div>
 
-                {refusal && (
-                  <p className="text-[11px] font-semibold text-rose-900 bg-rose-50 border border-rose-200 rounded-lg p-2.5">
-                    {refusal}
-                  </p>
-                )}
-
                 <div className="flex justify-end gap-2 pt-3">
                   <button
                     type="button"
@@ -485,9 +582,9 @@ export default function SubjectTemplatesPage() {
                   <button
                     type="submit"
                     disabled={isSaving}
-                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+                    className="px-4 py-2 rounded-lg bg-[#4169E1] hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer disabled:opacity-60"
                   >
-                    {isSaving ? "Filing…" : "File on the school's package list"}
+                    {isSaving ? "Saving…" : "Save Package"}
                   </button>
                 </div>
               </form>
