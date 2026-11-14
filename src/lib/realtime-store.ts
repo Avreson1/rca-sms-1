@@ -14,9 +14,11 @@ import {
   removeFeeComponentOnServer,
   fetchGradingTiersFromSupabase,
   insertStudentToSupabase,
+  updateStudentOnServer,
   bulkInsertStudentsToSupabase,
   deleteStudentFromSupabase,
   insertStaffToSupabase,
+  updateStaffOnServer,
   deleteStaffFromSupabase,
   bulkInsertStaffOnServer,
   type BulkStaffResult,
@@ -138,6 +140,19 @@ export interface StudentRecord {
     midTerm: number; // Max 10
     exam: number; // Max 60
   };
+  // Extended profile fields
+  dateOfBirth?: string;
+  bloodGroup?: string;
+  medicalNotes?: string;
+  allergies?: string;
+  guardianEmail?: string;
+  guardianAddress?: string;
+  guardianRelationship?: string;
+  admissionDate?: string;
+  nationality?: string;
+  stateOfOrigin?: string;
+  lga?: string;
+  religion?: string;
 }
 
 export interface SubjectScoreRecord {
@@ -238,6 +253,20 @@ export interface StaffRecord {
    */
   standingDuties?: string[];
   permissions?: StaffPermissions;
+  // Extended profile fields
+  staffType?: string;
+  dateOfBirth?: string;
+  employmentDate?: string;
+  qualifications?: string;
+  bankName?: string;
+  accountNumber?: string;
+  accountName?: string;
+  salaryGrade?: string;
+  address?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  nationality?: string;
+  stateOfOrigin?: string;
 }
 
 export interface GradeBracket {
@@ -1285,6 +1314,23 @@ export function useRealtimeStudents() {
     }
   };
 
+  const updateStudent = async (
+    studentId: string,
+    updates: Partial<StudentRecord>
+  ): Promise<{ ok: boolean; reason: string | null }> => {
+    if (isSupabaseConfigured) {
+      const outcome = await updateStudentOnServer(studentId, updates);
+      if (!outcome.ok) {
+        return { ok: false, reason: outcome.reason };
+      }
+    }
+    const updated = students.map((s) => (s.id === studentId || s.admissionNo === studentId ? { ...s, ...updates } : s));
+    setStudents(updated);
+    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updated));
+    broadcast("STUDENTS_UPDATED");
+    return { ok: true, reason: null };
+  };
+
   const clearAllStudents = () => {
     setStudents([]);
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify([]));
@@ -1298,7 +1344,7 @@ export function useRealtimeStudents() {
   const saveCaScores = (subject: string, roster?: StudentRecord[]) =>
     fileCaScoresOnServer(roster ?? students, subject);
 
-  return { students, updateStudentScore, overlayFiledScores, moveStudentsToClass, addStudent, bulkAddStudents, bulkUpdateScores, deleteStudent, clearAllStudents, saveCaScores };
+  return { students, updateStudent, updateStudentScore, overlayFiledScores, moveStudentsToClass, addStudent, bulkAddStudents, bulkUpdateScores, deleteStudent, clearAllStudents, saveCaScores };
 }
 
 // -------------------------------------------------------------
@@ -1910,11 +1956,21 @@ export function useRealtimeStaff() {
     });
   };
 
-  const updateStaff = (staffId: string, updates: Partial<StaffRecord>) => {
-    const updated = staff.map((s) => (s.id === staffId ? { ...s, ...updates } : s));
+  const updateStaff = async (
+    staffId: string,
+    updates: Partial<StaffRecord>
+  ): Promise<{ ok: boolean; reason: string | null }> => {
+    if (isSupabaseConfigured) {
+      const outcome = await updateStaffOnServer(staffId, updates);
+      if (!outcome.ok) {
+        return { ok: false, reason: outcome.reason };
+      }
+    }
+    const updated = staff.map((s) => (s.id === staffId || s.staffId === staffId ? { ...s, ...updates } : s));
     setStaff(updated);
     localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(updated));
     broadcast("STAFF_UPDATED");
+    return { ok: true, reason: null };
   };
 
   return { staff, addStaff, bulkAddStaff, deleteStaff, updateStaff };

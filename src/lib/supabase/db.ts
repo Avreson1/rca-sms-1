@@ -281,6 +281,66 @@ export async function deleteStudentFromSupabase(admissionNo: string): Promise<bo
   }
 }
 
+/**
+ * Updates a student record on the server and synchronizes changes across
+ * identity cards and invoices.
+ */
+export async function updateStudentOnServer(
+  studentIdOrAdmissionNo: string,
+  updates: Partial<StudentRecord>
+): Promise<{ ok: boolean; reason: string | null; student?: StudentRecord }> {
+  try {
+    const payload: Record<string, unknown> = {};
+    if (updates.fullName !== undefined) payload.fullName = updates.fullName;
+    if (updates.admissionNo !== undefined) payload.admissionNo = updates.admissionNo;
+    if (updates.className !== undefined) payload.className = updates.className;
+    if (updates.gender !== undefined) payload.gender = updates.gender;
+    if (updates.house !== undefined) payload.house = updates.house;
+    if (updates.guardianName !== undefined) payload.guardianName = updates.guardianName;
+    if (updates.guardianPhone !== undefined) payload.guardianPhone = updates.guardianPhone;
+    if (updates.feeStatus !== undefined) payload.feeStatus = updates.feeStatus;
+    if (updates.dateOfBirth !== undefined) payload.dateOfBirth = updates.dateOfBirth;
+    if (updates.bloodGroup !== undefined) payload.bloodGroup = updates.bloodGroup;
+    if (updates.guardianEmail !== undefined) payload.guardianEmail = updates.guardianEmail;
+    if (updates.guardianAddress !== undefined) payload.guardianAddress = updates.guardianAddress;
+    if (updates.guardianRelationship !== undefined) payload.guardianRelationship = updates.guardianRelationship;
+    if (updates.medicalNotes !== undefined) payload.medicalNotes = updates.medicalNotes;
+    if (updates.allergies !== undefined) payload.allergies = updates.allergies;
+    if (updates.nationality !== undefined) payload.nationality = updates.nationality;
+    if (updates.stateOfOrigin !== undefined) payload.stateOfOrigin = updates.stateOfOrigin;
+    if (updates.lga !== undefined) payload.lga = updates.lga;
+    if (updates.religion !== undefined) payload.religion = updates.religion;
+
+    const targetUrl = `/api/students/${encodeURIComponent(studentIdOrAdmissionNo)}`;
+    const response = await fetch(targetUrl, {
+      method: "PATCH",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const result = (await response.json().catch(() => null)) as {
+      success?: boolean;
+      error?: string;
+      data?: StudentRecord;
+    } | null;
+
+    if (!response.ok || !result?.success) {
+      const reason = result?.error || (await serverReason(response)) || "Failed to update student";
+      reportSyncFailure(`Could not update student: ${reason}`);
+      return { ok: false, reason };
+    }
+
+    reportSyncSaved(`Student record updated on school database.`);
+    return { ok: true, reason: null, student: result.data };
+  } catch (error) {
+    console.warn("API /api/students/[id] patch failed", error);
+    const reason = "the portal server did not answer";
+    reportSyncFailure(`Could not update student: ${reason}`);
+    return { ok: false, reason };
+  }
+}
+
 // ============================================================================
 // 2. STAFF SERVICE
 // ============================================================================
@@ -378,6 +438,70 @@ export async function deleteStaffFromSupabase(
     const reason = "the portal server did not answer";
     reportSyncFailure(`The staff member was NOT removed from the school records: ${reason}.`);
     return { ok: false, reason, warning: null };
+  }
+}
+
+/**
+ * Updates a staff record on the server and synchronizes login display names,
+ * staff duties roster, and active identity cards.
+ */
+export async function updateStaffOnServer(
+  staffIdOrId: string,
+  updates: Partial<StaffRecord>
+): Promise<{ ok: boolean; reason: string | null; staff?: StaffRecord }> {
+  try {
+    const payload: Record<string, unknown> = {};
+    if (updates.fullName !== undefined) payload.fullName = updates.fullName;
+    if (updates.staffId !== undefined) payload.staffId = updates.staffId;
+    if (updates.username !== undefined) payload.username = updates.username;
+    if (updates.email !== undefined) payload.email = updates.email;
+    if (updates.phone !== undefined) payload.phone = updates.phone;
+    if (updates.role !== undefined) payload.role = updates.role;
+    if (updates.assignedSubjects !== undefined) payload.assignedSubjects = updates.assignedSubjects;
+    if (updates.assignedClass !== undefined) payload.assignedClass = updates.assignedClass;
+    if (updates.isFormMaster !== undefined) payload.isFormMaster = updates.isFormMaster;
+    if (updates.status !== undefined) payload.status = updates.status;
+    if (updates.designation !== undefined) payload.designation = updates.designation;
+    if (updates.standingDuties !== undefined) payload.standingDuties = updates.standingDuties;
+    if (updates.staffType !== undefined) payload.staffType = updates.staffType;
+    if (updates.qualifications !== undefined) payload.qualifications = updates.qualifications;
+    if (updates.bankName !== undefined) payload.bankName = updates.bankName;
+    if (updates.accountNumber !== undefined) payload.accountNumber = updates.accountNumber;
+    if (updates.accountName !== undefined) payload.accountName = updates.accountName;
+    if (updates.salaryGrade !== undefined) payload.salaryGrade = updates.salaryGrade;
+    if (updates.address !== undefined) payload.address = updates.address;
+    if (updates.emergencyContactName !== undefined) payload.emergencyContactName = updates.emergencyContactName;
+    if (updates.emergencyContactPhone !== undefined) payload.emergencyContactPhone = updates.emergencyContactPhone;
+    if (updates.dateOfBirth !== undefined) payload.dateOfBirth = updates.dateOfBirth;
+    if (updates.employmentDate !== undefined) payload.employmentDate = updates.employmentDate;
+
+    const targetUrl = `/api/staff/${encodeURIComponent(staffIdOrId)}`;
+    const response = await fetch(targetUrl, {
+      method: "PATCH",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const result = (await response.json().catch(() => null)) as {
+      success?: boolean;
+      error?: string;
+      data?: StaffRecord;
+    } | null;
+
+    if (!response.ok || !result?.success) {
+      const reason = result?.error || (await serverReason(response)) || "Failed to update staff member";
+      reportSyncFailure(`Could not update staff: ${reason}`);
+      return { ok: false, reason };
+    }
+
+    reportSyncSaved(`Staff record updated on school database.`);
+    return { ok: true, reason: null, staff: result.data };
+  } catch (error) {
+    console.warn("API /api/staff/[id] patch failed", error);
+    const reason = "the portal server did not answer";
+    reportSyncFailure(`Could not update staff: ${reason}`);
+    return { ok: false, reason };
   }
 }
 

@@ -156,6 +156,104 @@ export async function POST(request: Request) {
   });
 }
 
+export async function PATCH(request: Request) {
+  const { denied } = await requireRoleSession(WRITE_STAFF);
+  if (denied) return denied;
+
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return databaseUnavailable();
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const targetIdentifier = (body.id || body.staffId || body.staff_id) as string | undefined;
+  if (!targetIdentifier || typeof targetIdentifier !== "string") {
+    return NextResponse.json({ success: false, error: "Provide the staff id or UUID to update." }, { status: 400 });
+  }
+
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetIdentifier.trim());
+  let lookupQuery = supabase.from("staff").select("*");
+  if (isUuid) lookupQuery = lookupQuery.eq("id", targetIdentifier.trim());
+  else lookupQuery = lookupQuery.eq("staff_id", targetIdentifier.trim());
+
+  const { data: existing, error: lookupErr } = await lookupQuery.maybeSingle();
+  if (lookupErr) return NextResponse.json({ success: false, error: lookupErr.message }, { status: 502 });
+  if (!existing) return NextResponse.json({ success: false, error: "Staff member not found" }, { status: 404 });
+
+  const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (typeof body.fullName === "string" && body.fullName.trim()) updateData.full_name = body.fullName.trim();
+  if (typeof body.full_name === "string" && body.full_name.trim()) updateData.full_name = body.full_name.trim();
+
+  if (body.staffId !== undefined || body.staff_id !== undefined) {
+    const rawStaffId = ((body.staffId ?? body.staff_id) as string).trim();
+    if (rawStaffId && rawStaffId.toLowerCase() !== existing.staff_id.toLowerCase()) {
+      const { data: dup } = await supabase.from("staff").select("id").ilike("staff_id", rawStaffId).neq("id", existing.id).maybeSingle();
+      if (dup) return NextResponse.json({ success: false, error: "Staff ID already assigned to another staff member" }, { status: 409 });
+      updateData.staff_id = rawStaffId;
+    }
+  }
+
+  if (typeof body.username === "string" && body.username.trim()) {
+    const rawUser = body.username.trim().toLowerCase();
+    if (rawUser !== existing.username.toLowerCase()) {
+      const { data: dup } = await supabase.from("staff").select("id").ilike("username", rawUser).neq("id", existing.id).maybeSingle();
+      if (dup) return NextResponse.json({ success: false, error: "Username already assigned to another staff member" }, { status: 409 });
+      updateData.username = rawUser;
+    }
+  }
+
+  if (typeof body.email === "string" && body.email.trim()) {
+    const rawEmail = body.email.trim().toLowerCase();
+    if (rawEmail !== existing.email.toLowerCase()) {
+      const { data: dup } = await supabase.from("staff").select("id").ilike("email", rawEmail).neq("id", existing.id).maybeSingle();
+      if (dup) return NextResponse.json({ success: false, error: "Email address already registered to another staff member" }, { status: 409 });
+      updateData.email = rawEmail;
+    }
+  }
+
+  if (typeof body.phone === "string") updateData.phone = body.phone.trim();
+  if (typeof body.role === "string" && body.role.trim()) updateData.role = body.role.trim();
+  if (Array.isArray(body.assignedSubjects || body.assigned_subjects)) {
+    updateData.assigned_subjects = trimmedList(body.assignedSubjects || body.assigned_subjects, 80, 20);
+  }
+  if (typeof body.assignedClass === "string" || typeof body.assigned_class === "string") {
+    updateData.assigned_class = ((body.assignedClass || body.assigned_class) as string).trim();
+  }
+  if (body.status !== undefined && typeof body.status === "string") updateData.status = body.status.trim();
+  if (body.designation !== undefined && typeof body.designation === "string") updateData.designation = body.designation.trim();
+
+  const { data: updated, error: updateErr } = await supabase.from("staff").update(updateData).eq("id", existing.id).select().single();
+  if (updateErr) {
+    if (updateErr.code === "23505") return NextResponse.json({ success: false, error: "A unique constraint conflict occurred: " + updateErr.message }, { status: 409 });
+    return NextResponse.json({ success: false, error: updateErr.message }, { status: 502 });
+  }
+
+  const oldStaffId = existing.staff_id;
+  const newStaffId = (updateData.staff_id as string) || oldStaffId;
+  const newFullName = (updateData.full_name as string) || existing.full_name;
+  const newEmail = (updateData.email as string) || existing.email;
+
+  const accountUpdates: Record<string, unknown> = {};
+  if (updateData.full_name) accountUpdates.display_name = newFullName;
+  if (updateData.staff_id) accountUpdates.staff_id = newStaffId;
+  if (updateData.email) accountUpdates.email = newEmail;
+  if (updateData.status) accountUpdates.status = updateData.status === "Suspended" ? "Suspended" : "Active";
+  if (updateData.role) accountUpdates.role = updateData.role;
+
+  if (Object.keys(accountUpdates).length > 0) {
+    await supabase.from("app_accounts").update(accountUpdates).or(`staff_id.eq.${oldStaffId},username.eq.${existing.username}`);
+  }
+
+  await supabase.from("id_cards").update({ holder_ref: newStaffId, holder_name: newFullName, updated_at: new Date().toISOString() }).eq("holder_type", "staff").eq("holder_ref", oldStaffId);
+  await supabase.from("staff_duties").update({ staff_id: newStaffId, staff_name: newFullName, designation: updateData.designation !== undefined ? (updateData.designation as string) : existing.designation, updated_at: new Date().toISOString() }).eq("staff_id", oldStaffId);
+
+  return NextResponse.json({ success: true, data: updated });
+}
+
 /**
  * Removes a staff record and closes the door that record's login walks through.
  *

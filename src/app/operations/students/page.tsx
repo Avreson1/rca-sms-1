@@ -23,6 +23,9 @@ import {
   FileText,
   X,
   ShieldCheck,
+  Pencil,
+  Check,
+  Loader2,
 } from "lucide-react";
 import { SchoolLetterhead } from "@/components/ui/school-letterhead";
 
@@ -37,7 +40,7 @@ type CsvStudentRow = {
 };
 
 export default function StudentsPage() {
-  const { students, addStudent, bulkAddStudents, deleteStudent } = useRealtimeStudents();
+  const { students, addStudent, bulkAddStudents, deleteStudent, updateStudent } = useRealtimeStudents();
   const { currentUser } = useRealtimeAuth();
   // A teacher and a bursar may enrol a pupil but are refused the card desk, so
   // they are not offered a button that only leads to a refusal.
@@ -47,6 +50,21 @@ export default function StudentsPage() {
   const [classFilter, setClassFilter] = useState("all");
   const [feeFilter, setFeeFilter] = useState("all");
   const [selectedDossierStudent, setSelectedDossierStudent] = useState<StudentRecord | null>(null);
+
+  // Direct Inline Row Editing State
+  const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
+  const [inlineForm, setInlineForm] = useState<Partial<StudentRecord>>({});
+  const [inlineSaving, setInlineSaving] = useState(false);
+  const [inlineError, setInlineError] = useState<string | null>(null);
+
+  // Full Profile Edit Modal / Drawer State
+  const [fullEditStudent, setFullEditStudent] = useState<StudentRecord | null>(null);
+  const [fullEditForm, setFullEditForm] = useState<Partial<StudentRecord>>({});
+  const [fullEditSaving, setFullEditSaving] = useState(false);
+  const [fullEditError, setFullEditError] = useState<string | null>(null);
+
+  // General Notification Notice
+  const [notice, setNotice] = useState<{ tone: "good" | "warn"; text: string } | null>(null);
   
   // The arms a pupil can be enrolled into are the school's own list. Nothing is
   // offered when it is empty: a child put into an arm the school does not run
@@ -116,6 +134,118 @@ export default function StudentsPage() {
     setNewName("");
     setNewGuardian("");
     setNewPhone("");
+  };
+
+  // Direct Inline Edit Handlers
+  const startInlineEdit = (s: StudentRecord) => {
+    setEditingStudentId(s.id);
+    setInlineForm({
+      admissionNo: s.admissionNo,
+      fullName: s.fullName,
+      className: s.className,
+      gender: s.gender,
+      house: s.house,
+      guardianName: s.guardianName || "",
+      guardianPhone: s.guardianPhone || "",
+      feeStatus: s.feeStatus,
+    });
+    setInlineError(null);
+  };
+
+  const cancelInlineEdit = () => {
+    setEditingStudentId(null);
+    setInlineForm({});
+    setInlineError(null);
+  };
+
+  const saveInlineEdit = async () => {
+    if (!editingStudentId) return;
+    const name = inlineForm.fullName?.trim();
+    if (!name) {
+      setInlineError("Full name cannot be blank.");
+      return;
+    }
+    const adm = inlineForm.admissionNo?.trim();
+    if (!adm) {
+      setInlineError("Admission number cannot be blank.");
+      return;
+    }
+
+    setInlineSaving(true);
+    setInlineError(null);
+    const result = await updateStudent(editingStudentId, inlineForm);
+    setInlineSaving(false);
+
+    if (!result.ok) {
+      setInlineError(result.reason || "Failed to update student profile.");
+      return;
+    }
+
+    setEditingStudentId(null);
+    setInlineForm({});
+    setNotice({
+      tone: "good",
+      text: `Pupil record for ${name} (${adm}) updated successfully.`,
+    });
+    setTimeout(() => setNotice(null), 4000);
+  };
+
+  // Full Profile Edit Handlers
+  const openFullEdit = (s: StudentRecord) => {
+    setFullEditStudent(s);
+    setFullEditForm({
+      admissionNo: s.admissionNo,
+      fullName: s.fullName,
+      className: s.className,
+      gender: s.gender,
+      house: s.house,
+      guardianName: s.guardianName || "",
+      guardianPhone: s.guardianPhone || "",
+      feeStatus: s.feeStatus,
+      dateOfBirth: s.dateOfBirth || "",
+      bloodGroup: s.bloodGroup || "",
+      guardianEmail: s.guardianEmail || "",
+      guardianAddress: s.guardianAddress || "",
+      guardianRelationship: s.guardianRelationship || "Parent",
+      medicalNotes: s.medicalNotes || "",
+      allergies: s.allergies || "",
+      nationality: s.nationality || "Nigerian",
+      stateOfOrigin: s.stateOfOrigin || "",
+      lga: s.lga || "",
+      religion: s.religion || "Christianity",
+    });
+    setFullEditError(null);
+  };
+
+  const saveFullEdit = async () => {
+    if (!fullEditStudent) return;
+    const name = fullEditForm.fullName?.trim();
+    if (!name) {
+      setFullEditError("Full name cannot be blank.");
+      return;
+    }
+    const adm = fullEditForm.admissionNo?.trim();
+    if (!adm) {
+      setFullEditError("Admission number cannot be blank.");
+      return;
+    }
+
+    setFullEditSaving(true);
+    setFullEditError(null);
+    const result = await updateStudent(fullEditStudent.id, fullEditForm);
+    setFullEditSaving(false);
+
+    if (!result.ok) {
+      setFullEditError(result.reason || "Failed to save profile changes.");
+      return;
+    }
+
+    setFullEditStudent(null);
+    setNotice({
+      tone: "good",
+      text: `Complete profile dossier for ${name} saved successfully.`,
+    });
+    setTimeout(() => setNotice(null), 4000);
   };
 
   // CSV File Handler
@@ -365,6 +495,24 @@ export default function StudentsPage() {
           </div>
         )}
 
+        {notice && (
+          <div
+            className={`p-3.5 rounded-xl border text-[11px] font-semibold flex items-start justify-between gap-3 animate-in fade-in ${
+              notice.tone === "warn"
+                ? "border-amber-300 bg-amber-50 text-amber-900"
+                : "border-emerald-300 bg-emerald-50 text-emerald-900"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+              <span>{notice.text}</span>
+            </div>
+            <button onClick={() => setNotice(null)} className="font-bold cursor-pointer">
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Filter Controls */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           <div>
@@ -445,73 +593,239 @@ export default function StudentsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.map((s) => (
-                  <tr key={s.id} className="hover:bg-blue-50/20 transition-colors">
-                    <td className="py-3 px-4 font-mono font-bold text-blue-900">{s.admissionNo}</td>
-                    <td className="py-3 px-4 font-semibold text-slate-900">{s.fullName}</td>
-                    <td className="py-3 px-3">
-                      <span className="inline-block text-[10px] font-bold bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-200">
-                        {s.className}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-slate-600">{s.gender}</td>
-                    <td className="py-3 px-4 text-slate-600">{s.house}</td>
-                    <td className="py-3 px-4">
-                      <p className="font-medium text-slate-800 leading-tight">{s.guardianName || "N/A"}</p>
-                      <p className="text-[10px] text-slate-400 font-mono">{s.guardianPhone || "N/A"}</p>
-                    </td>
-                    <td className="py-3 px-3 text-center">
-                      <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded ${
-                        s.feeStatus === "Fully Cleared"
-                          ? "bg-emerald-100 text-emerald-800"
-                          : s.feeStatus === "Partially Paid"
-                          ? "bg-blue-100 text-blue-800"
-                          : "bg-amber-100 text-amber-800"
-                      }`}>
-                        {s.feeStatus}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedDossierStudent(s)}
-                          className="px-2.5 py-1 rounded bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold text-[11px] flex items-center gap-1 cursor-pointer"
-                          title="Open official student dossier"
-                        >
-                          <FileText className="w-3 h-3" />
-                          Dossier
-                        </button>
-                        <Link
-                          href="/operations/update-ca"
-                          className="px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-[11px]"
-                        >
-                          Gradebook
-                        </Link>
-                        {canReachCards && (
-                          <Link
-                            href={`/operations/id-cards?holder=student&ref=${encodeURIComponent(s.admissionNo)}`}
-                            className="px-2.5 py-1 rounded bg-brand-600 hover:bg-brand-700 text-white font-bold text-[11px]"
-                            title={`Design and print the identity card for ${s.fullName}`}
-                          >
-                            ID Card
-                          </Link>
+                {filtered.map((s) => {
+                  const isEditing = editingStudentId === s.id;
+                  if (isEditing) {
+                    return (
+                      <React.Fragment key={s.id}>
+                        <tr className="bg-blue-50/50 border-y-2 border-[#4169E1]">
+                          <td className="py-2.5 px-3">
+                            <input
+                              type="text"
+                              value={inlineForm.admissionNo ?? ""}
+                              onChange={(e) => setInlineForm((prev) => ({ ...prev, admissionNo: e.target.value }))}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") void saveInlineEdit();
+                                if (e.key === "Escape") cancelInlineEdit();
+                              }}
+                              disabled={inlineSaving}
+                              className="w-28 px-2 py-1 text-xs font-mono font-bold text-blue-900 bg-white border border-blue-400 rounded focus:ring-2 focus:ring-[#4169E1] focus:outline-hidden"
+                              title="Admission Number (e.g. RCA/2026/042)"
+                            />
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <input
+                              type="text"
+                              value={inlineForm.fullName ?? ""}
+                              onChange={(e) => setInlineForm((prev) => ({ ...prev, fullName: e.target.value }))}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") void saveInlineEdit();
+                                if (e.key === "Escape") cancelInlineEdit();
+                              }}
+                              disabled={inlineSaving}
+                              className="w-full min-w-[140px] px-2 py-1 text-xs font-semibold text-slate-900 bg-white border border-blue-400 rounded focus:ring-2 focus:ring-[#4169E1] focus:outline-hidden"
+                              title="Full Legal Name"
+                            />
+                          </td>
+                          <td className="py-2.5 px-2">
+                            <select
+                              value={inlineForm.className ?? ""}
+                              onChange={(e) => setInlineForm((prev) => ({ ...prev, className: e.target.value }))}
+                              disabled={inlineSaving}
+                              className="w-full px-1.5 py-1 text-[11px] font-bold bg-white border border-blue-400 rounded text-slate-800"
+                            >
+                              {availableClasses.length > 0 ? (
+                                availableClasses.map((cls) => (
+                                  <option key={cls} value={cls}>
+                                    {cls}
+                                  </option>
+                                ))
+                              ) : (
+                                <option value={inlineForm.className}>{inlineForm.className}</option>
+                              )}
+                            </select>
+                          </td>
+                          <td className="py-2.5 px-2">
+                            <select
+                              value={inlineForm.gender ?? "Male"}
+                              onChange={(e) => setInlineForm((prev) => ({ ...prev, gender: e.target.value as "Male" | "Female" }))}
+                              disabled={inlineSaving}
+                              className="px-1.5 py-1 text-xs bg-white border border-blue-400 rounded text-slate-700 font-medium"
+                            >
+                              <option value="Male">Male</option>
+                              <option value="Female">Female</option>
+                            </select>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <select
+                              value={inlineForm.house ?? "Sapphire (Blue)"}
+                              onChange={(e) => setInlineForm((prev) => ({ ...prev, house: e.target.value as StudentRecord["house"] }))}
+                              disabled={inlineSaving}
+                              className="w-full px-1.5 py-1 text-xs bg-white border border-blue-400 rounded text-slate-700"
+                            >
+                              <option value="Sapphire (Blue)">Sapphire (Blue)</option>
+                              <option value="Ruby (Red)">Ruby (Red)</option>
+                              <option value="Emerald (Green)">Emerald (Green)</option>
+                              <option value="Topaz (Yellow)">Topaz (Yellow)</option>
+                            </select>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <input
+                              type="text"
+                              placeholder="Guardian Name"
+                              value={inlineForm.guardianName ?? ""}
+                              onChange={(e) => setInlineForm((prev) => ({ ...prev, guardianName: e.target.value }))}
+                              disabled={inlineSaving}
+                              className="w-full px-1.5 py-0.5 text-xs bg-white border border-blue-400 rounded mb-1"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Phone (080...)"
+                              value={inlineForm.guardianPhone ?? ""}
+                              onChange={(e) => setInlineForm((prev) => ({ ...prev, guardianPhone: e.target.value }))}
+                              disabled={inlineSaving}
+                              className="w-full px-1.5 py-0.5 text-[10px] font-mono bg-white border border-blue-400 rounded"
+                            />
+                          </td>
+                          <td className="py-2.5 px-2 text-center">
+                            <select
+                              value={inlineForm.feeStatus ?? "Outstanding"}
+                              onChange={(e) => setInlineForm((prev) => ({ ...prev, feeStatus: e.target.value as StudentRecord["feeStatus"] }))}
+                              disabled={inlineSaving}
+                              className="px-1.5 py-1 text-[10px] font-bold bg-white border border-blue-400 rounded text-slate-800"
+                            >
+                              <option value="Fully Cleared">Fully Cleared</option>
+                              <option value="Partially Paid">Partially Paid</option>
+                              <option value="Outstanding">Outstanding</option>
+                            </select>
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => void saveInlineEdit()}
+                                disabled={inlineSaving}
+                                className="px-2 py-1 rounded bg-[#4169E1] hover:bg-blue-700 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer disabled:opacity-60 shadow-xs"
+                                title="Save changes (Enter)"
+                              >
+                                {inlineSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelInlineEdit}
+                                disabled={inlineSaving}
+                                className="px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 text-[#E01B00] border border-rose-200 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                                title="Cancel (Esc)"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openFullEdit(s)}
+                                disabled={inlineSaving}
+                                className="text-[10px] font-bold text-blue-700 hover:underline cursor-pointer whitespace-nowrap ml-1"
+                                title="Edit all fields in modal"
+                              >
+                                More...
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {inlineError && (
+                          <tr className="bg-rose-50 border-b-2 border-rose-300">
+                            <td colSpan={8} className="px-4 py-2 text-xs font-semibold text-rose-800">
+                              <div className="flex items-center gap-2">
+                                <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                                <span>{inlineError}</span>
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                        <button
-                          onClick={() => {
-                            if (confirm(`Remove ${s.fullName} from enrollment records? Their saved CA scores and invoices go with them.`)) {
-                              deleteStudent(s.id);
-                            }
-                          }}
-                          className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
-                          title="Delete Student"
+                      </React.Fragment>
+                    );
+                  }
+
+                  return (
+                    <tr key={s.id} className="hover:bg-blue-50/20 transition-colors">
+                      <td className="py-3 px-4 font-mono font-bold text-blue-900">{s.admissionNo}</td>
+                      <td className="py-3 px-4 font-semibold text-slate-900">{s.fullName}</td>
+                      <td className="py-3 px-3">
+                        <span className="inline-block text-[10px] font-bold bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-200">
+                          {s.className}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-slate-600">{s.gender}</td>
+                      <td className="py-3 px-4 text-slate-600">{s.house}</td>
+                      <td className="py-3 px-4">
+                        <p className="font-medium text-slate-800 leading-tight">{s.guardianName || "N/A"}</p>
+                        <p className="text-[10px] text-slate-400 font-mono">{s.guardianPhone || "N/A"}</p>
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <span
+                          className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded ${
+                            s.feeStatus === "Fully Cleared"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : s.feeStatus === "Partially Paid"
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-amber-100 text-amber-800"
+                          }`}
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {s.feeStatus}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => startInlineEdit(s)}
+                            className="px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[11px] flex items-center gap-1 cursor-pointer border border-amber-200 shadow-2xs"
+                            title="Quick edit pupil"
+                          >
+                            <Pencil className="w-3 h-3 text-amber-700" />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDossierStudent(s)}
+                            className="px-2.5 py-1 rounded bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold text-[11px] flex items-center gap-1 cursor-pointer"
+                            title="Open official student dossier"
+                          >
+                            <FileText className="w-3 h-3" />
+                            Dossier
+                          </button>
+                          <Link
+                            href="/operations/update-ca"
+                            className="px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-[11px]"
+                          >
+                            Gradebook
+                          </Link>
+                          {canReachCards && (
+                            <Link
+                              href={`/operations/id-cards?holder=student&ref=${encodeURIComponent(s.admissionNo)}`}
+                              className="px-2.5 py-1 rounded bg-brand-600 hover:bg-brand-700 text-white font-bold text-[11px]"
+                              title={`Design and print the identity card for ${s.fullName}`}
+                            >
+                              ID Card
+                            </Link>
+                          )}
+                          <button
+                            onClick={() => {
+                              if (confirm(`Remove ${s.fullName} from enrollment records? Their saved CA scores and invoices go with them.`)) {
+                                deleteStudent(s.id);
+                              }
+                            }}
+                            className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
+                            title="Delete Student"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -917,6 +1231,313 @@ export default function StudentsPage() {
                   </div>
                 </div>
               </SchoolLetterhead>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Full Student Profile Editor */}
+        {fullEditStudent && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+            <div className="bg-white rounded-2xl max-w-2xl w-full border border-slate-200 shadow-2xl max-h-[92vh] overflow-y-auto p-6 md:p-8 space-y-5">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#4169E1] flex items-center justify-center border border-blue-200">
+                    <Pencil className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-base text-slate-900">
+                      Edit Student Profile Dossier
+                    </h3>
+                    <p className="text-xs text-slate-500 font-mono">
+                      Ref ID: {fullEditStudent.admissionNo} • Enrolled in {fullEditStudent.className}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFullEditStudent(null)}
+                  disabled={fullEditSaving}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {fullEditError && (
+                <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-rose-900 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                  <span>{fullEditError}</span>
+                </div>
+              )}
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void saveFullEdit();
+                }}
+                className="space-y-4 text-xs"
+              >
+                {/* SECTION A: Core Enrollment Details */}
+                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/70 space-y-3">
+                  <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-600 block border-b border-slate-200 pb-1">
+                    SECTION A: CORE ENROLLMENT &amp; IDENTIFIER
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Full Legal Name *</label>
+                      <input
+                        type="text"
+                        value={fullEditForm.fullName ?? ""}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, fullName: e.target.value })}
+                        required
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-semibold text-slate-900 focus:ring-2 focus:ring-[#4169E1] focus:outline-hidden"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Admission Number *</label>
+                      <input
+                        type="text"
+                        value={fullEditForm.admissionNo ?? ""}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, admissionNo: e.target.value })}
+                        required
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-mono font-bold text-blue-900 focus:ring-2 focus:ring-[#4169E1] focus:outline-hidden"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Class Arm *</label>
+                      <select
+                        value={fullEditForm.className ?? ""}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, className: e.target.value })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-800"
+                      >
+                        {availableClasses.map((cls) => (
+                          <option key={cls} value={cls}>
+                            {cls}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Gender *</label>
+                      <select
+                        value={fullEditForm.gender ?? "Male"}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, gender: e.target.value as "Male" | "Female" })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-800"
+                      >
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Sports House</label>
+                      <select
+                        value={fullEditForm.house ?? "Sapphire (Blue)"}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, house: e.target.value as StudentRecord["house"] })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-800"
+                      >
+                        <option value="Sapphire (Blue)">Sapphire (Blue)</option>
+                        <option value="Ruby (Red)">Ruby (Red)</option>
+                        <option value="Emerald (Green)">Emerald (Green)</option>
+                        <option value="Topaz (Yellow)">Topaz (Yellow)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Fee Standing</label>
+                      <select
+                        value={fullEditForm.feeStatus ?? "Outstanding"}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, feeStatus: e.target.value as StudentRecord["feeStatus"] })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-800"
+                      >
+                        <option value="Fully Cleared">Fully Cleared</option>
+                        <option value="Partially Paid">Partially Paid</option>
+                        <option value="Outstanding">Outstanding</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION B: Biodata & Demographics */}
+                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/70 space-y-3">
+                  <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-600 block border-b border-slate-200 pb-1">
+                    SECTION B: BIODATA &amp; DEMOGRAPHICS
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Date of Birth</label>
+                      <input
+                        type="date"
+                        value={fullEditForm.dateOfBirth ?? ""}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, dateOfBirth: e.target.value })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Blood Group</label>
+                      <select
+                        value={fullEditForm.bloodGroup ?? ""}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, bloodGroup: e.target.value })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-800"
+                      >
+                        <option value="">Not Specified</option>
+                        <option value="O+">O+ (Universal Donor)</option>
+                        <option value="O-">O-</option>
+                        <option value="A+">A+</option>
+                        <option value="A-">A-</option>
+                        <option value="B+">B+</option>
+                        <option value="B-">B-</option>
+                        <option value="AB+">AB+</option>
+                        <option value="AB-">AB-</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Religion</label>
+                      <input
+                        type="text"
+                        placeholder="Christianity / Islam"
+                        value={fullEditForm.religion ?? ""}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, religion: e.target.value })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Nationality</label>
+                      <input
+                        type="text"
+                        value={fullEditForm.nationality ?? "Nigerian"}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, nationality: e.target.value })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">State of Origin</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Lagos, Edo, Delta"
+                        value={fullEditForm.stateOfOrigin ?? ""}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, stateOfOrigin: e.target.value })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">LGA</label>
+                      <input
+                        type="text"
+                        placeholder="Local Govt Area"
+                        value={fullEditForm.lga ?? ""}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, lga: e.target.value })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION C: Parent / Guardian Contacts */}
+                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/70 space-y-3">
+                  <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-600 block border-b border-slate-200 pb-1">
+                    SECTION C: PARENT / GUARDIAN CONTACTS
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Primary Guardian Name</label>
+                      <input
+                        type="text"
+                        value={fullEditForm.guardianName ?? ""}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, guardianName: e.target.value })}
+                        placeholder="Full Name"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800 font-medium"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Guardian Phone (WhatsApp)</label>
+                      <input
+                        type="text"
+                        value={fullEditForm.guardianPhone ?? ""}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, guardianPhone: e.target.value })}
+                        placeholder="080..."
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-mono text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Guardian Email</label>
+                      <input
+                        type="email"
+                        value={fullEditForm.guardianEmail ?? ""}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, guardianEmail: e.target.value })}
+                        placeholder="parent@example.com"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Relationship</label>
+                      <input
+                        type="text"
+                        value={fullEditForm.guardianRelationship ?? "Parent"}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, guardianRelationship: e.target.value })}
+                        placeholder="Father / Mother / Legal Guardian"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Residential Address</label>
+                      <input
+                        type="text"
+                        value={fullEditForm.guardianAddress ?? ""}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, guardianAddress: e.target.value })}
+                        placeholder="Street address, City"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION D: Medical & Allergies */}
+                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/70 space-y-3">
+                  <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-600 block border-b border-slate-200 pb-1">
+                    SECTION D: MEDICAL &amp; ALLERGIES DIRECTIVES
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Known Allergies</label>
+                      <input
+                        type="text"
+                        value={fullEditForm.allergies ?? ""}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, allergies: e.target.value })}
+                        placeholder="e.g. Peanuts, Penicillin, Asthmatic"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Medical Notes &amp; Directives</label>
+                      <input
+                        type="text"
+                        value={fullEditForm.medicalNotes ?? ""}
+                        onChange={(e) => setFullEditForm({ ...fullEditForm, medicalNotes: e.target.value })}
+                        placeholder="Special health needs, emergency instructions"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setFullEditStudent(null)}
+                    disabled={fullEditSaving}
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={fullEditSaving}
+                    className="px-5 py-2 rounded-xl bg-[#4169E1] hover:bg-blue-700 text-white font-bold flex items-center gap-2 shadow-xs cursor-pointer disabled:opacity-60"
+                  >
+                    {fullEditSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    Save Full Profile
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
