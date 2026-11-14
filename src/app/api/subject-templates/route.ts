@@ -91,6 +91,72 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
   }
 
+  // 1-Click Package Application to Class Arm
+  if (body && typeof body === "object" && !Array.isArray(body) && (body as any).action === "apply") {
+    const { templateId, targetClass } = body as { templateId?: string; targetClass?: string };
+    if (!templateId || !targetClass) {
+      return NextResponse.json({ success: false, error: "Provide templateId and targetClass to apply package." }, { status: 400 });
+    }
+
+    const supabase = getSupabaseServerClient();
+    if (!supabase) return databaseUnavailable();
+
+    const { data: tpl, error: tplErr } = await supabase
+      .from("subject_templates")
+      .select("*")
+      .eq("id", templateId)
+      .maybeSingle();
+
+    if (tplErr || !tpl) {
+      return NextResponse.json({ success: false, error: "Subject package not found." }, { status: 404 });
+    }
+
+    const subjectList: string[] = Array.isArray(tpl.subjects) ? tpl.subjects : [];
+    if (subjectList.length === 0) {
+      return NextResponse.json({ success: false, error: "This package contains no subjects." }, { status: 400 });
+    }
+
+    const applied: string[] = [];
+    for (const subName of subjectList) {
+      const { data: existing } = await supabase
+        .from("subjects")
+        .select("*")
+        .eq("name", subName)
+        .maybeSingle();
+
+      if (existing) {
+        const currentClasses: string[] = Array.isArray(existing.applicable_classes) ? existing.applicable_classes : [];
+        if (!currentClasses.includes(targetClass)) {
+          await supabase
+            .from("subjects")
+            .update({
+              applicable_classes: [...currentClasses, targetClass],
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", existing.id);
+        }
+      } else {
+        await supabase.from("subjects").insert({
+          name: subName,
+          code: "",
+          category: tpl.department,
+          applicable_classes: [targetClass],
+          is_compulsory: true,
+          is_core: subName.toLowerCase().includes("math") || subName.toLowerCase().includes("english"),
+          school_level: targetClass.toLowerCase().includes("jss") || targetClass.toLowerCase().includes("ss") ? "SECONDARY" : "PRIMARY",
+          is_active: true,
+        });
+      }
+      applied.push(subName);
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Successfully applied ${applied.length} subject(s) from “${tpl.name}” to ${targetClass}.`,
+      data: { templateName: tpl.name, targetClass, applied },
+    });
+  }
+
   const list = Array.isArray(body) ? body : [body];
   if (list.length === 0) {
     return NextResponse.json({ success: false, error: "No subject template was sent." }, { status: 400 });

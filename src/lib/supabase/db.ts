@@ -2022,6 +2022,8 @@ interface ClassArmRow {
   form_teacher_id: string;
   capacity: number | string | null;
   students_count?: number | string | null;
+  is_active?: boolean | null;
+  sort_order?: number | string | null;
 }
 
 function toClassArmRecord(row: ClassArmRow): ClassArmRecord {
@@ -2034,6 +2036,8 @@ function toClassArmRecord(row: ClassArmRow): ClassArmRecord {
     // Counted from the roll by the route, not read back off the arm row.
     studentsCount: Number(row.students_count) || 0,
     capacity: Number(row.capacity) || 0,
+    isActive: row.is_active !== false,
+    sortOrder: Number(row.sort_order) || 0,
   };
 }
 
@@ -2051,6 +2055,8 @@ export interface ClassArmInput {
   formTeacher: string;
   formTeacherId: string;
   capacity: number;
+  isActive?: boolean;
+  sortOrder?: number;
 }
 
 export async function saveClassArmOnServer(arm: ClassArmInput): Promise<{ ok: boolean; reason: string | null }> {
@@ -2061,10 +2067,45 @@ export async function saveClassArmOnServer(arm: ClassArmInput): Promise<{ ok: bo
     form_teacher: arm.formTeacher,
     form_teacher_id: arm.formTeacherId,
     capacity: arm.capacity,
+    is_active: arm.isActive !== false,
+    sort_order: arm.sortOrder ?? 0,
   });
   if (reason) reportSyncFailure(`The class arm was NOT filed on the school's list: ${reason}.`);
   else reportSyncSaved(`“${arm.name}” filed on the school's class list.`);
   return { ok: !reason, reason };
+}
+
+export async function updateClassArmOnServer(
+  id: string,
+  updates: Partial<ClassArmInput>
+): Promise<{ ok: boolean; reason: string | null }> {
+  try {
+    const payload: Record<string, any> = { id };
+    if (updates.name !== undefined) payload.name = updates.name;
+    if (updates.section !== undefined) payload.section = updates.section;
+    if (updates.formTeacher !== undefined) payload.form_teacher = updates.formTeacher;
+    if (updates.formTeacherId !== undefined) payload.form_teacher_id = updates.formTeacherId;
+    if (updates.capacity !== undefined) payload.capacity = updates.capacity;
+    if (updates.isActive !== undefined) payload.is_active = updates.isActive;
+    if (updates.sortOrder !== undefined) payload.sort_order = updates.sortOrder;
+
+    const response = await fetch("/api/classes", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const reason = await serverReason(response);
+      reportSyncFailure(`The class arm was NOT updated: ${reason}.`);
+      return { ok: false, reason };
+    }
+    reportSyncSaved(`Class arm updated.`);
+    return { ok: true, reason: null };
+  } catch (error) {
+    console.warn("API /api/classes patch failed", error);
+    return { ok: false, reason: "the portal server did not answer" };
+  }
 }
 
 export async function removeClassArmOnServer(id: string): Promise<{ ok: boolean; reason: string | null }> {
@@ -2097,6 +2138,9 @@ interface SubjectRow {
   category: string | null;
   applicable_classes: string[] | null;
   is_compulsory: boolean | null;
+  is_core?: boolean | null;
+  school_level?: string | null;
+  is_active?: boolean | null;
 }
 
 function toSubjectRecord(row: SubjectRow): SubjectRecord {
@@ -2107,8 +2151,9 @@ function toSubjectRecord(row: SubjectRow): SubjectRecord {
     category: row.category || undefined,
     applicableClasses: Array.isArray(row.applicable_classes) ? row.applicable_classes : [],
     isCompulsory: row.is_compulsory !== false,
-    // Deliberately absent: which teacher sits a paper is on the timetable, and
-    // a number here would be whatever this device last typed.
+    isCore: Boolean(row.is_core),
+    schoolLevel: (row.school_level || "PRIMARY") as "PRIMARY" | "SECONDARY" | "ALL",
+    isActive: row.is_active !== false,
   };
 }
 
@@ -2125,6 +2170,9 @@ export interface SubjectInput {
   category?: string;
   applicableClasses: string[];
   isCompulsory?: boolean;
+  isCore?: boolean;
+  schoolLevel?: "PRIMARY" | "SECONDARY" | "ALL";
+  isActive?: boolean;
 }
 
 /** Files one subject or the whole batch the screen has typed. */
@@ -2138,11 +2186,48 @@ export async function saveSubjectsOnServer(list: SubjectInput[]): Promise<{ ok: 
       category: subject.category ?? "",
       applicable_classes: subject.applicableClasses,
       is_compulsory: subject.isCompulsory !== false,
+      is_core: Boolean(subject.isCore),
+      school_level: subject.schoolLevel || "PRIMARY",
+      is_active: subject.isActive !== false,
     }))
   );
   if (reason) reportSyncFailure(`The subject list was NOT filed on the school's records: ${reason}.`);
   else reportSyncSaved(`${list.length} subject${list.length === 1 ? "" : "s"} filed on the school's subject list.`);
   return { ok: !reason, reason };
+}
+
+export async function updateSubjectOnServer(
+  id: string,
+  updates: Partial<SubjectInput>
+): Promise<{ ok: boolean; reason: string | null }> {
+  try {
+    const payload: Record<string, any> = { id };
+    if (updates.name !== undefined) payload.name = updates.name;
+    if (updates.code !== undefined) payload.code = updates.code;
+    if (updates.category !== undefined) payload.category = updates.category;
+    if (updates.applicableClasses !== undefined) payload.applicable_classes = updates.applicableClasses;
+    if (updates.isCompulsory !== undefined) payload.is_compulsory = updates.isCompulsory;
+    if (updates.isCore !== undefined) payload.is_core = updates.isCore;
+    if (updates.schoolLevel !== undefined) payload.school_level = updates.schoolLevel;
+    if (updates.isActive !== undefined) payload.is_active = updates.isActive;
+
+    const response = await fetch("/api/subjects", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const reason = await serverReason(response);
+      reportSyncFailure(`The subject was NOT updated: ${reason}.`);
+      return { ok: false, reason };
+    }
+    reportSyncSaved(`Subject updated.`);
+    return { ok: true, reason: null };
+  } catch (error) {
+    console.warn("API /api/subjects patch failed", error);
+    return { ok: false, reason: "the portal server did not answer" };
+  }
 }
 
 /**
@@ -2257,6 +2342,34 @@ export async function removeSubjectTemplatesOnServer(ids: string[]): Promise<{ o
     const reason = "the portal server did not answer";
     reportSyncFailure(`The subject package was NOT removed from the school's list: ${reason}.`);
     return { ok: false, reason };
+  }
+}
+
+/** 1-Click: Applies a subject package's subjects to an entire class arm */
+export async function applySubjectTemplateOnServer(
+  templateId: string,
+  targetClass: string
+): Promise<{ ok: boolean; reason: string | null; message?: string }> {
+  try {
+    const response = await fetch("/api/subject-templates", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "apply", templateId, targetClass }),
+    });
+
+    if (!response.ok) {
+      const reason = await serverReason(response);
+      reportSyncFailure(`Failed to apply subject package: ${reason}.`);
+      return { ok: false, reason };
+    }
+    const data = await response.json();
+    const msg = data?.message || `Subject package applied to ${targetClass}.`;
+    reportSyncSaved(msg);
+    return { ok: true, reason: null, message: msg };
+  } catch (error) {
+    console.warn("API /api/subject-templates apply failed", error);
+    return { ok: false, reason: "the portal server did not answer" };
   }
 }
 

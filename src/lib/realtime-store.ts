@@ -34,14 +34,17 @@ import {
   saveTraitsConfigOnServer,
   fetchClassArmsFromSupabase,
   saveClassArmOnServer,
+  updateClassArmOnServer,
   removeClassArmOnServer,
   type ClassArmInput,
   fetchSubjectsFromSupabase,
   saveSubjectsOnServer,
+  updateSubjectOnServer,
   removeSubjectsOnServer,
   type SubjectInput,
   fetchSubjectTemplatesFromSupabase,
   saveSubjectTemplatesOnServer,
+  applySubjectTemplateOnServer,
   removeSubjectTemplatesOnServer,
   type SubjectTemplateInput,
   fetchCBTQuestionsFromSupabase,
@@ -211,6 +214,8 @@ export interface ClassArmRecord {
   formTeacherId: string;
   studentsCount: number;
   capacity: number; // Default 0 (Dynamic relative to onboarding)
+  isActive?: boolean;
+  sortOrder?: number;
 }
 
 export interface StaffPermissions {
@@ -1837,7 +1842,20 @@ export function useRealtimeClasses() {
     return outcome;
   };
 
-  return { classes, classesSource, addClass, deleteClass, reloadClasses: showServerArms };
+  const updateClass = async (
+    id: string,
+    updates: Partial<ClassArmInput>
+  ): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database" };
+    }
+
+    const outcome = await updateClassArmOnServer(id, updates);
+    if (outcome.ok) await showServerArms();
+    return outcome;
+  };
+
+  return { classes, classesSource, addClass, updateClass, deleteClass, reloadClasses: showServerArms };
 }
 
 // -------------------------------------------------------------
@@ -2346,6 +2364,9 @@ export interface SubjectRecord {
   category?: string;
   applicableClasses: string[];
   isCompulsory?: boolean;
+  isCore?: boolean;
+  schoolLevel?: "PRIMARY" | "SECONDARY" | "ALL";
+  isActive?: boolean;
 }
 
 export const INITIAL_SUBJECTS: SubjectRecord[] = [];
@@ -2446,6 +2467,19 @@ export function useRealtimeSubjects() {
     return { ok: outcome.ok, reason: outcome.reason };
   };
 
+  const updateSubject = async (
+    id: string,
+    updates: Partial<SubjectInput>
+  ): Promise<{ ok: boolean; reason: string | null }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database" };
+    }
+
+    const outcome = await updateSubjectOnServer(id, updates);
+    if (outcome.ok) await showServerSubjects();
+    return outcome;
+  };
+
   /**
    * Removes every subject the school holds.
    *
@@ -2469,6 +2503,7 @@ export function useRealtimeSubjects() {
     subjects,
     subjectsSource,
     addSubjects,
+    updateSubject,
     deleteSubject,
     clearAllSubjects,
     reloadSubjects: showServerSubjects,
@@ -2825,10 +2860,23 @@ export function useRealtimeSubjectTemplates() {
     return { ok: outcome.ok, reason: outcome.reason };
   };
 
+  const applyTemplateToClass = async (
+    templateId: string,
+    targetClass: string
+  ): Promise<{ ok: boolean; reason: string | null; message?: string }> => {
+    if (!isSupabaseConfigured) {
+      return { ok: false, reason: "this device is not connected to the school database" };
+    }
+
+    const outcome = await applySubjectTemplateOnServer(templateId, targetClass);
+    return outcome;
+  };
+
   return {
     templates,
     templatesSource,
     addTemplates,
+    applyTemplateToClass,
     deleteTemplate,
     reloadTemplates: showServerTemplates,
   };
