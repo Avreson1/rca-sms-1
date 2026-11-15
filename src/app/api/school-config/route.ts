@@ -3,10 +3,17 @@ import { requireRole, requireRoleSession } from "@/lib/auth/guard";
 import {
   databaseSetupRequired,
   databaseUnavailable,
+  executeWithJwtRetry,
   getSupabaseServerClient,
+  inspectJwtClockSkew,
+  isJwtFutureError,
 } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+const NO_CACHE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+};
 
 // Matches isActionAuthorized("EDIT_SETUP") in src/lib/rbac.ts: the office that
 // sets the grading scales also says which term the portal is currently in.
@@ -34,16 +41,27 @@ export async function GET() {
   const supabase = getSupabaseServerClient();
   if (!supabase) return databaseUnavailable();
 
-  const { data, error } = await supabase
-    .from("school_config")
-    .select("*")
-    .eq("id", 1)
-    .maybeSingle();
+  const { data, error } = await executeWithJwtRetry(
+    async () => await supabase.from("school_config").select("*").eq("id", 1).maybeSingle(),
+    { label: "GET /api/school-config" }
+  );
 
   if (error) {
+    if (isJwtFutureError(error)) {
+      const skew = inspectJwtClockSkew(process.env.SUPABASE_SERVICE_ROLE_KEY || "");
+      const diag = skew.isFuture ? ` (Service key is ${skew.diffSeconds}s ahead of local clock)` : "";
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Database authentication clock skew: JWT issued at future${diag}. Please synchronize server clock with NTP.`,
+          reason: "JWT issued at future",
+        },
+        { status: 503, headers: NO_CACHE_HEADERS }
+      );
+    }
     const setup = databaseSetupRequired(error, "supabase/operations_state.sql");
     if (setup) return setup;
-    return NextResponse.json({ success: false, error: error.message }, { status: 502 });
+    return NextResponse.json({ success: false, error: error.message }, { status: 502, headers: NO_CACHE_HEADERS });
   }
   if (!data) {
     return NextResponse.json(
@@ -52,11 +70,11 @@ export async function GET() {
         error:
           "There is no school settings row yet. Run supabase/operations_state.sql in the Supabase SQL editor; it creates and seeds the row.",
       },
-      { status: 503 }
+      { status: 503, headers: NO_CACHE_HEADERS }
     );
   }
 
-  return NextResponse.json({ success: true, data });
+  return NextResponse.json({ success: true, data }, { headers: NO_CACHE_HEADERS });
 }
 
 /**
@@ -86,16 +104,27 @@ export async function PUT(request: Request) {
   if (!supabase) return databaseUnavailable();
 
   // Load existing row so partial updates (e.g. from /setup/records-dossier) keep current values
-  const { data: existingRow, error: fetchErr } = await supabase
-    .from("school_config")
-    .select("*")
-    .eq("id", 1)
-    .maybeSingle();
+  const { data: existingRow, error: fetchErr } = await executeWithJwtRetry(
+    async () => await supabase.from("school_config").select("*").eq("id", 1).maybeSingle(),
+    { label: "PUT /api/school-config (fetch existing)" }
+  );
 
   if (fetchErr) {
+    if (isJwtFutureError(fetchErr)) {
+      const skew = inspectJwtClockSkew(process.env.SUPABASE_SERVICE_ROLE_KEY || "");
+      const diag = skew.isFuture ? ` (Service key is ${skew.diffSeconds}s ahead of local clock)` : "";
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Database authentication clock skew: JWT issued at future${diag}. Please synchronize server clock with NTP.`,
+          reason: "JWT issued at future",
+        },
+        { status: 503, headers: NO_CACHE_HEADERS }
+      );
+    }
     const setup = databaseSetupRequired(fetchErr, "supabase/operations_state.sql");
     if (setup) return setup;
-    return NextResponse.json({ success: false, error: fetchErr.message }, { status: 502 });
+    return NextResponse.json({ success: false, error: fetchErr.message }, { status: 502, headers: NO_CACHE_HEADERS });
   }
 
   const textFields: Array<[string, string, number]> = [
@@ -157,10 +186,14 @@ export async function PUT(request: Request) {
     );
   }
 
-  let { error } = await supabase
-    .from("school_config")
-    .update({ ...update, updated_by: session.username, updated_at: new Date().toISOString() })
-    .eq("id", 1);
+  let { error } = await executeWithJwtRetry(
+    async () =>
+      await supabase
+        .from("school_config")
+        .update({ ...update, updated_by: session.username, updated_at: new Date().toISOString() })
+        .eq("id", 1),
+    { label: "PUT /api/school-config (update)" }
+  );
 
   // If new columns are not yet in remote DB, fallback safely
   if (error && /primary_signatory|secondary_signatory|auth_footer/i.test(error.message)) {
@@ -168,18 +201,34 @@ export async function PUT(request: Request) {
     for (const [col] of optionalSignatoryFields) {
       delete fallbackUpdate[col];
     }
-    const retry = await supabase
-      .from("school_config")
-      .update({ ...fallbackUpdate, updated_by: session.username, updated_at: new Date().toISOString() })
-      .eq("id", 1);
+    const retry = await executeWithJwtRetry(
+      async () =>
+        await supabase
+          .from("school_config")
+          .update({ ...fallbackUpdate, updated_by: session.username, updated_at: new Date().toISOString() })
+          .eq("id", 1),
+      { label: "PUT /api/school-config (fallback retry)" }
+    );
     error = retry.error;
   }
 
   if (error) {
+    if (isJwtFutureError(error)) {
+      const skew = inspectJwtClockSkew(process.env.SUPABASE_SERVICE_ROLE_KEY || "");
+      const diag = skew.isFuture ? ` (Service key is ${skew.diffSeconds}s ahead of local clock)` : "";
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Database authentication clock skew: JWT issued at future${diag}. Please synchronize server clock with NTP.`,
+          reason: "JWT issued at future",
+        },
+        { status: 503, headers: NO_CACHE_HEADERS }
+      );
+    }
     const setup = databaseSetupRequired(error, "supabase/operations_state.sql");
     if (setup) return setup;
-    return NextResponse.json({ success: false, error: error.message }, { status: 502 });
+    return NextResponse.json({ success: false, error: error.message }, { status: 502, headers: NO_CACHE_HEADERS });
   }
 
-  return NextResponse.json({ success: true, data: update });
+  return NextResponse.json({ success: true, data: update }, { headers: NO_CACHE_HEADERS });
 }

@@ -3,10 +3,17 @@ import { requireRole, requireRoleSession } from "@/lib/auth/guard";
 import {
   databaseSetupRequired,
   databaseUnavailable,
+  executeWithJwtRetry,
   getSupabaseServerClient,
+  inspectJwtClockSkew,
+  isJwtFutureError,
 } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+const NO_CACHE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+};
 
 // The office that approves a result release is the office that signs a term off.
 const EDIT_SETUP = ["SUPER_ADMIN", "EXAM_OFFICER"] as const;
@@ -36,19 +43,35 @@ export async function GET() {
   const supabase = getSupabaseServerClient();
   if (!supabase) return databaseUnavailable();
 
-  const { data, error } = await supabase
-    .from("closed_terms")
-    .select("session, term, closed_by, closed_at")
-    .order("session", { ascending: false })
-    .order("closed_at", { ascending: false });
+  const { data, error } = await executeWithJwtRetry(
+    async () =>
+      await supabase
+        .from("closed_terms")
+        .select("session, term, closed_by, closed_at")
+        .order("session", { ascending: false })
+        .order("closed_at", { ascending: false }),
+    { label: "GET /api/term-closings" }
+  );
 
   if (error) {
+    if (isJwtFutureError(error)) {
+      const skew = inspectJwtClockSkew(process.env.SUPABASE_SERVICE_ROLE_KEY || "");
+      const diag = skew.isFuture ? ` (Service key is ${skew.diffSeconds}s ahead of local clock)` : "";
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Database authentication clock skew: JWT issued at future${diag}. Please synchronize server clock with NTP.`,
+          reason: "JWT issued at future",
+        },
+        { status: 503, headers: NO_CACHE_HEADERS }
+      );
+    }
     const setup = databaseSetupRequired(error, "supabase/operations_state.sql");
     if (setup) return setup;
-    return NextResponse.json({ success: false, error: error.message }, { status: 502 });
+    return NextResponse.json({ success: false, error: error.message }, { status: 502, headers: NO_CACHE_HEADERS });
   }
 
-  return NextResponse.json({ success: true, data: data ?? [] });
+  return NextResponse.json({ success: true, data: data ?? [] }, { headers: NO_CACHE_HEADERS });
 }
 
 /**

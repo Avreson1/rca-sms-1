@@ -64,7 +64,12 @@ export function getSessionSecret(): string {
 }
 
 export async function createSessionToken(user: SessionUser, secret: string): Promise<string> {
-  const payload = { ...user, exp: Math.floor(Date.now() / 1000) + SESSION_IDLE_SECONDS };
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    ...user,
+    iat: now - 30, // backdate by 30 seconds to absorb container/server clock drift
+    exp: now + SESSION_IDLE_SECONDS,
+  };
   const body = toBase64Url(encoder.encode(JSON.stringify(payload)));
   const signature = await crypto.subtle.sign("HMAC", await importHmacKey(secret), encoder.encode(body));
   return `${body}.${toBase64Url(new Uint8Array(signature))}`;
@@ -94,7 +99,10 @@ export async function verifySessionToken(
 
   try {
     const payload = JSON.parse(new TextDecoder().decode(fromBase64Url(body)));
-    if (typeof payload.exp !== "number" || payload.exp < Math.floor(Date.now() / 1000)) return null;
+    const now = Math.floor(Date.now() / 1000);
+    if (typeof payload.exp !== "number" || payload.exp < now) return null;
+    // Allow up to 60 seconds of future clock skew on iat if present
+    if (typeof payload.iat === "number" && payload.iat > now + 60) return null;
     return {
       username: String(payload.username),
       fullName: String(payload.fullName),

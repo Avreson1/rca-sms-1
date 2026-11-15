@@ -156,6 +156,8 @@ export interface StudentRecord {
   stateOfOrigin?: string;
   lga?: string;
   religion?: string;
+  status?: string;
+  section?: string;
 }
 
 export interface SubjectScoreRecord {
@@ -259,6 +261,7 @@ export interface StaffRecord {
   standingDuties?: string[];
   permissions?: StaffPermissions;
   // Extended profile fields
+  gender?: string;
   staffType?: string;
   dateOfBirth?: string;
   employmentDate?: string;

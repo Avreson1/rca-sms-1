@@ -383,6 +383,12 @@ export default function StaffManagementPage() {
 
   // Full Profile Edit Handlers
   const openFullEditStaff = (s: StaffRecord) => {
+    const formClass = classes.find(
+      (c) => (s.staffId && c.formTeacherId === s.staffId) || (c.formTeacher && c.formTeacher === s.fullName)
+    );
+    const assignedClass = s.assignedClass || formClass?.name || (classes[0]?.name ?? "Primary 1");
+    const isFormMaster = Boolean(s.isFormMaster || formClass);
+
     setFullEditStaff(s);
     setFullEditStaffForm({
       staffId: s.staffId,
@@ -392,8 +398,8 @@ export default function StaffManagementPage() {
       phone: s.phone || "",
       role: s.role,
       assignedSubjects: s.assignedSubjects || [],
-      assignedClass: s.assignedClass || "Primary 1",
-      isFormMaster: Boolean(s.isFormMaster),
+      assignedClass,
+      isFormMaster,
       designation: s.designation || "",
       status: s.status || "Active",
       standingDuties: s.standingDuties || [],
@@ -995,22 +1001,31 @@ export default function StaffManagementPage() {
                           </div>
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <div className="flex items-center justify-end">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => openFullEditStaff(s)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg shadow-2xs hover:bg-slate-50 hover:text-blue-600 hover:border-blue-300 transition-colors cursor-pointer"
+                              title={`Edit ${s.fullName}'s profile and Form Teacher assignment`}
+                            >
+                              <Pencil className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Edit</span>
+                            </button>
                             <RowActionsDropdown
                               items={[
                                 {
                                   id: "edit",
-                                  label: "Edit Record",
+                                  label: "Edit Profile Dossier",
                                   icon: <Pencil className="w-3.5 h-3.5" />,
-                                  onClick: () => startInlineStaffEdit(s),
-                                  title: "Quick edit staff record inline",
-                                },
-                                {
-                                  id: "full-edit",
-                                  label: "Full Profile Editor",
-                                  icon: <FileText className="w-3.5 h-3.5" />,
                                   onClick: () => openFullEditStaff(s),
                                   title: "Open complete 5-section staff profile drawer",
+                                },
+                                {
+                                  id: "inline-edit",
+                                  label: "Quick Inline Edit",
+                                  icon: <Pencil className="w-3.5 h-3.5" />,
+                                  onClick: () => startInlineStaffEdit(s),
+                                  title: "Quick edit staff record directly in table",
                                 },
                                 {
                                   id: "dossier",

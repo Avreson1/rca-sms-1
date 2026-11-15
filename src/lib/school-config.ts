@@ -28,6 +28,13 @@ function loadOnce(): Promise<void> {
       if (row) {
         cached = row;
         loaded = true;
+      } else {
+        // If the initial read failed (e.g. transient NTP clock skew or database keep-warm),
+        // schedule an automatic retry in 2000ms so the session and term load cleanly
+        // without requiring a full browser reload.
+        setTimeout(() => {
+          if (!loaded) void loadOnce();
+        }, 2000);
       }
       emit();
     })

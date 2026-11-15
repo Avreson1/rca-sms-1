@@ -59,6 +59,8 @@ const navItems: NavItem[] = [
       { title: "Houses", href: "/setup/houses" },
       { title: "Report Templates", href: "/setup/report-templates" },
       { title: "Records & Dossier", href: "/setup/records-dossier" },
+      { title: "Staff", href: "/setup/staff" },
+      { title: "Students", href: "/setup/students" },
     ],
   },
   {
