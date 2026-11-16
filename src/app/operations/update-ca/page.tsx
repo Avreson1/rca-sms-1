@@ -10,11 +10,15 @@ import {
   useRealtimeSubjectTemplates,
   useRealtimeGradingScales,
   useRealtimeSubjectScores,
+  useRealtimeCAStructure,
   useRealtimeAuth,
   calculateGradeForClass,
+  CA_TIER_LABELS,
+  type CATierKey,
   type CBTSittingRecord,
   type StudentRecord,
 } from "@/lib/realtime-store";
+import { matchesClassArm } from "@/lib/class-matching";
 import { DeviceOnlyNotice } from "@/components/ui/device-only-notice";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { fetchCBTSittingsForClass } from "@/lib/supabase/db";
@@ -31,6 +35,10 @@ import {
   Cpu,
   Sliders,
   FileDown,
+  ArrowRight,
+  Info,
+  Users,
+  Layers,
 } from "lucide-react";
 
 /** A sitting with no readable timestamp says so instead of printing `Invalid Date`. */
@@ -44,6 +52,7 @@ export default function UpdateCAPage() {
   const { classes, classesSource } = useRealtimeClasses();
   const { templates } = useRealtimeSubjectTemplates();
   const { gradingTiers } = useRealtimeGradingScales();
+  const { caStructures } = useRealtimeCAStructure();
   const { currentUser } = useRealtimeAuth();
 
   // The session and term the school says it is in. This screen read one session
@@ -68,10 +77,12 @@ export default function UpdateCAPage() {
     // added to every teacher's list here, so a teacher assigned to SS 2 could
     // open and file Primary 1's gradebook too.
     if (isTeacher && currentUser?.assignedClass) {
-      return allClassesList.filter((c) => c === currentUser.assignedClass);
+      const teacherClass = currentUser.assignedClass;
+      const matched = allClassesList.filter((c) => matchesClassArm(c, teacherClass, classes));
+      return matched.length > 0 ? matched : [teacherClass];
     }
     return allClassesList;
-  }, [isTeacher, currentUser, allClassesList]);
+  }, [isTeacher, currentUser, allClassesList, classes]);
 
   const availableSubjects = useMemo(() => {
     const set = new Set<string>();
@@ -95,6 +106,35 @@ export default function UpdateCAPage() {
   const [isSaved, setIsSaved] = useState(false);
   const [saveNote, setSaveNote] = useState<string | null>(null);
 
+  // Derive active tier key for CA Structure inspection
+  const selectedTierKey = useMemo<CATierKey>(() => {
+    const lower = (selectedClass || "").toLowerCase();
+    if (lower.includes("pre-play") || (lower.includes("play") && !lower.includes("display")) || lower.includes("creche")) {
+      return "PLAY_PRESCHOOL";
+    }
+    if (lower.includes("nursery")) {
+      return "NURSERY";
+    }
+    if (lower.includes("primary") || lower.includes("basic")) {
+      return "PRIMARY";
+    }
+    return "SECONDARY";
+  }, [selectedClass]);
+
+  const activeTierStructure = caStructures[selectedTierKey];
+  const hasConfiguredCAStructure = (activeTierStructure?.components?.length ?? 0) > 0;
+
+  // Verify if selectedSubject is mapped to the current curriculum package
+  const isSubjectMappedToTier = useMemo(() => {
+    if (templates.length === 0) return true;
+    const matchingTemplate = templates.find((t) => t.subjects.includes(selectedSubject));
+    if (!matchingTemplate) return false;
+    if (matchingTemplate.targetClass) {
+      return matchesClassArm(matchingTemplate.targetClass, selectedClass, classes);
+    }
+    return true;
+  }, [templates, selectedSubject, selectedClass, classes]);
+
   // The gradebook is filed against one arm named from the school's class list,
   // and that list arrives after the page has chosen. Marks typed into an arm the
   // school does not run are filed under a name nothing else recognises, so the
@@ -105,9 +145,12 @@ export default function UpdateCAPage() {
     if (classesSource !== "server") return;
     const names = classes.map((c) => c.name);
     if (names.length === 0) return;
-    setSelectedClass((current) =>
-      current === "all" || names.includes(current) ? current : names[0]
-    );
+    setSelectedClass((current) => {
+      if (current === "all") return current;
+      if (names.includes(current)) return current;
+      const matched = names.find((n) => matchesClassArm(n, current, classes));
+      return matched || names[0];
+    });
   }, [classes, classesSource, isTeacher, currentUser]);
 
   // The grid shows one subject's marks at a time, so it is filled from the
@@ -117,7 +160,7 @@ export default function UpdateCAPage() {
   const { subjectScores: filedMarks, filedLoaded } = useRealtimeSubjectScores({
     session: schoolScope.session,
     terms: [schoolScope.term],
-    className: selectedClass,
+    className: selectedClass === "all" ? undefined : selectedClass,
   });
 
   useEffect(() => {
@@ -344,14 +387,17 @@ export default function UpdateCAPage() {
     exportToCSV(`RCA_${selectedClass.replace(/\s+/g, "_")}_${selectedSubject.replace(/\s+/g, "_")}_ScoreSheet`, headers, rows);
   };
 
-  // Filtered students by class and search (React Compiler memoizes this automatically)
-  const filteredStudents = students.filter((s) => {
-    const matchesClass = selectedClass === "all" || s.className === selectedClass;
-    const matchesSearch =
-      s.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.admissionNo.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesClass && matchesSearch;
-  });
+  // Filtered students by class and search with fallback to normalized arm matching & classId
+  const filteredStudents = useMemo(() => {
+    return students.filter((s) => {
+      const matchesClass = matchesClassArm(s.className, selectedClass, classes, s.classId);
+      const matchesSearch =
+        !searchQuery.trim() ||
+        s.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.admissionNo.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesClass && matchesSearch;
+    });
+  }, [students, selectedClass, classes, searchQuery]);
 
   // Statistics calculated dynamically from live scores
   const stats = useMemo(() => {
@@ -549,6 +595,53 @@ export default function UpdateCAPage() {
           </div>
         </div>
 
+        {/* Setup & Configuration Guidance Banners */}
+        {selectedClass !== "all" && !hasConfiguredCAStructure && (
+          <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">
+                  CA Structure Not Configured for {CA_TIER_LABELS[selectedTierKey]?.tierTitle ?? selectedTierKey} ({selectedClass})
+                </p>
+                <p className="text-[11px] text-amber-800 mt-0.5">
+                  The default Continuous Assessment weighting (10% Test 1 + 10% Test 2 + 10% Project + 10% Mid-Term + 60% Exam = 100%) is active. You can customize component weights and breakdown rules in Academic Setup.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/setup/ca-structure"
+              className="shrink-0 px-3 py-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors inline-flex items-center gap-1 self-start sm:self-center"
+            >
+              Configure Structure
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        )}
+
+        {selectedClass !== "all" && !isSubjectMappedToTier && (
+          <div className="bg-blue-50/90 border border-blue-200 rounded-xl p-3.5 text-xs text-blue-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-start gap-2.5">
+              <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">
+                  &quot;{selectedSubject}&quot; is not yet mapped to {selectedClass}
+                </p>
+                <p className="text-[11px] text-blue-800 mt-0.5">
+                  This subject is not assigned to this class arm or tier under Subject Packages. Marks entered here will still be recorded and synced to the school database.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/setup/subjects"
+              className="shrink-0 px-3 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors inline-flex items-center gap-1 self-start sm:self-center"
+            >
+              Assign Subject
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        )}
+
         {/* Score Sheet Table */}
         <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
@@ -582,7 +675,81 @@ export default function UpdateCAPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredStudents.map((student, index) => {
+                {filteredStudents.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} className="py-12 px-4 text-center">
+                      <div className="max-w-lg mx-auto space-y-4">
+                        <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto border border-amber-200">
+                          <Users className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900">
+                            {searchQuery
+                              ? `No students match "${searchQuery}" in ${selectedClass}`
+                              : `No students enrolled in ${selectedClass === "all" ? "the school" : selectedClass}`}
+                          </h4>
+                          <p className="text-xs text-slate-500 mt-1">
+                            {searchQuery
+                              ? "Try adjusting your search query or reset the filter to view all students."
+                              : `No active student records are assigned to "${selectedClass}". Student lookups match both catalog class IDs and normalized arm names (e.g., "${selectedClass} A").`}
+                          </p>
+                        </div>
+
+                        {/* Diagnostic guidance cards */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left pt-2">
+                          <Link
+                            href="/operations/students"
+                            className="p-3 bg-slate-50 hover:bg-blue-50/60 border border-slate-200 hover:border-blue-200 rounded-xl transition-all group"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Users className="w-4 h-4 text-blue-600" />
+                              <span className="font-bold text-xs text-slate-800 group-hover:text-blue-700">Student Directory</span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-1">
+                              Verify student enrolments, check class arm assignments, or register students.
+                            </p>
+                          </Link>
+
+                          <Link
+                            href="/setup/ca-structure"
+                            className="p-3 bg-slate-50 hover:bg-amber-50/60 border border-slate-200 hover:border-amber-200 rounded-xl transition-all group"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Layers className="w-4 h-4 text-amber-600" />
+                              <span className="font-bold text-xs text-slate-800 group-hover:text-amber-700">CA Structure Setup</span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-1">
+                              Configure weighting tiers, tests, and component breakdown for {selectedTierKey}.
+                            </p>
+                          </Link>
+                        </div>
+
+                        {/* Quick Action buttons */}
+                        <div className="flex items-center justify-center gap-2 pt-2 flex-wrap">
+                          {selectedClass !== "all" && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedClass("all")}
+                              className="px-3.5 py-1.5 text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors cursor-pointer"
+                            >
+                              Show All Enrolled Students (All Tiers)
+                            </button>
+                          )}
+                          {searchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setSearchQuery("")}
+                              className="px-3 py-1.5 text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                            >
+                              Clear Search
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredStudents.map((student, index) => {
                   const total =
                     student.caScores.test1 +
                     student.caScores.test2 +
@@ -701,7 +868,7 @@ export default function UpdateCAPage() {
                       </td>
                     </tr>
                   );
-                })}
+                }))}
               </tbody>
             </table>
           </div>

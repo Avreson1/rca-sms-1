@@ -17,6 +17,7 @@ const READ_CA = ["SUPER_ADMIN", "EXAM_OFFICER", "TEACHER", "STUDENT_PARENT", "TE
 // ca_scores column limits, straight from the schema's CHECK constraints.
 const COMPONENT_MAX = { test1: 10, test2: 10, project: 10, midTerm: 10 } as const;
 const EXAM_MAX = 60;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // The REST layer hands back at most this many rows per request, so a read that
 // could exceed it is paged rather than silently truncated.
@@ -84,9 +85,16 @@ interface TierRow {
  * is only the fallback for a class the office has not listed anywhere.
  */
 function tierForClass(className: string, tiers: TierRow[]): TierRow | null {
-  const lower = (className || "").toLowerCase();
+  const lower = (className || "").toLowerCase().trim();
+  const lowerNoSpace = lower.replace(/\s+/g, "");
   const listed = tiers.find(
-    (tier) => Array.isArray(tier.applicable_classes) && tier.applicable_classes.some((arm) => String(arm).toLowerCase() === lower)
+    (tier) =>
+      Array.isArray(tier.applicable_classes) &&
+      tier.applicable_classes.some((arm) => {
+        const a = String(arm).toLowerCase().trim();
+        const aNoSpace = a.replace(/\s+/g, "");
+        return a === lower || aNoSpace === lowerNoSpace || lowerNoSpace.startsWith(aNoSpace) || aNoSpace.startsWith(lowerNoSpace);
+      })
   );
   if (listed) return listed;
 
@@ -138,7 +146,8 @@ export async function GET(request: Request) {
   // A cumulative card needs all three terms, and one request per card beats
   // three requests that can disagree with each other half-way through.
   const terms = Array.from(new Set((params.get("term") || "").split(",").map((value) => value.trim()).filter(Boolean)));
-  const className = (params.get("class_name") || "").trim();
+  const className = (params.get("class_name") || params.get("className") || "").trim();
+  const classId = (params.get("class_id") || params.get("classId") || "").trim();
 
   if (!session || terms.length === 0) {
     return NextResponse.json(
@@ -172,15 +181,73 @@ export async function GET(request: Request) {
   // can honour, rather than a condition on an embedded table that a REST layer
   // can quietly ignore and answer with the whole school.
   let studentIds: string[] | null = null;
-  if (scope.admissionNos !== null || className) {
-    let lookup = supabase.from("students").select("id");
+  const targetClass = classId || className;
+
+  if (scope.admissionNos !== null || (targetClass && targetClass !== "all")) {
+    let lookup = supabase.from("students").select("id, class_name");
     if (scope.admissionNos) lookup = lookup.in("admission_no", scope.admissionNos);
-    if (className) lookup = lookup.eq("class_name", className);
+
+    let canonicalArmId = "";
+
+    if (targetClass && targetClass !== "all") {
+      const isUuid = UUID_PATTERN.test(targetClass);
+      let canonicalArmName = "";
+
+      // 1. Resolve canonical arm if targetClass is UUID or matches class_arms catalog
+      let armQuery = supabase.from("class_arms").select("id, name");
+      if (isUuid) {
+        armQuery = armQuery.eq("id", targetClass);
+      } else {
+        armQuery = armQuery.or(`name.eq."${targetClass}",id.eq."${targetClass}"`);
+      }
+      const { data: matchedArm } = await armQuery.maybeSingle();
+      if (matchedArm) {
+        canonicalArmName = matchedArm.name;
+        canonicalArmId = matchedArm.id;
+      }
+
+      const effectiveName = canonicalArmName || (!isUuid ? targetClass : "");
+
+      // 2. Build normalized matching conditions for student.class_name
+      const orConditions: string[] = [];
+      if (effectiveName) {
+        const cleanName = effectiveName.trim();
+        orConditions.push(`class_name.eq."${cleanName}"`);
+        orConditions.push(`class_name.ilike."${cleanName}%"`);
+        const noSpaces = cleanName.replace(/\s+/g, "");
+        if (noSpaces !== cleanName) {
+          orConditions.push(`class_name.ilike."${noSpaces}%"`);
+        }
+        // Base stream without trailing arm designation (e.g. "SS 2A" -> "SS 2")
+        const baseStream = cleanName.replace(/\s*[A-Z]$/i, "").trim();
+        if (baseStream && baseStream !== cleanName) {
+          orConditions.push(`class_name.eq."${baseStream}"`);
+          orConditions.push(`class_name.ilike."${baseStream}%"`);
+        }
+      }
+
+      if (orConditions.length > 0) {
+        lookup = lookup.or(orConditions.join(","));
+      }
+    }
 
     const { data: pupils, error: pupilError } = await lookup;
     if (pupilError) return NextResponse.json({ success: false, error: pupilError.message }, { status: 502 });
 
-    const ids = (pupils as { id: string }[] ?? []).map((pupil) => pupil.id);
+    let ids = ((pupils as { id: string }[]) ?? []).map((pupil) => pupil.id);
+
+    // Fallback: If 0 pupils matched by text, and a UUID was provided or resolved, try matching students.class_id
+    if (ids.length === 0 && (canonicalArmId || (targetClass && UUID_PATTERN.test(targetClass)))) {
+      const uuidToQuery = canonicalArmId || targetClass;
+      const { data: uuidPupils, error: uuidErr } = await supabase
+        .from("students")
+        .select("id")
+        .eq("class_id", uuidToQuery);
+      if (!uuidErr && uuidPupils && uuidPupils.length > 0) {
+        ids = uuidPupils.map((p: { id: string }) => p.id);
+      }
+    }
+
     if (ids.length === 0) return NextResponse.json({ success: true, data: [] });
     studentIds = ids;
   }

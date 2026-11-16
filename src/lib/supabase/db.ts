@@ -169,6 +169,7 @@ interface StudentRow {
   full_name: string;
   gender: string | null;
   class_name: string;
+  class_id?: string | null;
   house: string | null;
   guardian_name: string | null;
   guardian_phone: string | null;
@@ -237,6 +238,7 @@ export async function fetchStudentsFromSupabase(): Promise<StudentRecord[] | nul
       guardianName: item.guardian_name || undefined,
       guardianPhone: item.guardian_phone || undefined,
       feeStatus: (item.fee_status || "Outstanding") as StudentRecord["feeStatus"],
+      classId: item.class_id || undefined,
       // The roll carries no marks. `caScores` is the CA entry grid's buffer, and
       // the only thing that fills it is /api/ca, for one subject at a time.
       caScores: { test1: 0, test2: 0, project: 0, midTerm: 0, exam: 0 },
@@ -986,9 +988,11 @@ export async function fetchCaScoresFromSupabase(options: {
   session: string;
   terms: string[];
   className?: string;
+  classId?: string;
 }): Promise<SubjectScoreRecord[] | null> {
   const params = new URLSearchParams({ session: options.session, term: options.terms.join(",") });
   if (options.className) params.set("class_name", options.className);
+  if (options.classId) params.set("class_id", options.classId);
 
   const rows = await requestJson<CaReadRow[]>(`/api/ca?${params.toString()}`, "The filed marks");
   if (!rows) return null;

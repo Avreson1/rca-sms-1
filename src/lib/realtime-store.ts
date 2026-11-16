@@ -5,6 +5,7 @@ import { SCHOOL_INFO, ROLES, RBAC_STEPS } from "./constants";
 import { cachedSchoolSession, cachedSchoolTerm } from "./school-config";
 import { isSupabaseConfigured } from "./supabase/client";
 import { reportSyncFailure, reportSyncSaved } from "./sync-status";
+import { matchesClassArm } from "./class-matching";
 import {
   fetchStudentsFromSupabase,
   fetchStaffFromSupabase,
@@ -158,6 +159,7 @@ export interface StudentRecord {
   religion?: string;
   status?: string;
   section?: string;
+  classId?: string;
 }
 
 export interface SubjectScoreRecord {
@@ -1142,7 +1144,9 @@ export function useRealtimeStudents() {
     );
 
     const updated = students.map((s) =>
-      s.className === className ? { ...s, caScores: byStudent.get(s.id) ?? blank } : s
+      className === "all" || matchesClassArm(s.className, className, undefined, s.classId)
+        ? { ...s, caScores: byStudent.get(s.id) ?? blank }
+        : s
     );
     setStudents(updated);
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updated));
