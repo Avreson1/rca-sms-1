@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { requireRole, requireRoleSession } from "@/lib/auth/guard";
 import { guardianScope } from "@/lib/auth/guardian-links";
 import { databaseUnavailable, getSupabaseServerClient } from "@/lib/supabase/server";
+import { filterStudentColumns } from "@/lib/supabase/schema-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -136,12 +137,14 @@ export async function POST(request: Request) {
     id: row.id ?? existingById.get(row.admission_no) ?? randomUUID(),
   }));
 
+  const filteredRows = withIds.map((row) => filterStudentColumns(row));
+
   // Keyed on the admission number, which is the identifier the whole portal
   // uses for a pupil (CA scores, invoices and removal all address it) and the
   // column the schema makes unique. Keyed on `id`, re-saving an enrolled child —
   // the same admission number with a browser-generated id — tried to insert a
   // second row and the database refused with a 502 that looked like a fault.
-  const { error } = await supabase.from("students").upsert(withIds, { onConflict: "admission_no" });
+  const { error } = await supabase.from("students").upsert(filteredRows, { onConflict: "admission_no" });
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 502 });
   return NextResponse.json({ success: true });
 }
@@ -186,6 +189,59 @@ export async function PATCH(request: Request) {
   if (body.guardianName !== undefined) updateData.guardian_name = typeof body.guardianName === "string" && body.guardianName.trim() ? body.guardianName.trim() : null;
   if (body.guardianPhone !== undefined) updateData.guardian_phone = typeof body.guardianPhone === "string" && body.guardianPhone.trim() ? body.guardianPhone.trim() : null;
   if (typeof body.feeStatus === "string" && body.feeStatus.trim()) updateData.fee_status = body.feeStatus.trim();
+  if (body.status !== undefined && typeof body.status === "string") updateData.status = body.status.trim();
+  if (body.schoolBrand !== undefined || body.school_brand !== undefined) {
+    const val = (body.schoolBrand ?? body.school_brand) as unknown;
+    if (typeof val === "string" && val.trim()) updateData.school_brand = val.trim();
+  }
+  if (body.section !== undefined && typeof body.section === "string") updateData.section = body.section.trim();
+  if (body.dateOfBirth !== undefined || body.date_of_birth !== undefined) {
+    const val = (body.dateOfBirth ?? body.date_of_birth) as unknown;
+    updateData.date_of_birth = typeof val === "string" && val.trim() ? val.trim() : null;
+  }
+  if (body.bloodGroup !== undefined || body.blood_group !== undefined) {
+    const val = (body.bloodGroup ?? body.blood_group) as unknown;
+    if (typeof val === "string") updateData.blood_group = val.trim();
+  }
+  if (body.guardianEmail !== undefined || body.guardian_email !== undefined) {
+    const val = (body.guardianEmail ?? body.guardian_email) as unknown;
+    if (typeof val === "string") updateData.guardian_email = val.trim();
+  }
+  if (body.guardianAddress !== undefined || body.guardian_address !== undefined) {
+    const val = (body.guardianAddress ?? body.guardian_address) as unknown;
+    if (typeof val === "string") updateData.guardian_address = val.trim();
+  }
+  if (body.guardianRelationship !== undefined || body.guardian_relationship !== undefined) {
+    const val = (body.guardianRelationship ?? body.guardian_relationship) as unknown;
+    if (typeof val === "string") updateData.guardian_relationship = val.trim();
+  }
+  if (body.medicalNotes !== undefined || body.medical_notes !== undefined) {
+    const val = (body.medicalNotes ?? body.medical_notes) as unknown;
+    if (typeof val === "string") updateData.medical_notes = val.trim();
+  }
+  if (body.allergies !== undefined && typeof body.allergies === "string") {
+    updateData.allergies = body.allergies.trim();
+  }
+  if (body.admissionDate !== undefined || body.admission_date !== undefined) {
+    const val = (body.admissionDate ?? body.admission_date) as unknown;
+    updateData.admission_date = typeof val === "string" && val.trim() ? val.trim() : null;
+  }
+  if (body.nationality !== undefined && typeof body.nationality === "string") {
+    updateData.nationality = body.nationality.trim();
+  }
+  if (body.stateOfOrigin !== undefined || body.state_of_origin !== undefined) {
+    const val = (body.stateOfOrigin ?? body.state_of_origin) as unknown;
+    if (typeof val === "string") updateData.state_of_origin = val.trim();
+  }
+  if (body.lga !== undefined && typeof body.lga === "string") {
+    updateData.lga = body.lga.trim();
+  }
+  if (body.religion !== undefined && typeof body.religion === "string") {
+    updateData.religion = body.religion.trim();
+  }
+  if (body.photo !== undefined && typeof body.photo === "string") {
+    updateData.photo = body.photo.trim();
+  }
 
   // Check unique duplicate
   if (updateData.admission_no && (updateData.admission_no as string).toLowerCase() !== existing.admission_no.toLowerCase()) {
@@ -193,7 +249,9 @@ export async function PATCH(request: Request) {
     if (dup) return NextResponse.json({ success: false, error: "Admission number already assigned to another pupil" }, { status: 409 });
   }
 
-  const { data: updated, error: updateErr } = await supabase.from("students").update(updateData).eq("id", existing.id).select().single();
+  // Database Write with SELECT * Column-Filter Guard
+  const filteredUpdateData = filterStudentColumns(updateData, existing);
+  const { data: updated, error: updateErr } = await supabase.from("students").update(filteredUpdateData).eq("id", existing.id).select().single();
   if (updateErr) {
     if (updateErr.code === "23505") return NextResponse.json({ success: false, error: "Admission number already assigned to another pupil" }, { status: 409 });
     return NextResponse.json({ success: false, error: updateErr.message }, { status: 502 });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRole, requireRoleSession } from "@/lib/auth/guard";
 import { databaseUnavailable, getSupabaseServerClient } from "@/lib/supabase/server";
+import { filterStaffColumns } from "@/lib/supabase/schema-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -269,11 +270,30 @@ export async function PATCH(request: Request, context: RouteContext) {
     const val = (body.employmentDate ?? body.employment_date) as unknown;
     updateData.employment_date = typeof val === "string" && val.trim() ? val.trim() : null;
   }
+  if (body.gender !== undefined) {
+    const val = body.gender;
+    if (typeof val === "string" && val.trim()) updateData.gender = val.trim();
+  }
+  if (body.schoolBrand !== undefined || body.school_brand !== undefined) {
+    const val = (body.schoolBrand ?? body.school_brand) as unknown;
+    if (typeof val === "string" && val.trim()) updateData.school_brand = val.trim();
+  }
+  if (body.photo !== undefined && typeof body.photo === "string") {
+    updateData.photo = body.photo.trim();
+  }
+  if (body.nationality !== undefined && typeof body.nationality === "string") {
+    updateData.nationality = body.nationality.trim();
+  }
+  if (body.stateOfOrigin !== undefined || body.state_of_origin !== undefined) {
+    const val = (body.stateOfOrigin ?? body.state_of_origin) as unknown;
+    if (typeof val === "string") updateData.state_of_origin = val.trim();
+  }
 
-  // 3. Database Write
+  // 3. Database Write with SELECT * Column-Filter Guard
+  const filteredUpdateData = filterStaffColumns(updateData, existing);
   let { data: updated, error: updateErr } = await supabase
     .from("staff")
-    .update(updateData)
+    .update(filteredUpdateData)
     .eq("id", existing.id)
     .select()
     .single();

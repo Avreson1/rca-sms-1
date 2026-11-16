@@ -3,6 +3,7 @@ import { requireRole, requireRoleSession } from "@/lib/auth/guard";
 import { ASSIGNABLE_ROLES, createAppAccount, getAppAccountByUsername, setAppAccountStatus } from "@/lib/auth/app-accounts";
 import type { UserRole } from "@/lib/rbac";
 import { databaseUnavailable, getSupabaseServerClient } from "@/lib/supabase/server";
+import { filterStaffColumns } from "@/lib/supabase/schema-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -96,7 +97,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: "Provide a staff member with staff_id, full_name, username and email." }, { status: 400 });
   }
 
-  const { error } = await supabase.from("staff").upsert(row, { onConflict: "id" });
+  const filteredRow = filterStaffColumns(row);
+  const { error } = await supabase.from("staff").upsert(filteredRow, { onConflict: "id" });
   if (error) {
     // A designation or standing duty is a column supabase/staff_duties.sql adds.
     // Naming the file is the difference between "the save failed" and "run this
@@ -237,8 +239,79 @@ export async function PATCH(request: Request) {
   }
   if (body.status !== undefined && typeof body.status === "string") updateData.status = body.status.trim();
   if (body.designation !== undefined && typeof body.designation === "string") updateData.designation = body.designation.trim();
+  if (body.standingDuties !== undefined || body.standing_duties !== undefined) {
+    const rawDuties = (body.standingDuties ?? body.standing_duties) as unknown;
+    if (Array.isArray(rawDuties)) {
+      updateData.standing_duties = trimmedList(rawDuties, 120, 12);
+    }
+  }
+  if (body.isFormMaster !== undefined || body.is_form_master !== undefined) {
+    updateData.is_form_master = Boolean(body.isFormMaster ?? body.is_form_master);
+  }
+  if (body.staffType !== undefined || body.staff_type !== undefined) {
+    const val = (body.staffType ?? body.staff_type) as unknown;
+    if (typeof val === "string" && val.trim()) updateData.staff_type = val.trim();
+  }
+  if (body.qualifications !== undefined && typeof body.qualifications === "string") {
+    updateData.qualifications = body.qualifications.trim();
+  }
+  if (body.bankName !== undefined || body.bank_name !== undefined) {
+    const val = (body.bankName ?? body.bank_name) as unknown;
+    if (typeof val === "string") updateData.bank_name = val.trim();
+  }
+  if (body.accountNumber !== undefined || body.account_number !== undefined) {
+    const val = (body.accountNumber ?? body.account_number) as unknown;
+    if (typeof val === "string") updateData.account_number = val.trim();
+  }
+  if (body.accountName !== undefined || body.account_name !== undefined) {
+    const val = (body.accountName ?? body.account_name) as unknown;
+    if (typeof val === "string") updateData.account_name = val.trim();
+  }
+  if (body.salaryGrade !== undefined || body.salary_grade !== undefined) {
+    const val = (body.salaryGrade ?? body.salary_grade) as unknown;
+    if (typeof val === "string") updateData.salary_grade = val.trim();
+  }
+  if (body.address !== undefined && typeof body.address === "string") {
+    updateData.address = body.address.trim();
+  }
+  if (body.emergencyContactName !== undefined || body.emergency_contact_name !== undefined) {
+    const val = (body.emergencyContactName ?? body.emergency_contact_name) as unknown;
+    if (typeof val === "string") updateData.emergency_contact_name = val.trim();
+  }
+  if (body.emergencyContactPhone !== undefined || body.emergency_contact_phone !== undefined) {
+    const val = (body.emergencyContactPhone ?? body.emergency_contact_phone) as unknown;
+    if (typeof val === "string") updateData.emergency_contact_phone = val.trim();
+  }
+  if (body.dateOfBirth !== undefined || body.date_of_birth !== undefined) {
+    const val = (body.dateOfBirth ?? body.date_of_birth) as unknown;
+    updateData.date_of_birth = typeof val === "string" && val.trim() ? val.trim() : null;
+  }
+  if (body.employmentDate !== undefined || body.employment_date !== undefined) {
+    const val = (body.employmentDate ?? body.employment_date) as unknown;
+    updateData.employment_date = typeof val === "string" && val.trim() ? val.trim() : null;
+  }
+  if (body.gender !== undefined) {
+    const val = body.gender;
+    if (typeof val === "string" && val.trim()) updateData.gender = val.trim();
+  }
+  if (body.schoolBrand !== undefined || body.school_brand !== undefined) {
+    const val = (body.schoolBrand ?? body.school_brand) as unknown;
+    if (typeof val === "string" && val.trim()) updateData.school_brand = val.trim();
+  }
+  if (body.photo !== undefined && typeof body.photo === "string") {
+    updateData.photo = body.photo.trim();
+  }
+  if (body.nationality !== undefined && typeof body.nationality === "string") {
+    updateData.nationality = body.nationality.trim();
+  }
+  if (body.stateOfOrigin !== undefined || body.state_of_origin !== undefined) {
+    const val = (body.stateOfOrigin ?? body.state_of_origin) as unknown;
+    if (typeof val === "string") updateData.state_of_origin = val.trim();
+  }
 
-  const { data: updated, error: updateErr } = await supabase.from("staff").update(updateData).eq("id", existing.id).select().single();
+  // Database Write with SELECT * Column-Filter Guard
+  const filteredUpdateData = filterStaffColumns(updateData, existing);
+  const { data: updated, error: updateErr } = await supabase.from("staff").update(filteredUpdateData).eq("id", existing.id).select().single();
   if (updateErr) {
     if (updateErr.code === "23505") return NextResponse.json({ success: false, error: "A unique constraint conflict occurred: " + updateErr.message }, { status: 409 });
     return NextResponse.json({ success: false, error: updateErr.message }, { status: 502 });

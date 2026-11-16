@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/guard";
 import { databaseUnavailable, getSupabaseServerClient } from "@/lib/supabase/server";
+import { filterStudentColumns } from "@/lib/supabase/schema-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -178,11 +179,29 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (body.religion !== undefined && typeof body.religion === "string") {
     updateData.religion = body.religion.trim();
   }
+  if (body.status !== undefined && typeof body.status === "string") {
+    updateData.status = body.status.trim();
+  }
+  if (body.schoolBrand !== undefined || body.school_brand !== undefined) {
+    const val = (body.schoolBrand ?? body.school_brand) as unknown;
+    if (typeof val === "string" && val.trim()) updateData.school_brand = val.trim();
+  }
+  if (body.section !== undefined && typeof body.section === "string") {
+    updateData.section = body.section.trim();
+  }
+  if (body.admissionDate !== undefined || body.admission_date !== undefined) {
+    const val = (body.admissionDate ?? body.admission_date) as unknown;
+    updateData.admission_date = typeof val === "string" && val.trim() ? val.trim() : null;
+  }
+  if (body.photo !== undefined && typeof body.photo === "string") {
+    updateData.photo = body.photo.trim();
+  }
 
-  // 3. Database Write
+  // 3. Database Write with SELECT * Column-Filter Guard
+  const filteredUpdateData = filterStudentColumns(updateData, existing);
   const { data: updated, error: updateErr } = await supabase
     .from("students")
-    .update(updateData)
+    .update(filteredUpdateData)
     .eq("id", existing.id)
     .select()
     .single();
